@@ -1,3 +1,5 @@
+import logging
+import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
@@ -9,6 +11,8 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import OsType
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ipxe-menus")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -54,16 +58,41 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
 
-    # Regenerate synchronously for immediate result
-    from app.services.menu_generator import regenerate_all
-    regenerate_all(db)
+    try:
+        from app.services.menu_generator import regenerate_all
+        written = regenerate_all(db)
+        logger.info("Menus régénérés : %s", written)
+    except Exception:
+        err = traceback.format_exc()
+        logger.error("Erreur régénération menus :\n%s", err)
+        os_types = db.query(OsType).all()
+        menu_files = []
+        if settings.menus_dir.exists():
+            for f in sorted(settings.menus_dir.glob("*.ipxe")):
+                menu_files.append({
+                    "name": f.name,
+                    "content": f.read_text(encoding="utf-8"),
+                    "url": f"{settings.server_base_url}/menus/{f.name}",
+                    "size": f.stat().st_size,
+                })
+        return templates.TemplateResponse(
+            "menus.html",
+            {
+                "request": request,
+                "menu_files": menu_files,
+                "os_types": os_types,
+                "server_url": settings.server_base_url,
+                "error": err,
+            },
+            status_code=500,
+        )
 
     # Also queue async in Celery if available
     try:
         from app.tasks.jobs import regenerate_menus_task
         regenerate_menus_task.delay()
     except Exception:
-        pass  # Celery not available — sync generation above is enough
+        pass
 
     return RedirectResponse("/ipxe-menus", status_code=302)
 
