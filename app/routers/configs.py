@@ -163,6 +163,7 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> st
     version_slug = slugify(version.version_label)
     cfg_dir = settings.configs_dir / version.os_type.slug / version_slug
     cfg_dir.mkdir(parents=True, exist_ok=True)
+
     ext_map = {
         "preseed":    "cfg",
         "kickstart":  "cfg",
@@ -171,7 +172,25 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> st
         "custom":     "txt",
     }
     ext = ext_map.get(cfg.config_type, "txt")
-    fname = f"{cfg.config_type}_{cfg.id}.{ext}"
-    file = cfg_dir / fname
-    file.write_text(content, encoding="utf-8")
+
+    # Nom de fichier = label slugifié, ou type si label vide
+    base = slugify(cfg.label) if cfg.label and slugify(cfg.label) else cfg.config_type
+    fname = f"{base}.{ext}"
+    dest = cfg_dir / fname
+
+    # Si le fichier existe déjà et appartient à une autre config, ajouter l'ID
+    if dest.exists():
+        existing_rel = f"configs/{version.os_type.slug}/{version_slug}/{fname}"
+        from app.database import SessionLocal
+        db_check = SessionLocal()
+        conflict = db_check.query(AutoConfig).filter(
+            AutoConfig.file_path == existing_rel,
+            AutoConfig.id != cfg.id,
+        ).first()
+        db_check.close()
+        if conflict:
+            fname = f"{base}_{cfg.id}.{ext}"
+            dest = cfg_dir / fname
+
+    dest.write_text(content, encoding="utf-8")
     return f"configs/{version.os_type.slug}/{version_slug}/{fname}"

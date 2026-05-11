@@ -99,11 +99,12 @@ def scan_and_import(db: Session) -> dict:
                     results["skipped"] += 1
                     continue
 
-                # Détecter le type
+                # Détecter le type : nom > OS slug > extension > custom
                 cfg_type = (
                     NAME_TYPE.get(f.name.lower())
+                    or OS_CONFIG_TYPE.get(os_slug)
                     or EXT_TYPE.get(f.suffix.lower())
-                    or OS_CONFIG_TYPE.get(os_slug, "custom")
+                    or "custom"
                 )
                 try:
                     content = f.read_text(encoding="utf-8", errors="replace")
