@@ -69,6 +69,7 @@ async def upload_iso(
     # Windows boot files
     file_boot_wim: UploadFile = File(None),
     file_bcd:      UploadFile = File(None),
+    file_boot_sdi: UploadFile = File(None),
     file_bootmgr:  UploadFile = File(None),
     # Linux boot files
     file_kernel:   UploadFile = File(None),
@@ -118,7 +119,10 @@ async def upload_iso(
         db.add(Upload(filename=safe_name, file_type="iso", size=size, status="pending"))
 
     # ── Fichiers boot manuels ──────────────────────────────
-    boot_dir = settings.boot_dir / os_type.slug / str(version.id)
+    from app.services.slugify import slugify
+    version_slug = slugify(version.version_label)
+
+    boot_dir = settings.boot_dir / os_type.slug / version_slug
     boot_dir.mkdir(parents=True, exist_ok=True)
 
     from app.models.models import BootEntry
@@ -130,16 +134,19 @@ async def upload_iso(
         with open(dest, "wb") as f:
             while chunk := await upload.read(1024 * 1024):
                 f.write(chunk)
-        return f"boot/{os_type.slug}/{version.id}/{fname}"
+        return f"boot/{os_type.slug}/{version_slug}/{fname}"
 
     has_boot_files = False
 
     if os_type.boot_type == "windows":
-        if file_boot_wim and file_boot_wim.filename:
-            be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
-            has_boot_files = True
         if file_bcd and file_bcd.filename:
             be.bcd_path = await save_boot_file(file_bcd, "BCD")
+            has_boot_files = True
+        if file_boot_sdi and file_boot_sdi.filename:
+            be.boot_sdi_path = await save_boot_file(file_boot_sdi, "boot.sdi")
+            has_boot_files = True
+        if file_boot_wim and file_boot_wim.filename:
+            be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
             has_boot_files = True
         if file_bootmgr and file_bootmgr.filename:
             be.bootmgr_path = await save_boot_file(file_bootmgr, file_bootmgr.filename)

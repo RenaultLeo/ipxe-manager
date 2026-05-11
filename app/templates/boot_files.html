@@ -10,87 +10,112 @@
     <span>
       <i class="{{ v.os_type.icon }} me-2 text-primary"></i>
       <strong>{{ v.os_type.label }} {{ v.version_label }}</strong>
-      <span class="badge bg-secondary ms-2">{{ v.status }}</span>
+      {% if v.status == 'ready' %}
+        <span class="badge bg-success ms-2">Prêt</span>
+      {% else %}
+        <span class="badge bg-secondary ms-2">{{ v.status }}</span>
+      {% endif %}
     </span>
     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse"
             data-bs-target="#v{{ v.id }}">
       <i class="bi bi-chevron-down"></i>
     </button>
   </div>
+
   <div class="collapse" id="v{{ v.id }}">
     <div class="card-body">
 
       {% if v.boot_entry %}
       {% set be = v.boot_entry %}
+
+      <!-- Fichiers actuels -->
       <div class="row g-2 mb-3">
-        {% if be.kernel_path %}
-        <div class="col-md-6">
-          <div class="p-2 bg-dark border border-secondary rounded">
-            <div class="small text-muted mb-1">vmlinuz</div>
-            <code class="small">{{ server_url }}/{{ be.kernel_path }}</code>
+        {% if v.os_type.boot_type == 'windows' %}
+          {% for label, path in [
+            ('BCD',         be.bcd_path),
+            ('boot.sdi',    be.boot_sdi_path),
+            ('boot.wim',    be.boot_wim_path),
+            ('bootmgr.efi', be.bootmgr_path),
+          ] %}
+            {% if path %}
+            <div class="col-md-6">
+              <div class="p-2 bg-dark border border-secondary rounded">
+                <div class="d-flex justify-content-between">
+                  <span class="small text-warning fw-semibold">{{ label }}</span>
+                  <a href="{{ server_url }}/{{ path }}" target="_blank" class="small text-muted">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                </div>
+                <code class="small text-break">{{ server_url }}/{{ path }}</code>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          {% for label, path in [
+            ('vmlinuz', be.kernel_path),
+            ('initrd',  be.initrd_path),
+          ] %}
+            {% if path %}
+            <div class="col-md-6">
+              <div class="p-2 bg-dark border border-secondary rounded">
+                <div class="small text-info fw-semibold mb-1">{{ label }}</div>
+                <code class="small text-break">{{ server_url }}/{{ path }}</code>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+          <!-- Args kernel -->
+          <div class="col-12">
+            <form method="post" action="/boot-files/{{ v.id }}/args" class="row g-2">
+              <div class="col-10">
+                <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
+                       value="{{ be.kernel_args or '' }}"
+                       placeholder="ex: quiet splash console=ttyS0 net.ifnames=0">
+              </div>
+              <div class="col-2">
+                <button class="btn btn-outline-secondary btn-sm w-100">
+                  <i class="bi bi-floppy me-1"></i>Args
+                </button>
+              </div>
+            </form>
           </div>
-        </div>
-        {% endif %}
-        {% if be.initrd_path %}
-        <div class="col-md-6">
-          <div class="p-2 bg-dark border border-secondary rounded">
-            <div class="small text-muted mb-1">initrd</div>
-            <code class="small">{{ server_url }}/{{ be.initrd_path }}</code>
-          </div>
-        </div>
-        {% endif %}
-        {% if be.boot_wim_path %}
-        <div class="col-12">
-          <div class="p-2 bg-dark border border-secondary rounded">
-            <div class="small text-muted mb-1">boot.wim</div>
-            <code class="small">{{ server_url }}/{{ be.boot_wim_path }}</code>
-          </div>
-        </div>
         {% endif %}
       </div>
-
-      <!-- Update kernel args -->
-      <form method="post" action="/boot-files/{{ v.id }}/args" class="row g-2 mb-3">
-        <div class="col-10">
-          <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
-                 value="{{ be.kernel_args or '' }}"
-                 placeholder="ex: quiet splash console=ttyS0">
-        </div>
-        <div class="col-2">
-          <button class="btn btn-outline-secondary btn-sm w-100">
-            <i class="bi bi-floppy me-1"></i>Args
-          </button>
-        </div>
-      </form>
       {% endif %}
 
-      <!-- Upload a boot file -->
+      <!-- Upload fichier boot -->
       <form method="post" action="/boot-files/{{ v.id }}/upload" enctype="multipart/form-data"
-            class="row g-2 align-items-end">
+            class="row g-2 align-items-end border-top border-secondary pt-3">
+
         <div class="col-md-3">
           <label class="form-label small">Rôle</label>
           <select name="file_role" class="form-select form-select-sm">
+            {% if v.os_type.boot_type == 'windows' %}
+            <option value="bcd">BCD</option>
+            <option value="boot_sdi">boot.sdi</option>
+            <option value="boot_wim">boot.wim</option>
+            <option value="bootmgr">bootmgr.efi</option>
+            {% else %}
             <option value="kernel">vmlinuz / kernel</option>
             <option value="initrd">initrd</option>
-            <option value="boot_wim">boot.wim</option>
             <option value="efi">EFI</option>
+            {% endif %}
             <option value="other">Autre</option>
           </select>
         </div>
-        <div class="col-md-5">
+
+        <div class="col-md-6">
           <label class="form-label small">Fichier</label>
           <input type="file" name="file" class="form-control form-control-sm" required>
         </div>
-        <div class="col-md-4">
-          <label class="form-label small">Args kernel (optionnel)</label>
-          <div class="input-group input-group-sm">
-            <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
-                   placeholder="quiet splash…">
-            <button class="btn btn-primary">
-              <i class="bi bi-upload me-1"></i>Upload
-            </button>
-          </div>
+
+        <div class="col-md-3">
+          <button class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-upload me-1"></i>Uploader
+          </button>
         </div>
+
       </form>
 
     </div>
@@ -98,8 +123,8 @@
 </div>
 {% else %}
 <div class="alert alert-info">
-  <i class="bi bi-info-circle me-2"></i>Aucune version d'ISO disponible.
-  <a href="/isos/upload">Uploader une ISO</a> d'abord.
+  <i class="bi bi-info-circle me-2"></i>Aucune version disponible.
+  <a href="/isos/upload">Ajouter une version</a> d'abord.
 </div>
 {% endfor %}
 {% endblock %}

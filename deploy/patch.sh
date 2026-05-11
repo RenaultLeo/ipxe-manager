@@ -46,11 +46,17 @@ echo "==> Patch 2 : AlmaLinux + WinPE"
 "$VENV/bin/python" "$APP_DIR/deploy/seed_db.py"
 echo "  Seed OK"
 
-# ── Patch 3 : colonne bootmgr_path ───────────────────────
-echo "==> Patch 3 : colonne bootmgr_path"
+# ── Patch 3 : colonnes Windows ───────────────────────────
+echo "==> Patch 3 : colonnes Windows (bootmgr_path, boot_sdi_path)"
 sqlite3 "$DB" "ALTER TABLE boot_entries ADD COLUMN bootmgr_path VARCHAR(512);" 2>/dev/null \
-    && echo "  Colonne ajoutée" \
-    || echo "  Déjà présente"
+    && echo "  bootmgr_path ajoutée" || echo "  bootmgr_path déjà présente"
+sqlite3 "$DB" "ALTER TABLE boot_entries ADD COLUMN boot_sdi_path VARCHAR(512);" 2>/dev/null \
+    && echo "  boot_sdi_path ajoutée" || echo "  boot_sdi_path déjà présente"
+
+# ── Patch 4 : colonne bcd_path si absente ────────────────
+echo "==> Patch 4 : colonne bcd_path"
+sqlite3 "$DB" "ALTER TABLE boot_entries ADD COLUMN bcd_path VARCHAR(512);" 2>/dev/null \
+    && echo "  bcd_path ajoutée" || echo "  bcd_path déjà présente"
 
 # ── Redémarrage ───────────────────────────────────────────
 echo "==> Redémarrage des services…"

@@ -78,8 +78,12 @@
           <dt class="col-4 text-muted">BCD</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.bcd_path }}</dd>
           {% endif %}
+          {% if be.boot_sdi_path %}
+          <dt class="col-4 text-muted">boot.sdi</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.boot_sdi_path }}</dd>
+          {% endif %}
           {% if be.bootmgr_path %}
-          <dt class="col-4 text-muted">bootmgr</dt>
+          <dt class="col-4 text-muted">bootmgr.efi</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.bootmgr_path }}</dd>
           {% endif %}
           {% if be.kernel_args %}

@@ -49,9 +49,10 @@ class BootEntry(Base):
     kernel_args = Column(Text, default="")
 
     # Windows / WinPE
-    boot_wim_path = Column(String(512))
-    bcd_path      = Column(String(512))
-    bootmgr_path  = Column(String(512))
+    boot_wim_path = Column(String(512))   # sources/boot.wim
+    bcd_path      = Column(String(512))   # boot/BCD
+    boot_sdi_path = Column(String(512))   # boot/boot.sdi
+    bootmgr_path  = Column(String(512))   # bootmgr.efi (UEFI)
 
     # EFI / UEFI
     efi_path = Column(String(512))

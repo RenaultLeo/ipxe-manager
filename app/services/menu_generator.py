@@ -47,6 +47,7 @@ def regenerate_all(db: Session) -> list[str]:
                     "initrd":      _http(be.initrd_path)   if be and be.initrd_path   else "",
                     "boot_wim":    _http(be.boot_wim_path) if be and be.boot_wim_path else "",
                     "bcd":         _http(be.bcd_path)      if be and be.bcd_path      else "",
+                    "boot_sdi":    _http(be.boot_sdi_path) if be and be.boot_sdi_path else "",
                     "bootmgr":     _http(be.bootmgr_path)  if be and be.bootmgr_path  else "",
                     "kernel_args": be.kernel_args if be else "",
                     "boot_type":   os_type.boot_type,

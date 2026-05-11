@@ -30,7 +30,12 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         db.commit()
 
         from app.services.iso_extractor import extract_iso
-        paths = extract_iso(version.iso_path, version.os_type.slug, version.id)
+        paths = extract_iso(
+            version.iso_path,
+            version.os_type.slug,
+            version.id,
+            version.version_label,
+        )
 
         # Upsert BootEntry
         be = version.boot_entry
@@ -38,10 +43,13 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
             be = BootEntry(iso_version_id=version.id)
             db.add(be)
 
-        be.kernel_path = paths.get("kernel_path")
-        be.initrd_path = paths.get("initrd_path")
+        be.kernel_path   = paths.get("kernel_path")
+        be.initrd_path   = paths.get("initrd_path")
         be.boot_wim_path = paths.get("boot_wim_path")
-        be.updated_at = datetime.utcnow()
+        be.bcd_path      = paths.get("bcd_path")
+        be.boot_sdi_path = paths.get("boot_sdi_path")
+        be.bootmgr_path  = paths.get("bootmgr_path")
+        be.updated_at    = datetime.utcnow()
 
         version.status = "ready"
         if upload:

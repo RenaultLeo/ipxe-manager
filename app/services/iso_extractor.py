@@ -14,7 +14,10 @@ class ExtractionError(Exception):
     pass
 
 
-def extract_iso(iso_path: str, os_slug: str, version_id: int) -> dict:
+def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str = "") -> dict:
+    from app.services.slugify import slugify
+    version_slug = slugify(version_label) if version_label else str(version_id)
+
     iso = Path(iso_path)
     if not iso.exists():
         raise ExtractionError(f"ISO introuvable : {iso_path}")
@@ -23,25 +26,24 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int) -> dict:
     if not seven_z:
         raise ExtractionError("7z non installé. Lancer : apt-get install -y p7zip-full")
 
-    dest = settings.boot_dir / os_slug / str(version_id)
+    dest = settings.boot_dir / os_slug / version_slug
     dest.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
-        # ── Extraction complète de l'ISO ──────────────────
         result = subprocess.run(
             [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
             capture_output=True, text=True,
             timeout=settings.extract_timeout,
         )
-        if result.returncode not in (0, 1):  # 1 = warnings non bloquants
+        if result.returncode not in (0, 1):
             raise ExtractionError(f"7z a échoué (code {result.returncode}) :\n{result.stderr}")
 
         extracted = Path(tmp)
 
-        if os_slug == "windows":
-            return _find_windows(extracted, dest, os_slug, version_id)
+        if os_slug in ("windows", "winpe"):
+            return _find_windows(extracted, dest, os_slug, version_slug)
         else:
-            return _find_linux(extracted, dest, os_slug, version_id)
+            return _find_linux(extracted, dest, os_slug, version_slug)
 
 
 # ── Linux ─────────────────────────────────────────────────────────────────────
@@ -50,22 +52,21 @@ KERNEL_NAMES  = {"vmlinuz", "vmlinux", "linux", "kernel"}
 INITRD_NAMES  = {"initrd", "initrd.gz", "initrd.lz4", "initrd.xz",
                   "initrd.img", "initramfs.img", "initramfs"}
 
-def _find_linux(src: Path, dest: Path, os_slug: str, version_id: int) -> dict:
+def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
     result = {}
+    base = f"boot/{os_slug}/{version_slug}"
 
-    # Chercher vmlinuz — on prend le plus grand fichier dont le nom correspond
     kernel = _find_file(src, KERNEL_NAMES)
     if kernel:
         shutil.copy2(kernel, dest / "vmlinuz")
-        result["kernel_path"] = f"boot/{os_slug}/{version_id}/vmlinuz"
+        result["kernel_path"] = f"{base}/vmlinuz"
 
-    # Chercher initrd
     initrd = _find_file(src, INITRD_NAMES)
     if initrd:
         suffix = initrd.suffix or ""
         fname = f"initrd{suffix}"
         shutil.copy2(initrd, dest / fname)
-        result["initrd_path"] = f"boot/{os_slug}/{version_id}/{fname}"
+        result["initrd_path"] = f"{base}/{fname}"
 
     if not result:
         raise ExtractionError(
@@ -77,25 +78,38 @@ def _find_linux(src: Path, dest: Path, os_slug: str, version_id: int) -> dict:
 
 # ── Windows ───────────────────────────────────────────────────────────────────
 
-def _find_windows(src: Path, dest: Path, os_slug: str, version_id: int) -> dict:
+def _find_windows(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
     result = {}
+    base = f"boot/{os_slug}/{version_slug}"
 
-    # boot.wim
+    # BCD
+    bcd = _find_file(src, {"bcd"})
+    if bcd:
+        shutil.copy2(bcd, dest / "BCD")
+        result["bcd_path"] = f"{base}/BCD"
+
+    # boot.sdi
+    sdi = _find_file(src, {"boot.sdi"})
+    if sdi:
+        shutil.copy2(sdi, dest / "boot.sdi")
+        result["boot_sdi_path"] = f"{base}/boot.sdi"
+
+    # boot.wim (sources/boot.wim — le plus gros)
     wim = _find_file(src, {"boot.wim"})
     if wim:
         shutil.copy2(wim, dest / "boot.wim")
-        result["boot_wim_path"] = f"boot/{os_slug}/{version_id}/boot.wim"
+        result["boot_wim_path"] = f"{base}/boot.wim"
 
-    # bootmgr / bootmgr.efi
-    for name in {"bootmgr", "bootmgr.efi"}:
-        f = _find_file(src, {name})
-        if f:
-            shutil.copy2(f, dest / name)
+    # bootmgr.efi (UEFI)
+    efi = _find_file(src, {"bootmgr.efi"})
+    if efi:
+        shutil.copy2(efi, dest / "bootmgr.efi")
+        result["bootmgr_path"] = f"{base}/bootmgr.efi"
 
     if not result:
         raise ExtractionError(
-            "Aucun boot.wim trouvé dans l'ISO. "
-            "Uploader le fichier manuellement via Fichiers Boot."
+            "Aucun fichier Windows (BCD/boot.sdi/boot.wim) trouvé dans l'ISO. "
+            "Uploader les fichiers manuellement via Fichiers Boot."
         )
     return result
 

@@ -57,7 +57,9 @@ async def upload_boot_file(
     if not version:
         raise HTTPException(404)
 
-    dest_dir = settings.boot_dir / version.os_type.slug / str(version_id)
+    from app.services.slugify import slugify
+    version_slug = slugify(version.version_label)
+    dest_dir = settings.boot_dir / version.os_type.slug / version_slug
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = Path(file.filename).name
@@ -72,7 +74,7 @@ async def upload_boot_file(
             f.write(chunk)
             size += len(chunk)
 
-    relative = f"boot/{version.os_type.slug}/{version_id}/{safe_name}"
+    relative = f"boot/{version.os_type.slug}/{version_slug}/{safe_name}"
 
     be = version.boot_entry
     if not be:
@@ -81,13 +83,19 @@ async def upload_boot_file(
         db.flush()
 
     if file_role == "kernel":
-        be.kernel_path = relative
+        be.kernel_path   = relative
     elif file_role == "initrd":
-        be.initrd_path = relative
+        be.initrd_path   = relative
     elif file_role == "boot_wim":
         be.boot_wim_path = relative
+    elif file_role == "bcd":
+        be.bcd_path      = relative
+    elif file_role == "boot_sdi":
+        be.boot_sdi_path = relative
+    elif file_role == "bootmgr":
+        be.bootmgr_path  = relative
     elif file_role == "efi":
-        be.efi_path = relative
+        be.efi_path      = relative
 
     if kernel_args:
         be.kernel_args = kernel_args
