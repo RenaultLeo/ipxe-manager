@@ -24,20 +24,43 @@ def _auth(request: Request):
 
 
 @router.get("", response_class=HTMLResponse)
-async def boot_list(request: Request, db: Session = Depends(get_db)):
+async def boot_list(request: Request, db: Session = Depends(get_db),
+                    scan_result: str = ""):
     redir = _auth(request)
     if redir:
         return redir
     versions = (
         db.query(IsoVersion)
-        .filter(IsoVersion.status.in_(["uploaded", "ready"]))
+        .filter(IsoVersion.status.in_(["uploaded", "ready", "extracting", "error"]))
         .all()
     )
     return templates.TemplateResponse(
         "boot_files.html",
         {"request": request, "versions": versions, "fmt_size": fmt_size,
-         "server_url": settings.server_base_url},
+         "server_url": settings.server_base_url, "scan_result": scan_result},
     )
+
+
+@router.post("/scan")
+async def scan_boot_files(request: Request, db: Session = Depends(get_db)):
+    """Scanne boot/ et enregistre les fichiers existants en DB."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    from app.services.boot_scanner import scan_and_register
+    res = scan_and_register(db)
+
+    # Régénérer les menus avec les nouveaux chemins
+    try:
+        from app.services.menu_generator import regenerate_all
+        regenerate_all(db)
+    except Exception:
+        pass
+
+    msg = f"Scan terminé — {res['updated']} version(s) mise(s) à jour, {res['skipped']} ignorée(s)"
+    if res.get("errors"):
+        msg += f", {len(res['errors'])} erreur(s)"
+    return RedirectResponse(f"/boot-files?scan_result={msg}", status_code=302)
 
 
 @router.post("/{version_id}/upload")

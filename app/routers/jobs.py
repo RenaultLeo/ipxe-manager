@@ -69,6 +69,12 @@ async def kill_job(upload_id: int, request: Request, db: Session = Depends(get_d
     return RedirectResponse("/?killed=1", status_code=302)
 
 
+@router.get("/kill-all")
+async def kill_all_get(request: Request):
+    """Redirect GET to dashboard (the form uses POST)."""
+    return RedirectResponse("/", status_code=302)
+
+
 @router.post("/kill-all")
 async def kill_all_jobs(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
