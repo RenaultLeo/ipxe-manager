@@ -22,16 +22,25 @@ echo "======================================================"
 # ── 1. Paquets système ────────────────────────────────────
 apt-get update -qq
 apt-get install -y -qq \
-    git nginx tftpd-hpa redis-server \
+    sudo git nginx tftpd-hpa redis-server \
     python3 python3-venv python3-pip \
-    p7zip-full wimtools genisoimage xorriso \
-    curl wget unzip rsync ca-certificates
+    p7zip-full p7zip wimtools genisoimage xorriso \
+    curl wget unzip rsync ca-certificates \
+    iproute2 procps
 
 # ── 2. Utilisateur système ────────────────────────────────
 if ! id "$APP_USER" &>/dev/null; then
     useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$APP_USER"
     echo "  Utilisateur $APP_USER créé."
 fi
+
+# Sudoers : ipxe peut monter/démonter des ISOs sans mot de passe
+cat > /etc/sudoers.d/ipxe-manager <<'EOF'
+# iPXE Manager — permissions pour le user ipxe
+ipxe ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/mount, /usr/bin/umount
+EOF
+chmod 440 /etc/sudoers.d/ipxe-manager
+echo "  Sudoers configuré pour $APP_USER."
 
 # ── 3. Arborescence des données ───────────────────────────
 mkdir -p \

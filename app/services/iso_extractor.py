@@ -1,6 +1,6 @@
 """
-Extracts boot files from an ISO image.
-Supports Linux ISOs (vmlinuz/initrd) and Windows ISOs (boot.wim via wimlib).
+Extracteur ISO simplifié.
+Extrait l'ISO complète avec 7z puis cherche les fichiers de boot par nom.
 """
 import subprocess
 import shutil
@@ -14,104 +14,106 @@ class ExtractionError(Exception):
     pass
 
 
-def _run(cmd: list[str], timeout: int = settings.extract_timeout):
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout
-    )
-    if result.returncode != 0:
-        raise ExtractionError(result.stderr or result.stdout)
-    return result.stdout
-
-
 def extract_iso(iso_path: str, os_slug: str, version_id: int) -> dict:
-    """
-    Mount the ISO (loop) or use 7z, then copy key boot files to
-    http_root/boot/<os_slug>/<version_id>/.
-    Returns dict with discovered file paths (relative to http_root).
-    """
     iso = Path(iso_path)
     if not iso.exists():
         raise ExtractionError(f"ISO introuvable : {iso_path}")
 
+    seven_z = shutil.which("7z") or shutil.which("7za")
+    if not seven_z:
+        raise ExtractionError("7z non installé. Lancer : apt-get install -y p7zip-full")
+
     dest = settings.boot_dir / os_slug / str(version_id)
     dest.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        _mount_iso(iso, tmpdir)
-        result = _copy_boot_files(Path(tmpdir), dest, os_slug)
+    with tempfile.TemporaryDirectory() as tmp:
+        # ── Extraction complète de l'ISO ──────────────────
+        result = subprocess.run(
+            [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
+            capture_output=True, text=True,
+            timeout=settings.extract_timeout,
+        )
+        if result.returncode not in (0, 1):  # 1 = warnings non bloquants
+            raise ExtractionError(f"7z a échoué (code {result.returncode}) :\n{result.stderr}")
 
+        extracted = Path(tmp)
+
+        if os_slug == "windows":
+            return _find_windows(extracted, dest, os_slug, version_id)
+        else:
+            return _find_linux(extracted, dest, os_slug, version_id)
+
+
+# ── Linux ─────────────────────────────────────────────────────────────────────
+
+KERNEL_NAMES  = {"vmlinuz", "vmlinux", "linux", "kernel"}
+INITRD_NAMES  = {"initrd", "initrd.gz", "initrd.lz4", "initrd.xz",
+                  "initrd.img", "initramfs.img", "initramfs"}
+
+def _find_linux(src: Path, dest: Path, os_slug: str, version_id: int) -> dict:
+    result = {}
+
+    # Chercher vmlinuz — on prend le plus grand fichier dont le nom correspond
+    kernel = _find_file(src, KERNEL_NAMES)
+    if kernel:
+        shutil.copy2(kernel, dest / "vmlinuz")
+        result["kernel_path"] = f"boot/{os_slug}/{version_id}/vmlinuz"
+
+    # Chercher initrd
+    initrd = _find_file(src, INITRD_NAMES)
+    if initrd:
+        suffix = initrd.suffix or ""
+        fname = f"initrd{suffix}"
+        shutil.copy2(initrd, dest / fname)
+        result["initrd_path"] = f"boot/{os_slug}/{version_id}/{fname}"
+
+    if not result:
+        raise ExtractionError(
+            "Aucun fichier vmlinuz/initrd trouvé dans l'ISO. "
+            "Uploader les fichiers manuellement via Fichiers Boot."
+        )
     return result
 
 
-def _mount_iso(iso: Path, mount_point: str):
-    """Try 7z extraction first (no root needed); fall back to mount -o loop."""
-    seven_z = shutil.which("7z")
-    if seven_z:
-        _run([seven_z, "x", str(iso), f"-o{mount_point}", "-y"])
-    else:
-        # Requires root
-        _run(["mount", "-o", "loop,ro", str(iso), mount_point])
+# ── Windows ───────────────────────────────────────────────────────────────────
 
+def _find_windows(src: Path, dest: Path, os_slug: str, version_id: int) -> dict:
+    result = {}
 
-def _copy_boot_files(src: Path, dest: Path, os_slug: str) -> dict:
-    result: dict = {}
+    # boot.wim
+    wim = _find_file(src, {"boot.wim"})
+    if wim:
+        shutil.copy2(wim, dest / "boot.wim")
+        result["boot_wim_path"] = f"boot/{os_slug}/{version_id}/boot.wim"
 
-    if os_slug == "windows":
-        result.update(_extract_windows(src, dest))
-    else:
-        result.update(_extract_linux(src, dest))
+    # bootmgr / bootmgr.efi
+    for name in {"bootmgr", "bootmgr.efi"}:
+        f = _find_file(src, {name})
+        if f:
+            shutil.copy2(f, dest / name)
 
+    if not result:
+        raise ExtractionError(
+            "Aucun boot.wim trouvé dans l'ISO. "
+            "Uploader le fichier manuellement via Fichiers Boot."
+        )
     return result
 
 
-def _extract_linux(src: Path, dest: Path) -> dict:
-    result: dict = {}
-    candidates_kernel = [
-        "casper/vmlinuz", "live/vmlinuz", "isolinux/vmlinuz",
-        "boot/vmlinuz", "vmlinuz",
+# ── Utilitaire ────────────────────────────────────────────────────────────────
+
+def _find_file(root: Path, names: set[str]) -> Path | None:
+    """
+    Cherche récursivement un fichier dont le nom (lowercase) est dans `names`.
+    Retourne le plus grand fichier trouvé (évite les petits stubs).
+    """
+    candidates = [
+        f for f in root.rglob("*")
+        if f.is_file() and f.name.lower() in names
     ]
-    candidates_initrd = [
-        "casper/initrd", "casper/initrd.gz", "casper/initrd.lz4",
-        "live/initrd.img", "isolinux/initrd.img",
-        "boot/initrd.img", "initrd.img",
-    ]
-
-    for rel in candidates_kernel:
-        f = src / rel
-        if f.exists():
-            shutil.copy2(f, dest / "vmlinuz")
-            result["kernel_path"] = f"boot/{dest.parent.name}/{dest.name}/vmlinuz"
-            break
-
-    for rel in candidates_initrd:
-        f = src / rel
-        if f.exists():
-            suffix = f.suffix or ""
-            fname = f"initrd{suffix}"
-            shutil.copy2(f, dest / fname)
-            result["initrd_path"] = f"boot/{dest.parent.name}/{dest.name}/{fname}"
-            break
-
-    return result
-
-
-def _extract_windows(src: Path, dest: Path) -> dict:
-    result: dict = {}
-
-    # Try wimlib-imagex first
-    wim_src = src / "sources" / "boot.wim"
-    if wim_src.exists():
-        shutil.copy2(wim_src, dest / "boot.wim")
-        result["boot_wim_path"] = f"boot/{dest.parent.name}/{dest.name}/boot.wim"
-
-    # Copy BCD and bootmgr for UEFI HTTP boot
-    for name in ["bootmgr", "bootmgr.efi", "boot/BCD", "EFI/Microsoft/Boot/BCD"]:
-        f = src / name
-        if f.exists():
-            out = dest / Path(name).name
-            shutil.copy2(f, out)
-
-    return result
+    if not candidates:
+        return None
+    return max(candidates, key=lambda f: f.stat().st_size)
 
 
 def cleanup_boot_files(os_slug: str, version_id: int):
