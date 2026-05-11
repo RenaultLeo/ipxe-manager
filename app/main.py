@@ -41,14 +41,14 @@ app.add_middleware(
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# ── iPXE file serving (menus, boot files, configs, wimboot) ──────────────────
-# These are served directly by Nginx in production.
-# In dev mode FastAPI serves them as fallback.
+# ── iPXE file serving ────────────────────────────────────────────────────────
+# In production these paths are served directly by Nginx (see deploy/nginx.conf).
+# In dev mode FastAPI serves them under /ipxe-files/ to avoid router conflicts.
 _http = Path(settings.http_root)
 for _path, _subdir, _name in [
-    ("/boot",    "boot",    "ipxe_boot"),
-    ("/menus",   "menus",   "ipxe_menus"),
-    ("/configs", "configs", "ipxe_configs"),
+    ("/ipxe-files/boot",    "boot",    "ipxe_boot"),
+    ("/ipxe-files/menus",   "menus",   "ipxe_menus"),
+    ("/ipxe-files/configs", "configs", "ipxe_configs"),
 ]:
     _dir = _http / _subdir
     try:

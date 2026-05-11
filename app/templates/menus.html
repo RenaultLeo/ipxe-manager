@@ -14,9 +14,9 @@
 <!-- Chainload info -->
 <div class="alert alert-info mb-4">
   <i class="bi bi-info-circle me-2"></i>
-  Menu principal iPXE accessible à :
+  Menu principal iPXE (servi par <strong>Nginx</strong>) :
   <strong><code>{{ server_url }}/menus/menu.ipxe</code></strong>
-  — À utiliser dans votre fichier <code>boot.ipxe</code> TFTP.
+  — À utiliser dans <code>/srv/ipxe/tftpboot/boot.ipxe</code>.
 </div>
 
 {% if menu_files %}

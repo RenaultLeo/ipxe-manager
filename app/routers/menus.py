@@ -53,8 +53,18 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:
         return redir
-    from app.tasks.jobs import regenerate_menus_task
-    regenerate_menus_task.delay()
+
+    # Regenerate synchronously for immediate result
+    from app.services.menu_generator import regenerate_all
+    regenerate_all(db)
+
+    # Also queue async in Celery if available
+    try:
+        from app.tasks.jobs import regenerate_menus_task
+        regenerate_menus_task.delay()
+    except Exception:
+        pass  # Celery not available — sync generation above is enough
+
     return RedirectResponse("/menus", status_code=302)
 
 
