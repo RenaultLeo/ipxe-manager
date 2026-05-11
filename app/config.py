@@ -5,7 +5,7 @@ from pathlib import Path
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    server_base_url: str = "http://192.168.1.100"
+    server_base_url: str = "http://192.168.2.6"
     secret_key: str = "changeme_generate_with_openssl_rand_hex_32"
     admin_password: str = "admin"
 

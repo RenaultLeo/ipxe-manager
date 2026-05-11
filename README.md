@@ -32,7 +32,7 @@ network:
   ethernets:
     ens18:
       dhcp4: false
-      addresses: [192.168.1.100/24]
+      addresses: [192.168.2.6/24]
       routes:
         - to: default
           via: 192.168.1.1
@@ -48,7 +48,7 @@ sudo netplan apply
 
 ```bash
 git clone https://github.com/vous/ipxe-manager.git /tmp/ipxe-manager
-sudo bash /tmp/ipxe-manager/deploy/setup.sh 192.168.1.100
+sudo bash /tmp/ipxe-manager/deploy/setup.sh 192.168.2.6
 ```
 
 Le script installe et configure automatiquement tous les services.
@@ -59,14 +59,14 @@ Sur votre serveur DHCP (pfSense, Mikrotik, ISC DHCP…) :
 
 | Option | BIOS | UEFI |
 |--------|------|------|
-| next-server | `192.168.1.100` | `192.168.1.100` |
+| next-server | `192.168.2.6` | `192.168.2.6` |
 | filename | `undionly.kpxe` | `ipxe.efi` |
 
 Exemple ISC DHCP :
 ```
-next-server 192.168.1.100;
+next-server 192.168.2.6;
 if exists user-class and option user-class = "iPXE" {
-    filename "http://192.168.1.100/menus/menu.ipxe";
+    filename "http://192.168.2.6/menus/menu.ipxe";
 } elsif option arch = 00:07 {
     filename "ipxe.efi";
 } else {
@@ -78,7 +78,7 @@ if exists user-class and option user-class = "iPXE" {
 
 ### Interface web
 
-Ouvrir `http://192.168.1.100/` — mot de passe par défaut : `admin`
+Ouvrir `http://192.168.2.6/` — mot de passe par défaut : `admin`
 
 **IMPORTANT** : Changer le mot de passe dans **Paramètres → Mot de passe admin** immédiatement.
 
