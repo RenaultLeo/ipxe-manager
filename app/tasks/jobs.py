@@ -1,10 +1,11 @@
 """
 Celery background jobs:
-  - extract_iso_task   : extracts boot files from an uploaded ISO
+  - extract_iso_task      : extracts boot files from an uploaded ISO
   - regenerate_menus_task : regenerates all .ipxe menu files
 """
 import logging
 from datetime import datetime
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.tasks.celery_app import celery
 from app.database import SessionLocal
@@ -61,6 +62,22 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         regenerate_all(db)
 
         return {"status": "ok", "paths": paths}
+
+    except SoftTimeLimitExceeded:
+        logger.warning("extract_iso_task timeout (SoftTimeLimitExceeded) pour version %s", iso_version_id)
+        db.rollback()
+        try:
+            version = db.query(IsoVersion).get(iso_version_id)
+            if version:
+                version.status = "error"
+            upload = db.query(Upload).get(upload_id)
+            if upload:
+                upload.status = "error"
+                upload.error_msg = "Timeout : extraction trop longue, tâche annulée"
+            db.commit()
+        except Exception:
+            pass
+        raise
 
     except Exception as exc:
         logger.exception("extract_iso_task failed")

@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import auth, dashboard, isos, boot_files, configs, menus
+from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs
 from app.routers import settings as settings_router
 
 BASE_DIR = Path(__file__).parent
@@ -64,6 +64,7 @@ app.include_router(isos.router)
 app.include_router(boot_files.router)
 app.include_router(configs.router)
 app.include_router(menus.router)
+app.include_router(jobs.router)
 app.include_router(settings_router.router)
 
 

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.services.disk_info import get_disk_usage, fmt_size
 from app.models.models import OsType, IsoVersion, Upload
+from app.config import settings
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -41,16 +42,18 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         recent_uploads = (
             db.query(Upload).order_by(Upload.created_at.desc()).limit(10).all()
         )
-        active_jobs = (
+        active_jobs_list = (
             db.query(Upload)
             .filter(Upload.status.in_(["pending", "processing"]))
-            .count()
+            .order_by(Upload.created_at.desc())
+            .all()
         )
+        active_jobs = len(active_jobs_list)
     except Exception as exc:
         import traceback
         traceback.print_exc()
         disk = {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
-        stats, recent_uploads, active_jobs = [], [], 0
+        stats, recent_uploads, active_jobs, active_jobs_list = [], [], 0, []
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -61,5 +64,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "stats": stats,
             "recent_uploads": recent_uploads,
             "active_jobs": active_jobs,
+            "active_jobs_list": active_jobs_list,
+            "timeout_h": round(settings.extract_timeout / 3600, 1),
         },
     )

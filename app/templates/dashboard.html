@@ -5,11 +5,58 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h2>
   {% if active_jobs > 0 %}
-  <span class="badge bg-warning text-dark fs-6">
-    <i class="bi bi-arrow-repeat spin me-1"></i>{{ active_jobs }} job(s) en cours
-  </span>
+  <div class="d-flex align-items-center gap-2">
+    <span class="badge bg-warning text-dark fs-6">
+      <i class="bi bi-arrow-repeat spin me-1"></i>{{ active_jobs }} job(s) en cours
+    </span>
+    <form method="post" action="/jobs/kill-all"
+          onsubmit="return confirm('Forcer l\'arrêt de tous les jobs en cours ?')">
+      <button class="btn btn-danger btn-sm">
+        <i class="bi bi-stop-circle me-1"></i>Tout arrêter
+      </button>
+    </form>
+  </div>
   {% endif %}
 </div>
+
+{% if active_jobs_list %}
+<div class="card border-warning mb-4">
+  <div class="card-header text-warning d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-hourglass-split me-2"></i>Jobs en cours</span>
+    <span class="text-muted small">Timeout automatique après {{ timeout_h }}h</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark table-hover mb-0 align-middle">
+      <thead class="table-secondary">
+        <tr>
+          <th>Fichier</th><th>Type</th><th>Taille</th>
+          <th>Démarré</th><th>Durée</th><th class="text-end">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in active_jobs_list %}
+        <tr>
+          <td class="font-monospace small">{{ j.filename }}</td>
+          <td><span class="badge bg-secondary">{{ j.file_type }}</span></td>
+          <td>{{ fmt_size(j.size) }}</td>
+          <td class="text-muted small">{{ j.created_at.strftime('%H:%M:%S') }}</td>
+          <td class="small" id="dur-{{ j.id }}"
+              data-start="{{ j.created_at.isoformat() }}">—</td>
+          <td class="text-end">
+            <form method="post" action="/jobs/{{ j.id }}/kill" class="d-inline"
+                  onsubmit="return confirm('Forcer l\'arrêt de ce job ?')">
+              <button class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-x-circle me-1"></i>Kill
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 <!-- Disk Usage -->
 <div class="row g-3 mb-4">
@@ -132,4 +179,27 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Calcul durée en temps réel pour les jobs actifs
+function updateDurations() {
+  document.querySelectorAll('[data-start]').forEach(el => {
+    const start = new Date(el.dataset.start);
+    const diff = Math.floor((Date.now() - start) / 1000);
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+    el.textContent = h > 0
+      ? `${h}h ${m.toString().padStart(2,'0')}m`
+      : `${m}m ${s.toString().padStart(2,'0')}s`;
+  });
+}
+if (document.querySelector('[data-start]')) {
+  updateDurations();
+  setInterval(updateDurations, 1000);
+  setTimeout(() => location.reload(), 30000);
+}
+</script>
 {% endblock %}
