@@ -43,11 +43,13 @@ def regenerate_all(db: Session) -> list[str]:
                 {
                     "id": v.id,
                     "label": f"{os_type.label} {v.version_label}",
-                    "kernel": _http(be.kernel_path) if be and be.kernel_path else "",
-                    "initrd": _http(be.initrd_path) if be and be.initrd_path else "",
-                    "boot_wim": _http(be.boot_wim_path) if be and be.boot_wim_path else "",
+                    "kernel":      _http(be.kernel_path)   if be and be.kernel_path   else "",
+                    "initrd":      _http(be.initrd_path)   if be and be.initrd_path   else "",
+                    "boot_wim":    _http(be.boot_wim_path) if be and be.boot_wim_path else "",
+                    "bcd":         _http(be.bcd_path)      if be and be.bcd_path      else "",
+                    "bootmgr":     _http(be.bootmgr_path)  if be and be.bootmgr_path  else "",
                     "kernel_args": be.kernel_args if be else "",
-                    "boot_type": os_type.boot_type,
+                    "boot_type":   os_type.boot_type,
                     "autoconfigs": [
                         {
                             "id": ac.id,

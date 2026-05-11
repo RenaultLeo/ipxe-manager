@@ -65,7 +65,15 @@ async def upload_iso(
     os_type_id: int = Form(...),
     version_label: str = Form(...),
     notes: str = Form(""),
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),
+    # Windows boot files
+    file_boot_wim: UploadFile = File(None),
+    file_bcd:      UploadFile = File(None),
+    file_bootmgr:  UploadFile = File(None),
+    # Linux boot files
+    file_kernel:   UploadFile = File(None),
+    file_initrd:   UploadFile = File(None),
+    kernel_args:   str = Form(""),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
@@ -76,45 +84,84 @@ async def upload_iso(
     if not os_type:
         raise HTTPException(404, "Type d'OS introuvable")
 
-    iso_dir = Path(settings.iso_root) / os_type.slug
-    iso_dir.mkdir(parents=True, exist_ok=True)
-
-    safe_name = Path(file.filename).name
-    ext = Path(safe_name).suffix.lower()
-    if ext not in {".iso", ".img", ""}:
-        raise HTTPException(400, f"Extension non supportée : {ext}")
-
-    dest = iso_dir / safe_name
-
-    size = 0
-    with open(dest, "wb") as f:
-        while chunk := await file.read(1024 * 1024):  # 1 MB chunks
-            f.write(chunk)
-            size += len(chunk)
-            if size > settings.max_upload_size:
-                dest.unlink(missing_ok=True)
-                raise HTTPException(413, "Fichier trop volumineux")
-
+    # ── Créer l'entrée en BDD d'abord ──────────────────────
     version = IsoVersion(
         os_type_id=os_type_id,
         version_label=version_label,
         status="uploaded",
-        iso_path=str(dest),
-        iso_size=size,
+        iso_size=0,
         notes=notes,
     )
     db.add(version)
-    db.flush()
+    db.flush()  # obtenir version.id
 
-    upload_log = Upload(
-        filename=safe_name,
-        file_type="iso",
-        size=size,
-        status="pending",
-    )
-    db.add(upload_log)
-    db.flush()
+    # ── ISO (optionnel) ────────────────────────────────────
+    if file and file.filename:
+        safe_name = Path(file.filename).name
+        ext = Path(safe_name).suffix.lower()
+        if ext not in {".iso", ".img", ""}:
+            raise HTTPException(400, f"Extension non supportée : {ext}")
+
+        iso_dir = Path(settings.iso_root) / os_type.slug
+        iso_dir.mkdir(parents=True, exist_ok=True)
+        dest = iso_dir / safe_name
+        size = 0
+        with open(dest, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
+                size += len(chunk)
+                if size > settings.max_upload_size:
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(413, "Fichier trop volumineux")
+        version.iso_path = str(dest)
+        version.iso_size = size
+        db.add(Upload(filename=safe_name, file_type="iso", size=size, status="pending"))
+
+    # ── Fichiers boot manuels ──────────────────────────────
+    boot_dir = settings.boot_dir / os_type.slug / str(version.id)
+    boot_dir.mkdir(parents=True, exist_ok=True)
+
+    from app.models.models import BootEntry
+    be = BootEntry(iso_version_id=version.id, kernel_args=kernel_args)
+    db.add(be)
+
+    async def save_boot_file(upload: UploadFile, fname: str) -> str:
+        dest = boot_dir / fname
+        with open(dest, "wb") as f:
+            while chunk := await upload.read(1024 * 1024):
+                f.write(chunk)
+        return f"boot/{os_type.slug}/{version.id}/{fname}"
+
+    has_boot_files = False
+
+    if os_type.boot_type == "windows":
+        if file_boot_wim and file_boot_wim.filename:
+            be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
+            has_boot_files = True
+        if file_bcd and file_bcd.filename:
+            be.bcd_path = await save_boot_file(file_bcd, "BCD")
+            has_boot_files = True
+        if file_bootmgr and file_bootmgr.filename:
+            be.bootmgr_path = await save_boot_file(file_bootmgr, file_bootmgr.filename)
+            has_boot_files = True
+    else:
+        if file_kernel and file_kernel.filename:
+            be.kernel_path = await save_boot_file(file_kernel, "vmlinuz")
+            has_boot_files = True
+        if file_initrd and file_initrd.filename:
+            fname = Path(file_initrd.filename).name
+            be.initrd_path = await save_boot_file(file_initrd, fname)
+            has_boot_files = True
+
+    if has_boot_files:
+        version.status = "ready"
+
     db.commit()
+
+    # Régénérer les menus si la version est prête
+    if version.status == "ready":
+        from app.services.menu_generator import regenerate_all
+        regenerate_all(db)
 
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
 

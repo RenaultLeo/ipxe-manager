@@ -50,7 +50,8 @@ class BootEntry(Base):
 
     # Windows / WinPE
     boot_wim_path = Column(String(512))
-    bcd_path = Column(String(512))
+    bcd_path      = Column(String(512))
+    bootmgr_path  = Column(String(512))
 
     # EFI / UEFI
     efi_path = Column(String(512))

@@ -74,6 +74,14 @@
           <dt class="col-4 text-muted">boot.wim</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.boot_wim_path }}</dd>
           {% endif %}
+          {% if be.bcd_path %}
+          <dt class="col-4 text-muted">BCD</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.bcd_path }}</dd>
+          {% endif %}
+          {% if be.bootmgr_path %}
+          <dt class="col-4 text-muted">bootmgr</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.bootmgr_path }}</dd>
+          {% endif %}
           {% if be.kernel_args %}
           <dt class="col-4 text-muted">Args kernel</dt>
           <dd class="col-8 font-monospace small">{{ be.kernel_args }}</dd>

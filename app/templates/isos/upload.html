@@ -1,45 +1,113 @@
 {% extends "base.html" %}
-{% block title %}Upload ISO — iPXE Manager{% endblock %}
+{% block title %}Ajouter une version — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-7">
+  <div class="col-lg-8">
     <div class="card border-secondary">
       <div class="card-header">
-        <i class="bi bi-cloud-upload me-2 text-primary"></i>Uploader une ISO
+        <i class="bi bi-plus-circle me-2 text-primary"></i>Ajouter une version bootable
       </div>
       <div class="card-body">
         <form method="post" action="/isos/upload" enctype="multipart/form-data" id="upload-form">
 
-          <div class="mb-3">
-            <label class="form-label">Type d'OS <span class="text-danger">*</span></label>
-            <select name="os_type_id" class="form-select" required>
-              <option value="">— Choisir —</option>
-              {% for ot in os_types %}
-              <option value="{{ ot.id }}">{{ ot.label }}</option>
-              {% endfor %}
-            </select>
+          <!-- OS Type + Version label -->
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label">Type d'OS <span class="text-danger">*</span></label>
+              <select name="os_type_id" class="form-select" id="os-select" required>
+                <option value="">— Choisir —</option>
+                {% for ot in os_types %}
+                <option value="{{ ot.id }}" data-boot="{{ ot.boot_type }}">
+                  {{ ot.label }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Label de version <span class="text-danger">*</span></label>
+              <input type="text" name="version_label" class="form-control"
+                     placeholder="ex: 22.04 LTS, 11 Bullseye, 2022…" required>
+            </div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Label de version <span class="text-danger">*</span></label>
-            <input type="text" name="version_label" class="form-control"
-                   placeholder="ex: 22.04 LTS, 11 Bullseye, 2022…" required>
+          <!-- ISO file (optionnel) -->
+          <div class="card border-secondary mb-4">
+            <div class="card-header small text-muted">
+              <i class="bi bi-disc me-1"></i>Image ISO (optionnel — pour extraction automatique)
+            </div>
+            <div class="card-body">
+              <input type="file" name="file" class="form-control" accept=".iso,.img" id="iso-file">
+              <div class="form-text">Si vous fournissez l'ISO, les fichiers boot seront extraits automatiquement.</div>
+            </div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Fichier ISO <span class="text-danger">*</span></label>
-            <input type="file" name="file" class="form-control" accept=".iso,.img" required id="iso-file">
-            <div class="form-text">Fichiers .iso / .img — pas de limite de taille</div>
-          </div>
+          <!-- Fichiers boot manuels -->
+          <div id="boot-fields">
+
+            <!-- WINDOWS -->
+            <div id="fields-windows" class="d-none">
+              <div class="card border-warning mb-3">
+                <div class="card-header text-warning small">
+                  <i class="bi bi-windows me-1"></i>Fichiers Windows requis
+                </div>
+                <div class="card-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label class="form-label">boot.wim <span class="text-danger">*</span></label>
+                      <input type="file" name="file_boot_wim" class="form-control" id="f-boot-wim">
+                      <div class="form-text text-muted">sources/boot.wim dans l'ISO</div>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">BCD</label>
+                      <input type="file" name="file_bcd" class="form-control">
+                      <div class="form-text text-muted">boot/BCD dans l'ISO</div>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">bootmgr.efi</label>
+                      <input type="file" name="file_bootmgr" class="form-control">
+                      <div class="form-text text-muted">Pour boot UEFI</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- LINUX -->
+            <div id="fields-linux" class="d-none">
+              <div class="card border-info mb-3">
+                <div class="card-header text-info small">
+                  <i class="bi bi-terminal me-1"></i>Fichiers Linux
+                </div>
+                <div class="card-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label class="form-label">vmlinuz / kernel</label>
+                      <input type="file" name="file_kernel" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">initrd</label>
+                      <input type="file" name="file_initrd" class="form-control">
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Arguments kernel</label>
+                      <input type="text" name="kernel_args" class="form-control font-monospace"
+                             placeholder="ex: quiet splash console=ttyS0 net.ifnames=0">
+                      <div class="form-text text-muted">Paramètres passés au kernel au boot</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /boot-fields -->
 
           <div class="mb-3">
             <label class="form-label">Notes</label>
-            <textarea name="notes" class="form-control" rows="2"
-                      placeholder="Notes optionnelles…"></textarea>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Notes optionnelles…"></textarea>
           </div>
 
-          <!-- Progress bar (shown during upload) -->
+          <!-- Progress bar -->
           <div id="progress-wrap" class="mb-3 d-none">
             <div class="d-flex justify-content-between small mb-1">
               <span>Upload en cours…</span>
@@ -53,7 +121,7 @@
 
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary" id="submit-btn">
-              <i class="bi bi-upload me-1"></i>Uploader
+              <i class="bi bi-plus-circle me-1"></i>Créer la version
             </button>
             <a href="/isos" class="btn btn-outline-secondary">Annuler</a>
           </div>
@@ -66,15 +134,24 @@
 
 {% block scripts %}
 <script>
+// Show/hide boot fields depending on OS type
+document.getElementById('os-select').addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  const bootType = opt.dataset.boot || '';
+  document.getElementById('fields-windows').classList.toggle('d-none', bootType !== 'windows');
+  document.getElementById('fields-linux').classList.toggle('d-none', bootType !== 'linux');
+});
+
+// XHR upload with progress bar
 document.getElementById('upload-form').addEventListener('submit', function(e) {
   e.preventDefault();
   const form = this;
   const data = new FormData(form);
-  const xhr = new XMLHttpRequest();
-  const bar = document.getElementById('progress-bar');
-  const pct = document.getElementById('progress-pct');
+  const xhr  = new XMLHttpRequest();
+  const bar  = document.getElementById('progress-bar');
+  const pct  = document.getElementById('progress-pct');
   const wrap = document.getElementById('progress-wrap');
-  const btn = document.getElementById('submit-btn');
+  const btn  = document.getElementById('submit-btn');
 
   wrap.classList.remove('d-none');
   btn.disabled = true;
@@ -92,7 +169,8 @@ document.getElementById('upload-form').addEventListener('submit', function(e) {
       window.location.href = xhr.responseURL || '/isos';
     } else {
       btn.disabled = false;
-      alert('Erreur lors de l\'upload : ' + xhr.statusText);
+      wrap.classList.add('d-none');
+      alert('Erreur : ' + xhr.statusText);
     }
   });
 

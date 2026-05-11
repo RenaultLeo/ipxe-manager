@@ -25,6 +25,7 @@ apt-get install -y -qq \
     sudo git nginx tftpd-hpa redis-server \
     python3 python3-venv python3-pip \
     p7zip-full p7zip wimtools genisoimage xorriso \
+    samba samba-common-bin \
     curl wget unzip rsync ca-certificates \
     iproute2 procps
 
@@ -102,10 +103,13 @@ init_db()
 db = SessionLocal()
 defaults = [
     ('windows', 'Windows',    'bi-windows', 'windows'),
+    ('winpe',   'WinPE',      'bi-terminal','windows'),
     ('ubuntu',  'Ubuntu',     'bi-ubuntu',  'linux'),
     ('debian',  'Debian',     'bi-hdd',     'linux'),
     ('centos',  'CentOS',     'bi-hdd',     'linux'),
     ('rocky',   'Rocky Linux','bi-hdd',     'linux'),
+    ('alma',    'AlmaLinux',  'bi-hdd',     'linux'),
+    ('fedora',  'Fedora',     'bi-hdd',     'linux'),
     ('proxmox', 'Proxmox VE', 'bi-server',  'linux'),
 ]
 for slug, label, icon, boot_type in defaults:
@@ -229,7 +233,34 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# ── 12. Permissions ───────────────────────────────────────
+# ── 12. Samba (partage Windows pour boot HTTP/SMB) ───────
+cat > /etc/samba/smb.conf <<EOF
+[global]
+   workgroup = WORKGROUP
+   server string = iPXE Boot Server
+   security = user
+   map to guest = bad user
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+
+[boot]
+   comment = iPXE Boot Files
+   path = $DATA_DIR/http/boot
+   browseable = yes
+   read only = yes
+   guest ok = yes
+
+[isos]
+   comment = ISO Images
+   path = $DATA_DIR/isos
+   browseable = yes
+   read only = yes
+   guest ok = yes
+EOF
+systemctl enable --now smbd nmbd
+echo "  Samba configuré (partage [boot] et [isos] en lecture seule)."
+
+# ── 12b. Permissions ─────────────────────────────────────
 chown -R "$APP_USER:$APP_USER" "$DATA_DIR" "$LOG_DIR"
 chmod 640 "$APP_DIR/.env"
 

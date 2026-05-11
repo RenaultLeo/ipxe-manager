@@ -2,7 +2,7 @@
 
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
-# Utilise iPXE wimboot pour charger boot.wim
+# Boot HTTP via wimboot
 ########################################
 
 :start
@@ -18,7 +18,15 @@ goto ${selected}
 {% for e in entries %}
 :v{{ e.id }}
   kernel {{ server_url }}/wimboot
+{% if e.boot_wim %}
   initrd {{ e.boot_wim }} boot.wim
+{% endif %}
+{% if e.bcd %}
+  initrd {{ e.bcd }} BCD
+{% endif %}
+{% if e.bootmgr %}
+  initrd {{ e.bootmgr }} bootmgr.efi
+{% endif %}
   boot
 
 {% endfor %}

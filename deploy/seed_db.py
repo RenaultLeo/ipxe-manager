@@ -12,14 +12,15 @@ from app.models.models import OsType
 
 DEFAULT_OS = [
     {"slug": "windows", "label": "Windows",    "icon": "bi-windows",  "boot_type": "windows"},
+    {"slug": "winpe",   "label": "WinPE",      "icon": "bi-terminal", "boot_type": "windows"},
     {"slug": "ubuntu",  "label": "Ubuntu",     "icon": "bi-ubuntu",   "boot_type": "linux"},
     {"slug": "debian",  "label": "Debian",     "icon": "bi-hdd",      "boot_type": "linux"},
     {"slug": "centos",  "label": "CentOS",     "icon": "bi-hdd",      "boot_type": "linux"},
     {"slug": "rocky",   "label": "Rocky Linux","icon": "bi-hdd",      "boot_type": "linux"},
+    {"slug": "alma",    "label": "AlmaLinux",  "icon": "bi-hdd",      "boot_type": "linux"},
     {"slug": "fedora",  "label": "Fedora",     "icon": "bi-hdd",      "boot_type": "linux"},
     {"slug": "proxmox", "label": "Proxmox VE", "icon": "bi-server",   "boot_type": "linux"},
     {"slug": "esxi",    "label": "VMware ESXi","icon": "bi-cpu",      "boot_type": "linux"},
-    {"slug": "winpe",   "label": "WinPE",      "icon": "bi-terminal", "boot_type": "windows"},
     {"slug": "tools",   "label": "Outils",     "icon": "bi-tools",    "boot_type": "linux"},
 ]
 
