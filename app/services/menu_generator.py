@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.models import OsType, IsoVersion, BootEntry
+from app.services.config_scanner import config_boot_arg
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +56,20 @@ def regenerate_all(db: Session) -> list[str]:
                         "bootmgr":     _http(be.bootmgr_path)  if be and be.bootmgr_path  else "",
                         "kernel_args": be.kernel_args if be else "",
                         "boot_type":   os_type.boot_type or "linux",
-                        "autoconfigs": [
-                            {
-                                "id": ac.id,
-                                "label": ac.label or ac.config_type,
-                                "url": _http(ac.file_path) if ac.file_path else "",
-                            }
-                            for ac in v.autoconfigs
-                        ],
+                    "autoconfigs": [
+                        {
+                            "id":       ac.id,
+                            "label":    ac.label or ac.config_type,
+                            "url":      _http(ac.file_path) if ac.file_path else "",
+                            "type":     ac.config_type,
+                            "boot_arg": config_boot_arg(
+                                ac.config_type,
+                                os_type.slug,
+                                _http(ac.file_path) if ac.file_path else "",
+                            ),
+                        }
+                        for ac in v.autoconfigs
+                    ],
                     }
                 )
 

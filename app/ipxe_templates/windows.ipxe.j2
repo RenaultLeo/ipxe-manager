@@ -8,7 +8,8 @@
 :start
 menu === {{ os_type.label }} — Choisissez une version ===
 {% for e in entries %}
-item v{{ e.id }} {{ e.label }}
+item v{{ e.id }} {{ e.label }}{% if e.autoconfigs %} [+conf]{% endif %}
+
 {% endfor %}
 item --gap
 item back Retour au menu principal
@@ -17,6 +18,30 @@ goto ${selected}
 
 {% for e in entries %}
 :v{{ e.id }}
+{% if e.autoconfigs %}
+  menu {{ e.label }} — Choisissez une configuration
+  {% for ac in e.autoconfigs %}
+  item ac{{ ac.id }} {{ ac.label }}
+  {% endfor %}
+  item --gap
+  item manual_{{ e.id }} Installation manuelle (sans config)
+  item back_v Retour
+  choose conf || goto back_v
+  goto ${conf}
+
+  {% for ac in e.autoconfigs %}
+  :ac{{ ac.id }}
+    kernel {{ server_url }}/wimboot
+    {% if e.bcd %}initrd {{ e.bcd }} BCD{% endif %}
+    {% if e.boot_sdi %}initrd {{ e.boot_sdi }} boot.sdi{% endif %}
+    {% if e.boot_wim %}initrd {{ e.boot_wim }} boot.wim{% endif %}
+    {% if e.bootmgr %}initrd {{ e.bootmgr }} bootmgr.efi{% endif %}
+    initrd {{ ac.url }} autounattend.xml
+    boot
+  {% endfor %}
+
+  :manual_{{ e.id }}
+{% endif %}
   kernel {{ server_url }}/wimboot
 {% if e.bcd %}
   initrd {{ e.bcd }} BCD

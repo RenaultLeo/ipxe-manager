@@ -18,25 +18,31 @@ goto ${selected}
 {% for e in entries %}
 :v{{ e.id }}
 {% if e.autoconfigs %}
-  menu {{ e.label }} — Configuration automatique
+  menu {{ e.label }} — Choisissez une configuration
   {% for ac in e.autoconfigs %}
   item ac{{ ac.id }} {{ ac.label }}
   {% endfor %}
-  item manual Installation manuelle
   item --gap
+  item manual_{{ e.id }} Installation manuelle (sans config)
   item back_v Retour
-  choose conf || goto manual_{{ e.id }}
+  choose conf || goto back_v
   goto ${conf}
+
   {% for ac in e.autoconfigs %}
   :ac{{ ac.id }}
-    kernel {{ e.kernel }} {{ e.kernel_args }} auto-install/enable=true url={{ ac.url }}
-    initrd {{ e.initrd }}
+    {% if ac.boot_arg %}
+    kernel {{ e.kernel }} {{ e.kernel_args }} {{ ac.boot_arg }}
+    {% else %}
+    kernel {{ e.kernel }} {{ e.kernel_args }}
+    {% endif %}
+    {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
     boot
   {% endfor %}
+
   :manual_{{ e.id }}
 {% endif %}
   kernel {{ e.kernel }} {{ e.kernel_args }}
-  initrd {{ e.initrd }}
+  {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
   boot
 
 {% endfor %}

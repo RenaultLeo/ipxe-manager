@@ -53,6 +53,29 @@ def default_config_type(os_slug: str) -> str:
     return OS_CONFIG_TYPE.get(os_slug, "custom")
 
 
+def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
+    """
+    Retourne l'argument kernel iPXE à ajouter pour déclencher l'install automatique.
+    Retourne "" pour unattend (Windows) — géré via wimboot initrd dans le template.
+    """
+    if config_type == "preseed":
+        if os_slug == "debian":
+            return f"auto=true priority=critical preseed/url={url}"
+        else:  # ubuntu
+            return f"auto url={url}"
+    elif config_type == "kickstart":
+        if os_slug in ("fedora", "rocky", "alma"):
+            return f"inst.ks={url}"
+        else:  # centos, rhel…
+            return f"ks={url}"
+    elif config_type == "cloud-init":
+        return f"ds=nocloud-net;s={url}"
+    elif config_type == "unattend":
+        return ""   # injecté comme initrd dans wimboot
+    else:
+        return f"url={url}"
+
+
 def scan_and_import(db: Session) -> dict:
     """
     Parcourt settings.configs_dir à la recherche de fichiers config.
