@@ -65,7 +65,7 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
     except Exception:
         pass  # Celery not available — sync generation above is enough
 
-    return RedirectResponse("/menus", status_code=302)
+    return RedirectResponse("/ipxe-menus", status_code=302)
 
 
 @router.get("/{filename}/raw", response_class=PlainTextResponse)
@@ -93,4 +93,4 @@ async def save_menu_override(
         raise HTTPException(400)
     settings.menus_dir.mkdir(parents=True, exist_ok=True)
     f.write_text(content, encoding="utf-8")
-    return RedirectResponse("/menus", status_code=302)
+    return RedirectResponse("/ipxe-menus", status_code=302)
