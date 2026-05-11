@@ -35,7 +35,6 @@ goto ${selected}
     {% if e.bcd %}initrd {{ e.bcd }} BCD{% endif %}
     {% if e.boot_sdi %}initrd {{ e.boot_sdi }} boot.sdi{% endif %}
     {% if e.boot_wim %}initrd {{ e.boot_wim }} boot.wim{% endif %}
-    {% if e.bootmgr %}initrd {{ e.bootmgr }} bootmgr.efi{% endif %}
     initrd {{ ac.url }} autounattend.xml
     boot
   {% endfor %}
@@ -51,9 +50,6 @@ goto ${selected}
 {% endif %}
 {% if e.boot_wim %}
   initrd {{ e.boot_wim }} boot.wim
-{% endif %}
-{% if e.bootmgr %}
-  initrd {{ e.bootmgr }} bootmgr.efi
 {% endif %}
   boot
 
