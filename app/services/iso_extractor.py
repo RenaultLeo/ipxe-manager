@@ -1,7 +1,8 @@
 """
-Extracteur ISO simplifié.
+Extracteur ISO.
 Extrait l'ISO complète avec 7z puis cherche les fichiers de boot par nom.
 """
+import logging
 import subprocess
 import shutil
 import tempfile
@@ -9,10 +10,51 @@ from pathlib import Path
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class ExtractionError(Exception):
     pass
 
+
+# ── Noms exacts ou préfixes Linux ─────────────────────────────────────────────
+
+# Préfixes pour matchs partiels (vmlinuz-6.1.0-amd64, initrd.img-5.15…)
+KERNEL_PREFIXES = ("vmlinuz", "vmlinux", "linux", "kernel")
+INITRD_PREFIXES = ("initrd", "initramfs")
+
+# Extensions acceptées pour initrd
+INITRD_EXTENSIONS = {"", ".gz", ".lz", ".lz4", ".xz", ".zst", ".img", ".cpio"}
+
+
+def _is_kernel(name: str) -> bool:
+    n = name.lower()
+    return any(n == p or n.startswith(p + "-") or n.startswith(p + ".") for p in KERNEL_PREFIXES)
+
+
+def _is_initrd(name: str) -> bool:
+    n = name.lower()
+    for prefix in INITRD_PREFIXES:
+        if n == prefix:
+            return True
+        # initrd.gz, initrd.img, initrd-5.15.img, initramfs-linux.img …
+        if n.startswith(prefix):
+            stem = n[len(prefix):]
+            if not stem or stem[0] in ("-", ".", "_"):
+                return True
+    return False
+
+
+# ── Noms exacts Windows ────────────────────────────────────────────────────────
+
+# BCD : fichier sans extension nommé "BCD" ou "bcd"
+# boot.sdi : exactement "boot.sdi"
+# boot.wim : exactement "boot.wim"
+# bootmgr : bootmgr.efi ou bootmgfw.efi
+BOOTMGR_NAMES = {"bootmgr.efi", "bootmgfw.efi"}
+
+
+# ── Point d'entrée ─────────────────────────────────────────────────────────────
 
 def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str = "") -> dict:
     from app.services.slugify import slugify
@@ -29,44 +71,71 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
     dest = settings.boot_dir / os_slug / version_slug
     dest.mkdir(parents=True, exist_ok=True)
 
+    logger.info("Extraction ISO : %s → %s", iso, dest)
+
     with tempfile.TemporaryDirectory() as tmp:
-        result = subprocess.run(
+        proc = subprocess.run(
             [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
             capture_output=True, text=True,
             timeout=settings.extract_timeout,
         )
-        if result.returncode not in (0, 1):
-            raise ExtractionError(f"7z a échoué (code {result.returncode}) :\n{result.stderr}")
+        if proc.returncode not in (0, 1):   # 1 = warnings non bloquants
+            raise ExtractionError(
+                f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
+            )
 
         extracted = Path(tmp)
 
         if os_slug in ("windows", "winpe"):
-            return _find_windows(extracted, dest, os_slug, version_slug)
+            paths = _find_windows(extracted, dest, os_slug, version_slug)
         else:
-            return _find_linux(extracted, dest, os_slug, version_slug)
+            paths = _find_linux(extracted, dest, os_slug, version_slug)
+
+    logger.info("Extraction terminée : %s", paths)
+    return paths
 
 
 # ── Linux ─────────────────────────────────────────────────────────────────────
 
-KERNEL_NAMES  = {"vmlinuz", "vmlinux", "linux", "kernel"}
-INITRD_NAMES  = {"initrd", "initrd.gz", "initrd.lz4", "initrd.xz",
-                  "initrd.img", "initramfs.img", "initramfs"}
-
 def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
-    result = {}
+    result: dict = {}
     base = f"boot/{os_slug}/{version_slug}"
 
-    kernel = _find_file(src, KERNEL_NAMES)
-    if kernel:
+    # ── Kernel ──────────────────────────────────────────────────────────────
+    kernel_candidates = [
+        f for f in src.rglob("*")
+        if f.is_file() and _is_kernel(f.name)
+    ]
+    logger.debug("Kernel candidats : %s", [str(f) for f in kernel_candidates])
+
+    if kernel_candidates:
+        # Préférer le plus gros (évite les stubs EFI de 1 Ko)
+        kernel = max(kernel_candidates, key=lambda f: f.stat().st_size)
         shutil.copy2(kernel, dest / "vmlinuz")
         result["kernel_path"] = f"{base}/vmlinuz"
+        logger.info("Kernel copié : %s", kernel)
+    else:
+        logger.warning("Aucun kernel trouvé dans l'ISO")
 
-    initrd = _find_file(src, INITRD_NAMES)
-    if initrd:
+    # ── Initrd ──────────────────────────────────────────────────────────────
+    initrd_candidates = [
+        f for f in src.rglob("*")
+        if f.is_file()
+        and _is_initrd(f.name)
+        and f.suffix.lower() in INITRD_EXTENSIONS
+    ]
+    logger.debug("Initrd candidats : %s", [str(f) for f in initrd_candidates])
+
+    if initrd_candidates:
+        initrd = max(initrd_candidates, key=lambda f: f.stat().st_size)
+        # Conserver l'extension d'origine
         suffix = initrd.suffix or ""
         fname = f"initrd{suffix}"
         shutil.copy2(initrd, dest / fname)
         result["initrd_path"] = f"{base}/{fname}"
+        logger.info("Initrd copié : %s → %s", initrd, fname)
+    else:
+        logger.warning("Aucun initrd trouvé dans l'ISO")
 
     if not result:
         raise ExtractionError(
@@ -79,58 +148,81 @@ def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
 # ── Windows ───────────────────────────────────────────────────────────────────
 
 def _find_windows(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
-    result = {}
+    result: dict = {}
     base = f"boot/{os_slug}/{version_slug}"
 
-    # BCD
-    bcd = _find_file(src, {"bcd"})
-    if bcd:
+    # ── BCD ─────────────────────────────────────────────────────────────────
+    # Le fichier BCD n'a pas d'extension et se nomme exactement "BCD"
+    bcd_candidates = [
+        f for f in src.rglob("*")
+        if f.is_file() and f.name.upper() == "BCD" and not f.suffix
+    ]
+    logger.debug("BCD candidats : %s", [str(f) for f in bcd_candidates])
+    if bcd_candidates:
+        bcd = max(bcd_candidates, key=lambda f: f.stat().st_size)
         shutil.copy2(bcd, dest / "BCD")
         result["bcd_path"] = f"{base}/BCD"
+        logger.info("BCD copié : %s", bcd)
+    else:
+        logger.warning("BCD non trouvé dans l'ISO")
 
-    # boot.sdi
-    sdi = _find_file(src, {"boot.sdi"})
-    if sdi:
+    # ── boot.sdi ────────────────────────────────────────────────────────────
+    sdi_candidates = [
+        f for f in src.rglob("*")
+        if f.is_file() and f.name.lower() == "boot.sdi"
+    ]
+    logger.debug("boot.sdi candidats : %s", [str(f) for f in sdi_candidates])
+    if sdi_candidates:
+        sdi = max(sdi_candidates, key=lambda f: f.stat().st_size)
         shutil.copy2(sdi, dest / "boot.sdi")
         result["boot_sdi_path"] = f"{base}/boot.sdi"
+        logger.info("boot.sdi copié : %s", sdi)
+    else:
+        logger.warning("boot.sdi non trouvé dans l'ISO")
 
-    # boot.wim (sources/boot.wim — le plus gros)
-    wim = _find_file(src, {"boot.wim"})
-    if wim:
+    # ── boot.wim ────────────────────────────────────────────────────────────
+    wim_candidates = [
+        f for f in src.rglob("*")
+        if f.is_file() and f.name.lower() == "boot.wim"
+    ]
+    logger.debug("boot.wim candidats : %s", [str(f) for f in wim_candidates])
+    if wim_candidates:
+        # Prendre le plus gros (sources/boot.wim plutôt qu'un éventuel stub)
+        wim = max(wim_candidates, key=lambda f: f.stat().st_size)
         shutil.copy2(wim, dest / "boot.wim")
         result["boot_wim_path"] = f"{base}/boot.wim"
+        logger.info("boot.wim copié : %s (%.1f Mo)", wim, wim.stat().st_size / 1_048_576)
+    else:
+        logger.warning("boot.wim non trouvé dans l'ISO")
 
-    # bootmgr.efi (UEFI)
-    efi = _find_file(src, {"bootmgr.efi"})
-    if efi:
+    # ── bootmgr.efi / bootmgfw.efi ──────────────────────────────────────────
+    efi_candidates = [
+        f for f in src.rglob("*")
+        if f.is_file() and f.name.lower() in BOOTMGR_NAMES
+    ]
+    logger.debug("bootmgr.efi candidats : %s", [str(f) for f in efi_candidates])
+    if efi_candidates:
+        efi = max(efi_candidates, key=lambda f: f.stat().st_size)
         shutil.copy2(efi, dest / "bootmgr.efi")
         result["bootmgr_path"] = f"{base}/bootmgr.efi"
+        logger.info("bootmgr.efi copié : %s", efi)
+    else:
+        logger.warning("bootmgr.efi / bootmgfw.efi non trouvé dans l'ISO")
 
     if not result:
         raise ExtractionError(
-            "Aucun fichier Windows (BCD/boot.sdi/boot.wim) trouvé dans l'ISO. "
+            "Aucun fichier Windows (BCD / boot.sdi / boot.wim) trouvé dans l'ISO. "
             "Uploader les fichiers manuellement via Fichiers Boot."
         )
     return result
 
 
-# ── Utilitaire ────────────────────────────────────────────────────────────────
+# ── Nettoyage ─────────────────────────────────────────────────────────────────
 
-def _find_file(root: Path, names: set[str]) -> Path | None:
-    """
-    Cherche récursivement un fichier dont le nom (lowercase) est dans `names`.
-    Retourne le plus grand fichier trouvé (évite les petits stubs).
-    """
-    candidates = [
-        f for f in root.rglob("*")
-        if f.is_file() and f.name.lower() in names
-    ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda f: f.stat().st_size)
-
-
-def cleanup_boot_files(os_slug: str, version_id: int):
-    dest = settings.boot_dir / os_slug / str(version_id)
+def cleanup_boot_files(os_slug: str, version_label: str, version_id: int = 0):
+    from app.services.slugify import slugify
+    version_slug = slugify(version_label) if version_label else str(version_id)
+    dest = settings.boot_dir / os_slug / version_slug
     if dest.exists():
         shutil.rmtree(dest)
+        logger.info("Dossier supprimé : %s", dest)
