@@ -10,7 +10,7 @@ from app.auth import is_authenticated
 from app.models.models import OsType
 from app.config import settings
 
-router = APIRouter(prefix="/menus")
+router = APIRouter(prefix="/ipxe-menus")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
