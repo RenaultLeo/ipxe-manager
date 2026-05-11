@@ -4,9 +4,21 @@ from app.config import settings
 
 
 def get_disk_usage() -> dict:
+    # Use configured path if it exists, otherwise fall back to current working dir
     path = Path(settings.http_root)
-    path.mkdir(parents=True, exist_ok=True)
-    usage = shutil.disk_usage(path)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        path = Path(".")
+
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return {
+            "total": 0, "used": 0, "free": 0, "percent": 0,
+            "total_gb": 0.0, "used_gb": 0.0, "free_gb": 0.0,
+        }
+
     return {
         "total": usage.total,
         "used": usage.used,

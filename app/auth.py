@@ -39,8 +39,12 @@ def check_admin_password(password: str) -> bool:
     Compare with the hashed password stored in the DB (settings table).
     Falls back to the plain .env value on first boot.
     """
-    from app.database import SessionLocal
+    from app.database import SessionLocal, init_db
     from app.models.models import AppSetting
+
+    # Ensure tables exist (handles cold start where startup hasn't fired yet)
+    init_db()
+
     db = SessionLocal()
     try:
         row = db.query(AppSetting).filter(AppSetting.key == "admin_password_hash").first()
@@ -53,5 +57,8 @@ def check_admin_password(password: str) -> bool:
             db.commit()
             return True
         return False
+    except Exception:
+        # Fallback: plain text comparison if DB is unavailable
+        return password == settings.admin_password
     finally:
         db.close()

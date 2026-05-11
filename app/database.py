@@ -23,5 +23,6 @@ def get_db():
 
 
 def init_db():
-    from app.models import models  # noqa: F401
+    """Create all tables. Safe to call multiple times (create_all is idempotent)."""
+    from app.models import models  # noqa: F401 — registers models with Base.metadata
     Base.metadata.create_all(bind=engine)

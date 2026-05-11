@@ -26,25 +26,31 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
 
-    disk = get_disk_usage()
-    os_types = db.query(OsType).all()
+    try:
+        disk = get_disk_usage()
+        os_types = db.query(OsType).all()
 
-    stats = []
-    for ot in os_types:
-        total = db.query(IsoVersion).filter(IsoVersion.os_type_id == ot.id).count()
-        ready = db.query(IsoVersion).filter(
-            IsoVersion.os_type_id == ot.id, IsoVersion.status == "ready"
-        ).count()
-        stats.append({"os": ot, "total": total, "ready": ready})
+        stats = []
+        for ot in os_types:
+            total = db.query(IsoVersion).filter(IsoVersion.os_type_id == ot.id).count()
+            ready = db.query(IsoVersion).filter(
+                IsoVersion.os_type_id == ot.id, IsoVersion.status == "ready"
+            ).count()
+            stats.append({"os": ot, "total": total, "ready": ready})
 
-    recent_uploads = (
-        db.query(Upload).order_by(Upload.created_at.desc()).limit(10).all()
-    )
-    active_jobs = (
-        db.query(Upload)
-        .filter(Upload.status.in_(["pending", "processing"]))
-        .count()
-    )
+        recent_uploads = (
+            db.query(Upload).order_by(Upload.created_at.desc()).limit(10).all()
+        )
+        active_jobs = (
+            db.query(Upload)
+            .filter(Upload.status.in_(["pending", "processing"]))
+            .count()
+        )
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        disk = {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
+        stats, recent_uploads, active_jobs = [], [], 0
 
     return templates.TemplateResponse(
         "dashboard.html",

@@ -1,7 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -11,7 +10,23 @@ from app.routers import auth, dashboard, isos, boot_files, configs, menus
 from app.routers import settings as settings_router
 
 BASE_DIR = Path(__file__).parent
+STATIC_DIR = BASE_DIR.parent / "static"
 
+# ── Ensure all required directories exist at import time ─────────────────────
+for _d in [
+    settings.tftp_root,
+    settings.http_root,
+    settings.iso_root,
+    str(settings.menus_dir),
+    str(settings.boot_dir),
+    str(settings.configs_dir),
+]:
+    try:
+        Path(_d).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass  # On a dev machine the paths may be read-only — that's fine
+
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="iPXE Manager", version="1.0.0")
 
 app.add_middleware(
@@ -22,12 +37,25 @@ app.add_middleware(
     https_only=False,
 )
 
-# ── Static assets (CSS, JS) ───────────────────────────────────────────────────
-app.mount(
-    "/static",
-    StaticFiles(directory=str(BASE_DIR.parent / "static")),
-    name="static",
-)
+# ── Static assets (CSS/JS) ────────────────────────────────────────────────────
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# ── iPXE file serving (menus, boot files, configs, wimboot) ──────────────────
+# These are served directly by Nginx in production.
+# In dev mode FastAPI serves them as fallback.
+_http = Path(settings.http_root)
+for _path, _subdir, _name in [
+    ("/boot",    "boot",    "ipxe_boot"),
+    ("/menus",   "menus",   "ipxe_menus"),
+    ("/configs", "configs", "ipxe_configs"),
+]:
+    _dir = _http / _subdir
+    try:
+        _dir.mkdir(parents=True, exist_ok=True)
+        app.mount(_path, StaticFiles(directory=str(_dir)), name=_name)
+    except (OSError, RuntimeError):
+        pass
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
@@ -41,30 +69,4 @@ app.include_router(settings_router.router)
 
 @app.on_event("startup")
 async def startup():
-    # Create required directories
-    for d in [
-        settings.tftp_root,
-        settings.http_root,
-        settings.iso_root,
-        str(settings.menus_dir),
-        str(settings.boot_dir),
-        str(settings.configs_dir),
-    ]:
-        Path(d).mkdir(parents=True, exist_ok=True)
-
-    # Initialize database tables
     init_db()
-
-    # Mount iPXE file-serving endpoints AFTER dirs exist
-    # (avoids StaticFiles crashing on missing dir at import time)
-    http_root = Path(settings.http_root)
-    existing_paths = {r.path for r in app.routes if hasattr(r, "path")}
-
-    mounts = [
-        ("/boot",    str(http_root / "boot"),    "ipxe_boot"),
-        ("/menus",   str(http_root / "menus"),   "ipxe_menus"),
-        ("/configs", str(http_root / "configs"), "ipxe_configs"),
-    ]
-    for path, directory, name in mounts:
-        if path not in existing_paths:
-            app.mount(path, StaticFiles(directory=directory), name=name)
