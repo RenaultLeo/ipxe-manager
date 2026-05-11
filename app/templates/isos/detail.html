@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}{{ version.os_type.label }} {{ version.version_label }} — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-3 mb-4">
+  <a href="/isos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
+  <h2 class="mb-0">
+    <i class="{{ version.os_type.icon }} me-2 text-primary"></i>
+    {{ version.os_type.label }} {{ version.version_label }}
+  </h2>
+  {% if version.status == 'ready' %}
+    <span class="badge bg-success ms-auto">Prêt</span>
+  {% elif version.status == 'extracting' %}
+    <span class="badge bg-warning text-dark ms-auto"
+          hx-get="/isos/{{ version.id }}/status"
+          hx-trigger="every 3s"
+          hx-swap="outerHTML">
+      <i class="bi bi-arrow-repeat spin me-1"></i>Extraction en cours…
+    </span>
+  {% elif version.status == 'error' %}
+    <span class="badge bg-danger ms-auto">Erreur</span>
+  {% else %}
+    <span class="badge bg-secondary ms-auto">Uploadé</span>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <!-- Info -->
+  <div class="col-md-5">
+    <div class="card border-secondary h-100">
+      <div class="card-header"><i class="bi bi-info-circle me-2"></i>Informations</div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5 text-muted">ID</dt><dd class="col-7">{{ version.id }}</dd>
+          <dt class="col-5 text-muted">Taille ISO</dt><dd class="col-7">{{ fmt_size(version.iso_size) }}</dd>
+          <dt class="col-5 text-muted">Chemin ISO</dt>
+          <dd class="col-7 font-monospace small text-break">{{ version.iso_path or '—' }}</dd>
+          <dt class="col-5 text-muted">Ajouté le</dt>
+          <dd class="col-7">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+          {% if version.notes %}
+          <dt class="col-5 text-muted">Notes</dt><dd class="col-7">{{ version.notes }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- Boot entry -->
+  <div class="col-md-7">
+    <div class="card border-secondary h-100">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
+        {% if version.status != 'extracting' %}
+        <form method="post" action="/isos/{{ version.id }}/extract" class="d-inline">
+          <button class="btn btn-warning btn-sm">
+            <i class="bi bi-box-arrow-in-down me-1"></i>Extraire depuis l'ISO
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if version.boot_entry %}
+        {% set be = version.boot_entry %}
+        <dl class="row mb-0">
+          {% if be.kernel_path %}
+          <dt class="col-4 text-muted">vmlinuz</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
+          {% endif %}
+          {% if be.initrd_path %}
+          <dt class="col-4 text-muted">initrd</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.initrd_path }}</dd>
+          {% endif %}
+          {% if be.boot_wim_path %}
+          <dt class="col-4 text-muted">boot.wim</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.boot_wim_path }}</dd>
+          {% endif %}
+          {% if be.kernel_args %}
+          <dt class="col-4 text-muted">Args kernel</dt>
+          <dd class="col-8 font-monospace small">{{ be.kernel_args }}</dd>
+          {% endif %}
+        </dl>
+        {% else %}
+        <p class="text-muted mb-0">
+          Aucun fichier de boot extrait.
+          <a href="/boot-files">Uploader manuellement</a> ou lancer l'extraction.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Auto configs -->
+  <div class="col-12">
+    <div class="card border-secondary">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-file-code me-2"></i>Configurations automatiques</span>
+        <a href="/configs/new" class="btn btn-outline-success btn-sm">
+          <i class="bi bi-plus me-1"></i>Ajouter
+        </a>
+      </div>
+      <div class="card-body p-0">
+        {% if version.autoconfigs %}
+        <table class="table table-dark table-hover mb-0">
+          <thead><tr><th>Type</th><th>Label</th><th>Fichier</th><th class="text-end">Actions</th></tr></thead>
+          <tbody>
+            {% for ac in version.autoconfigs %}
+            <tr>
+              <td><span class="badge bg-info text-dark">{{ ac.config_type }}</span></td>
+              <td>{{ ac.label }}</td>
+              <td class="font-monospace small text-muted">{{ ac.file_path or '—' }}</td>
+              <td class="text-end">
+                <a href="/configs/{{ ac.id }}/edit" class="btn btn-sm btn-outline-warning me-1">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <form method="post" action="/configs/{{ ac.id }}/delete" class="d-inline"
+                      onsubmit="return confirm('Supprimer cette config ?')">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">Aucune configuration automatique pour cette version.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete -->
+<div class="mt-4 pt-3 border-top border-secondary">
+  <form method="post" action="/isos/{{ version.id }}/delete"
+        onsubmit="return confirm('Supprimer {{ version.os_type.label }} {{ version.version_label }} et tous ses fichiers ?')">
+    <button class="btn btn-outline-danger">
+      <i class="bi bi-trash me-1"></i>Supprimer cette version
+    </button>
+  </form>
+</div>
+{% endblock %}

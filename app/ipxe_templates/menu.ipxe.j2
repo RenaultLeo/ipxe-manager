@@ -1,0 +1,35 @@
+#!ipxe
+
+########################################
+# Menu iPXE central — généré automatiquement
+# {{ server_url }}
+########################################
+
+set menu-timeout 30000
+set menu-default local
+
+:start
+menu === iPXE Boot Manager ===
+{% for ot in os_types %}
+item {{ ot.slug }} {{ ot.label }}
+{% endfor %}
+item --gap
+item local      Démarrer sur le disque local
+item shell      Shell iPXE
+item reboot     Redémarrer
+choose --timeout ${menu-timeout} --default ${menu-default} selected || goto local
+goto ${selected}
+
+{% for ot in os_types %}
+:{{ ot.slug }}
+chain --autofree {{ server_url }}/menus/{{ ot.slug }}.ipxe || goto start
+{% endfor %}
+
+:local
+exit 0
+
+:shell
+shell
+
+:reboot
+reboot

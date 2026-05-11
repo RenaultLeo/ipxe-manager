@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Configs Auto — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-file-code me-2 text-primary"></i>Configurations automatiques</h2>
+  <a href="/configs/new" class="btn btn-primary">
+    <i class="bi bi-plus me-1"></i>Nouvelle config
+  </a>
+</div>
+
+<div class="card border-secondary">
+  <div class="table-responsive">
+    <table class="table table-dark table-hover mb-0 align-middle">
+      <thead class="table-secondary">
+        <tr>
+          <th>OS / Version</th><th>Type</th><th>Label</th>
+          <th>Fichier</th><th>Modifié</th><th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in configs %}
+        <tr>
+          <td>
+            <i class="{{ c.iso_version.os_type.icon }} me-1 text-primary"></i>
+            {{ c.iso_version.os_type.label }} {{ c.iso_version.version_label }}
+          </td>
+          <td><span class="badge bg-info text-dark">{{ c.config_type }}</span></td>
+          <td>{{ c.label }}</td>
+          <td class="font-monospace small text-muted">{{ c.file_path or '—' }}</td>
+          <td class="text-muted small">{{ c.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td class="text-end">
+            <a href="/configs/{{ c.id }}/edit" class="btn btn-sm btn-outline-warning me-1">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form method="post" action="/configs/{{ c.id }}/delete" class="d-inline"
+                  onsubmit="return confirm('Supprimer cette configuration ?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Aucune configuration</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

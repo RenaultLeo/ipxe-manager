@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{% if config %}Modifier{% else %}Nouvelle{% endif %} config — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-3 mb-4">
+  <a href="/configs" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
+  <h2 class="mb-0">
+    {% if config %}
+      <i class="bi bi-pencil me-2 text-warning"></i>Modifier la configuration
+    {% else %}
+      <i class="bi bi-plus-circle me-2 text-success"></i>Nouvelle configuration automatique
+    {% endif %}
+  </h2>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card border-secondary">
+      <div class="card-body">
+        <form method="post" action="{% if config %}/configs/{{ config.id }}/edit{% else %}/configs/new{% endif %}">
+
+          {% if not config %}
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Version d'OS <span class="text-danger">*</span></label>
+              <select name="iso_version_id" class="form-select" required>
+                <option value="">— Choisir —</option>
+                {% for v in versions %}
+                <option value="{{ v.id }}">{{ v.os_type.label }} {{ v.version_label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Type <span class="text-danger">*</span></label>
+              <select name="config_type" class="form-select" required id="config-type">
+                {% for t in config_types %}
+                <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label">Label</label>
+            <input type="text" name="label" class="form-control"
+                   value="{{ config.label if config else '' }}"
+                   placeholder="Description de la configuration">
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0">Contenu <span class="text-danger">*</span></label>
+              <div class="btn-group btn-group-sm" id="templates-btn">
+                <button type="button" class="btn btn-outline-secondary dropdown-toggle"
+                        data-bs-toggle="dropdown">
+                  <i class="bi bi-lightning me-1"></i>Template
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('preseed')">Preseed (Debian/Ubuntu)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('kickstart')">Kickstart (RHEL/CentOS)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('unattend')">Unattend.xml (Windows)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('cloud-init')">Cloud-init</a></li>
+                </ul>
+              </div>
+            </div>
+            <textarea name="content" id="config-editor" class="form-control font-monospace"
+                      rows="20" style="font-size:0.82rem">{{ config.content if config else '' }}</textarea>
+            <div class="form-text">
+              Variables disponibles : <code>{{ '{{ server_url }}' }}</code>,
+              <code>{{ '{{ hostname }}' }}</code>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-floppy me-1"></i>Enregistrer
+            </button>
+            <a href="/configs" class="btn btn-outline-secondary">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TEMPLATES = {
+  preseed: `# Preseed Debian/Ubuntu
+d-i debian-installer/locale string fr_FR
+d-i keyboard-configuration/xkb-keymap select fr
+d-i netcfg/get_hostname string ubuntu-pxe
+d-i mirror/country string manual
+d-i mirror/http/hostname string archive.ubuntu.com
+d-i mirror/http/directory string /ubuntu
+d-i passwd/root-login boolean false
+d-i passwd/user-fullname string Admin
+d-i passwd/username string admin
+d-i passwd/user-password password changeme
+d-i passwd/user-password-again password changeme
+d-i clock-setup/utc boolean true
+d-i time/zone string Europe/Paris
+d-i partman-auto/method string regular
+d-i partman-auto/choose_recipe select atomic
+d-i partman/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+d-i pkgsel/include string openssh-server
+d-i finish-install/reboot_in_progress note`,
+
+  kickstart: `# Kickstart CentOS/RHEL
+install
+url --url http://mirror.centos.org/centos/8/BaseOS/x86_64/os/
+lang fr_FR.UTF-8
+keyboard fr
+network --bootproto=dhcp --device=eth0 --onboot=yes
+rootpw --plaintext changeme
+firewall --enabled --service=ssh
+authconfig --enableshadow --passalgo=sha512
+selinux --enforcing
+timezone Europe/Paris
+bootloader --location=mbr
+clearpart --all --initlabel
+autopart
+%packages
+@core
+openssh-server
+%end
+%post
+systemctl enable sshd
+%end`,
+
+  unattend: `<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+      </UserData>
+    </component>
+    <component name="Microsoft-Windows-International-Core-WinPE"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <SetupUILanguage><UILanguage>fr-FR</UILanguage></SetupUILanguage>
+      <InputLocale>040c:0000040c</InputLocale>
+      <SystemLocale>fr-FR</SystemLocale>
+      <UILanguage>fr-FR</UILanguage>
+      <UserLocale>fr-FR</UserLocale>
+    </component>
+  </settings>
+</unattend>`,
+
+  'cloud-init': `#cloud-config
+hostname: pxe-node
+locale: fr_FR.UTF-8
+timezone: Europe/Paris
+users:
+  - name: admin
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys: []
+packages:
+  - openssh-server
+  - curl
+runcmd:
+  - systemctl enable ssh`
+};
+
+function insertTemplate(type) {
+  document.getElementById('config-editor').value = TEMPLATES[type] || '';
+}
+</script>
+{% endblock %}

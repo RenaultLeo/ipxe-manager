@@ -1,0 +1,59 @@
+from fastapi import APIRouter, Request, Depends
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from pathlib import Path
+
+from app.database import get_db
+from app.auth import is_authenticated
+from app.services.disk_info import get_disk_usage, fmt_size
+from app.models.models import OsType, IsoVersion, Upload
+
+router = APIRouter()
+templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
+
+def _auth_redirect(request: Request):
+    from fastapi.responses import RedirectResponse
+    if not is_authenticated(request):
+        return RedirectResponse("/login", status_code=302)
+    return None
+
+
+@router.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request, db: Session = Depends(get_db)):
+    redir = _auth_redirect(request)
+    if redir:
+        return redir
+
+    disk = get_disk_usage()
+    os_types = db.query(OsType).all()
+
+    stats = []
+    for ot in os_types:
+        total = db.query(IsoVersion).filter(IsoVersion.os_type_id == ot.id).count()
+        ready = db.query(IsoVersion).filter(
+            IsoVersion.os_type_id == ot.id, IsoVersion.status == "ready"
+        ).count()
+        stats.append({"os": ot, "total": total, "ready": ready})
+
+    recent_uploads = (
+        db.query(Upload).order_by(Upload.created_at.desc()).limit(10).all()
+    )
+    active_jobs = (
+        db.query(Upload)
+        .filter(Upload.status.in_(["pending", "processing"]))
+        .count()
+    )
+
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "disk": disk,
+            "fmt_size": fmt_size,
+            "stats": stats,
+            "recent_uploads": recent_uploads,
+            "active_jobs": active_jobs,
+        },
+    )

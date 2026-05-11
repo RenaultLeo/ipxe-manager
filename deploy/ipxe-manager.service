@@ -1,0 +1,26 @@
+[Unit]
+Description=iPXE Manager — FastAPI web application
+After=network.target redis.service
+
+[Service]
+Type=exec
+User=ipxe
+Group=ipxe
+WorkingDirectory=/srv/ipxe/app
+EnvironmentFile=/srv/ipxe/app/.env
+ExecStart=/srv/ipxe/venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --log-level info \
+    --access-log
+Restart=always
+RestartSec=5
+
+# Sécurité
+NoNewPrivileges=yes
+ProtectSystem=full
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

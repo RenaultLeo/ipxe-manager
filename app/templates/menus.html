@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Menus iPXE — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-list-ul me-2 text-primary"></i>Menus iPXE</h2>
+  <form method="post" action="/menus/regenerate">
+    <button class="btn btn-success">
+      <i class="bi bi-arrow-clockwise me-1"></i>Régénérer tous les menus
+    </button>
+  </form>
+</div>
+
+<!-- Chainload info -->
+<div class="alert alert-info mb-4">
+  <i class="bi bi-info-circle me-2"></i>
+  Menu principal iPXE accessible à :
+  <strong><code>{{ server_url }}/menus/menu.ipxe</code></strong>
+  — À utiliser dans votre fichier <code>boot.ipxe</code> TFTP.
+</div>
+
+{% if menu_files %}
+<!-- Menu tabs -->
+<ul class="nav nav-tabs mb-3" id="menuTab">
+  {% for mf in menu_files %}
+  <li class="nav-item">
+    <a class="nav-link {% if loop.first %}active{% endif %}"
+       data-bs-toggle="tab" href="#menu-{{ loop.index }}">
+      {{ mf.name }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+  {% for mf in menu_files %}
+  <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="menu-{{ loop.index }}">
+    <div class="card border-secondary">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+          <i class="bi bi-file-text me-2"></i>
+          <code>{{ mf.name }}</code>
+          <span class="badge bg-secondary ms-2 small">{{ mf.size }} octets</span>
+        </span>
+        <div class="d-flex gap-2">
+          <a href="{{ mf.url }}" class="btn btn-outline-info btn-sm" target="_blank">
+            <i class="bi bi-box-arrow-up-right me-1"></i>URL
+          </a>
+          <button class="btn btn-outline-warning btn-sm"
+                  onclick="toggleEdit('edit-{{ loop.index }}', 'view-{{ loop.index }}')">
+            <i class="bi bi-pencil me-1"></i>Modifier
+          </button>
+        </div>
+      </div>
+      <!-- Read-only view -->
+      <div id="view-{{ loop.index }}" class="card-body p-0">
+        <pre class="p-3 mb-0 bg-dark text-light rounded-bottom font-monospace small"
+             style="max-height:400px;overflow-y:auto">{{ mf.content }}</pre>
+      </div>
+      <!-- Edit form -->
+      <div id="edit-{{ loop.index }}" class="card-body d-none">
+        <form method="post" action="/menus/{{ mf.name }}/save">
+          <textarea name="content" class="form-control font-monospace mb-2"
+                    rows="20" style="font-size:0.82rem">{{ mf.content }}</textarea>
+          <div class="d-flex gap-2">
+            <button class="btn btn-warning">
+              <i class="bi bi-floppy me-1"></i>Sauvegarder
+            </button>
+            <button type="button" class="btn btn-outline-secondary"
+                    onclick="toggleEdit('edit-{{ loop.index }}', 'view-{{ loop.index }}')">
+              Annuler
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  Aucun menu généré. Ajoutez des ISOs puis cliquez sur
+  <strong>Régénérer tous les menus</strong>.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleEdit(editId, viewId) {
+  document.getElementById(editId).classList.toggle('d-none');
+  document.getElementById(viewId).classList.toggle('d-none');
+}
+</script>
+{% endblock %}

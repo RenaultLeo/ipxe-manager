@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Paramètres — iPXE Manager{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-gear me-2 text-primary"></i>Paramètres</h2>
+
+{% if request.query_params.get('msg') == 'password_updated' %}
+<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Mot de passe mis à jour.</div>
+{% endif %}
+
+<div class="row g-4">
+
+  <!-- Server URL -->
+  <div class="col-md-6">
+    <div class="card border-secondary h-100">
+      <div class="card-header"><i class="bi bi-globe me-2"></i>URL du serveur HTTP</div>
+      <div class="card-body">
+        <p class="text-muted small">
+          Cette URL est intégrée dans tous les fichiers <code>.ipxe</code> générés.
+          Elle doit être accessible par les clients PXE.
+        </p>
+        <form method="post" action="/settings/server-url">
+          <div class="mb-3">
+            <input type="url" name="server_base_url" class="form-control font-monospace"
+                   value="{{ current.server_base_url }}" required>
+          </div>
+          <button class="btn btn-primary">
+            <i class="bi bi-floppy me-1"></i>Enregistrer et régénérer les menus
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Password -->
+  <div class="col-md-6">
+    <div class="card border-secondary h-100">
+      <div class="card-header"><i class="bi bi-shield-lock me-2"></i>Mot de passe admin</div>
+      <div class="card-body">
+        <form method="post" action="/settings/password">
+          <div class="mb-3">
+            <label class="form-label">Nouveau mot de passe</label>
+            <input type="password" name="new_password" class="form-control" required minlength="8">
+          </div>
+          <button class="btn btn-warning">
+            <i class="bi bi-key me-1"></i>Changer le mot de passe
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paths info -->
+  <div class="col-md-6">
+    <div class="card border-secondary">
+      <div class="card-header"><i class="bi bi-folder me-2"></i>Répertoires configurés</div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5 text-muted">TFTP root</dt>
+          <dd class="col-7 font-monospace small">{{ current.tftp_root }}</dd>
+          <dt class="col-5 text-muted">HTTP root</dt>
+          <dd class="col-7 font-monospace small">{{ current.http_root }}</dd>
+          <dt class="col-5 text-muted">ISOs</dt>
+          <dd class="col-7 font-monospace small">{{ current.iso_root }}</dd>
+        </dl>
+        <div class="form-text mt-2">
+          Ces chemins sont définis dans le fichier <code>.env</code> sur le serveur.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OS Types -->
+  <div class="col-md-6">
+    <div class="card border-secondary">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-grid me-2"></i>Types d'OS</span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-dark table-sm mb-0">
+          <thead><tr><th>Slug</th><th>Label</th><th>Type boot</th><th></th></tr></thead>
+          <tbody>
+            {% for ot in os_types %}
+            <tr>
+              <td class="font-monospace">{{ ot.slug }}</td>
+              <td>{{ ot.label }}</td>
+              <td><span class="badge bg-secondary">{{ ot.boot_type }}</span></td>
+              <td>
+                <form method="post" action="/settings/os-types/{{ ot.id }}/delete"
+                      onsubmit="return confirm('Supprimer {{ ot.label }} et toutes ses ISOs ?')">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-2">Aucun OS</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer">
+        <form method="post" action="/settings/os-types/add" class="row g-2">
+          <div class="col-3">
+            <input type="text" name="slug" class="form-control form-control-sm" placeholder="slug" required>
+          </div>
+          <div class="col-3">
+            <input type="text" name="label" class="form-control form-control-sm" placeholder="Label" required>
+          </div>
+          <div class="col-3">
+            <select name="boot_type" class="form-select form-select-sm">
+              <option value="linux">linux</option>
+              <option value="windows">windows</option>
+              <option value="custom">custom</option>
+            </select>
+          </div>
+          <div class="col-3">
+            <button class="btn btn-success btn-sm w-100">
+              <i class="bi bi-plus"></i> Ajouter
+            </button>
+          </div>
+          <div class="col-6">
+            <input type="text" name="icon" class="form-control form-control-sm"
+                   placeholder="bi-hdd (Bootstrap Icon)" value="bi-hdd">
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

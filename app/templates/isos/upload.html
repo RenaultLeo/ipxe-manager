@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Upload ISO — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card border-secondary">
+      <div class="card-header">
+        <i class="bi bi-cloud-upload me-2 text-primary"></i>Uploader une ISO
+      </div>
+      <div class="card-body">
+        <form method="post" action="/isos/upload" enctype="multipart/form-data" id="upload-form">
+
+          <div class="mb-3">
+            <label class="form-label">Type d'OS <span class="text-danger">*</span></label>
+            <select name="os_type_id" class="form-select" required>
+              <option value="">— Choisir —</option>
+              {% for ot in os_types %}
+              <option value="{{ ot.id }}">{{ ot.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Label de version <span class="text-danger">*</span></label>
+            <input type="text" name="version_label" class="form-control"
+                   placeholder="ex: 22.04 LTS, 11 Bullseye, 2022…" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Fichier ISO <span class="text-danger">*</span></label>
+            <input type="file" name="file" class="form-control" accept=".iso,.img" required id="iso-file">
+            <div class="form-text">Fichiers .iso / .img — pas de limite de taille</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="2"
+                      placeholder="Notes optionnelles…"></textarea>
+          </div>
+
+          <!-- Progress bar (shown during upload) -->
+          <div id="progress-wrap" class="mb-3 d-none">
+            <div class="d-flex justify-content-between small mb-1">
+              <span>Upload en cours…</span>
+              <span id="progress-pct">0%</span>
+            </div>
+            <div class="progress" style="height:16px">
+              <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                   id="progress-bar" role="progressbar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary" id="submit-btn">
+              <i class="bi bi-upload me-1"></i>Uploader
+            </button>
+            <a href="/isos" class="btn btn-outline-secondary">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('upload-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const form = this;
+  const data = new FormData(form);
+  const xhr = new XMLHttpRequest();
+  const bar = document.getElementById('progress-bar');
+  const pct = document.getElementById('progress-pct');
+  const wrap = document.getElementById('progress-wrap');
+  const btn = document.getElementById('submit-btn');
+
+  wrap.classList.remove('d-none');
+  btn.disabled = true;
+
+  xhr.upload.addEventListener('progress', ev => {
+    if (ev.lengthComputable) {
+      const p = Math.round(ev.loaded / ev.total * 100);
+      bar.style.width = p + '%';
+      pct.textContent = p + '%';
+    }
+  });
+
+  xhr.addEventListener('load', () => {
+    if (xhr.status >= 200 && xhr.status < 400) {
+      window.location.href = xhr.responseURL || '/isos';
+    } else {
+      btn.disabled = false;
+      alert('Erreur lors de l\'upload : ' + xhr.statusText);
+    }
+  });
+
+  xhr.open('POST', '/isos/upload');
+  xhr.send(data);
+});
+</script>
+{% endblock %}

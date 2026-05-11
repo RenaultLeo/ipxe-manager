@@ -1,0 +1,74 @@
+/* ── iPXE Manager custom styles ── */
+
+:root {
+  --ipxe-primary: #0d6efd;
+  --ipxe-surface: #1a1d21;
+  --ipxe-card: #212529;
+}
+
+body {
+  background-color: var(--ipxe-surface);
+  color: #dee2e6;
+}
+
+.navbar {
+  background-color: #0d1117 !important;
+}
+
+.card {
+  background-color: var(--ipxe-card);
+}
+
+/* Spinning icon for in-progress jobs */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+/* Action cards on dashboard */
+.action-card {
+  transition: transform .15s, box-shadow .15s;
+}
+.action-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+}
+
+/* Progress bar fill animation */
+.progress-bar {
+  transition: width .3s ease;
+}
+
+/* CodeMirror integration */
+.CodeMirror {
+  height: auto;
+  min-height: 300px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+/* Scrollable pre blocks */
+pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Table borders */
+.table-dark th {
+  border-color: #373b3e;
+}
+
+/* Badge pill */
+.badge {
+  font-weight: 500;
+}
+
+/* Nav link active highlight */
+.navbar .nav-link.active {
+  color: var(--ipxe-primary) !important;
+  font-weight: 600;
+}

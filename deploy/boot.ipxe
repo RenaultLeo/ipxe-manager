@@ -1,0 +1,7 @@
+#!ipxe
+# Fichier de chainload TFTP → HTTP
+# Copier dans /srv/ipxe/tftpboot/boot.ipxe
+# Remplacer SERVER_IP par l'IP réelle du serveur
+
+dhcp
+chain http://SERVER_IP/menus/menu.ipxe || shell

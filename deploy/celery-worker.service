@@ -1,0 +1,26 @@
+[Unit]
+Description=iPXE Manager — Celery worker (ISO extraction / menu regeneration)
+After=network.target redis.service ipxe-manager.service
+
+[Service]
+Type=exec
+User=ipxe
+Group=ipxe
+WorkingDirectory=/srv/ipxe/app
+EnvironmentFile=/srv/ipxe/app/.env
+ExecStart=/srv/ipxe/venv/bin/celery \
+    -A app.tasks.celery_app \
+    worker \
+    --loglevel=info \
+    --concurrency=2 \
+    --hostname=worker@%%h \
+    --logfile=/var/log/ipxe-manager/celery.log
+Restart=always
+RestartSec=10
+
+NoNewPrivileges=yes
+ProtectSystem=full
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
