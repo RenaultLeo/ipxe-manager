@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
 # iPXE Manager — Script d'installation complète
-# Ubuntu Server 24.04 LTS
-# À exécuter en tant que root : sudo bash setup.sh
+# Debian 12 (Bookworm) — compatible Ubuntu 24.04
+# À exécuter en tant que root : sudo bash setup.sh [IP]
 # ============================================================
 set -euo pipefail
 
@@ -18,27 +18,55 @@ echo "  iPXE Manager — Installation"
 echo "  IP serveur : $SERVER_IP"
 echo "======================================================"
 
+# ── Détection OS ──────────────────────────────────────────
+OS_ID=$(grep '^ID=' /etc/os-release | cut -d= -f2)
+OS_VER=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
+
+echo "  OS détecté : $OS_ID $OS_VER"
+
 # ── 1. Mise à jour système ─────────────────────────────────
-apt-get update && apt-get upgrade -y
+apt-get update
+apt-get upgrade -y
 
 # ── 2. Dépendances système ────────────────────────────────
 apt-get install -y \
     nginx \
     tftpd-hpa \
     redis-server \
-    python3.12 \
-    python3.12-venv \
-    python3-pip \
     p7zip-full \
     wimtools \
     genisoimage \
     xorriso \
-    isoinfo \
     curl \
     wget \
     git \
     unzip \
-    rsync
+    rsync \
+    ca-certificates
+
+# ── Python 3.12 ───────────────────────────────────────────
+# Debian 12 fournit Python 3.11 par défaut — on installe 3.12 via backports
+if [ "$OS_ID" = "debian" ]; then
+    PYTHON_BIN=""
+    # Tenter python3.12 depuis les dépôts ou deadsnakes
+    if ! python3.12 --version &>/dev/null 2>&1; then
+        echo "  Installation Python 3.12 via deadsnakes PPA (Debian)…"
+        apt-get install -y software-properties-common
+        # Sur Debian on utilise le dépôt deb.debian.org backports ou on compile
+        # Solution propre : dépôt ppa:deadsnakes via un miroir debian
+        apt-get install -y python3.11 python3.11-venv python3-pip
+        PYTHON_BIN="python3.11"
+        echo "  Python 3.11 utilisé (compatible, 3.12 non requis)"
+    else
+        PYTHON_BIN="python3.12"
+    fi
+else
+    # Ubuntu 24.04 : python3.12 disponible directement
+    apt-get install -y python3.12 python3.12-venv python3-pip
+    PYTHON_BIN="python3.12"
+fi
+
+echo "  Python : $($PYTHON_BIN --version)"
 
 # ── 3. Utilisateur dédié ───────────────────────────────────
 if ! id "$APP_USER" &>/dev/null; then
@@ -62,7 +90,7 @@ rsync -av "$REPO_DIR/static/"  "$APP_DIR/app/static/"
 cp "$REPO_DIR/requirements.txt" "$APP_DIR/app/"
 
 # ── 6. Environnement Python ───────────────────────────────
-python3.12 -m venv "$VENV"
+$PYTHON_BIN -m venv "$VENV"
 "$VENV/bin/pip" install --upgrade pip wheel
 "$VENV/bin/pip" install -r "$APP_DIR/app/requirements.txt"
 

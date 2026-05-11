@@ -17,11 +17,12 @@ VM Ubuntu 24.04 (Proxmox)
 
 ### 1. Créer la VM sur Proxmox
 
-- **OS** : Ubuntu Server 24.04 LTS
+- **OS** : Debian 12 (Bookworm) — recommandé, ou Ubuntu Server 24.04 LTS
 - **CPU** : 4 vCPU
-- **RAM** : 8 GB
-- **Disque** : 500 GB+ (stockage ISOs)
-- **Réseau** : Bridge sur le LAN (IP statique recommandée)
+- **RAM** : 4 GB minimum (8 GB recommandé)
+- **Disque système** : 32 GB
+- **Disque données** : 500 GB+ monté sur `/srv/ipxe/` (ISOs)
+- **Réseau** : Bridge `vmbr0` sur le LAN (IP statique)
 
 Configurer une IP statique dans `/etc/netplan/00-installer-config.yaml` :
 
