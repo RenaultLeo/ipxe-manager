@@ -11,7 +11,7 @@ from app.auth import is_authenticated
 from app.models.models import IsoVersion, AutoConfig
 from app.config import settings
 
-router = APIRouter(prefix="/configs")
+router = APIRouter(prefix="/ipxe-configs")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 CONFIG_TYPES = ["preseed", "kickstart", "unattend", "cloud-init", "custom"]
@@ -80,7 +80,7 @@ async def config_create(
     cfg.file_path = file_path
     db.commit()
 
-    return RedirectResponse("/configs", status_code=302)
+    return RedirectResponse("/ipxe-configs", status_code=302)
 
 
 @router.get("/{config_id}/edit", response_class=HTMLResponse)
@@ -121,7 +121,7 @@ async def config_update(
     cfg.file_path = file_path
     db.commit()
 
-    return RedirectResponse("/configs", status_code=302)
+    return RedirectResponse("/ipxe-configs", status_code=302)
 
 
 @router.post("/{config_id}/delete")
@@ -136,7 +136,7 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
         Path(settings.http_root).joinpath(cfg.file_path).unlink(missing_ok=True)
     db.delete(cfg)
     db.commit()
-    return RedirectResponse("/configs", status_code=302)
+    return RedirectResponse("/ipxe-configs", status_code=302)
 
 
 def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> str:

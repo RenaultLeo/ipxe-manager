@@ -94,7 +94,7 @@
     <div class="card border-secondary">
       <div class="card-header d-flex justify-content-between">
         <span><i class="bi bi-file-code me-2"></i>Configurations automatiques</span>
-        <a href="/configs/new" class="btn btn-outline-success btn-sm">
+        <a href="/ipxe-configs/new" class="btn btn-outline-success btn-sm">
           <i class="bi bi-plus me-1"></i>Ajouter
         </a>
       </div>
@@ -109,10 +109,10 @@
               <td>{{ ac.label }}</td>
               <td class="font-monospace small text-muted">{{ ac.file_path or '—' }}</td>
               <td class="text-end">
-                <a href="/configs/{{ ac.id }}/edit" class="btn btn-sm btn-outline-warning me-1">
+                <a href="/ipxe-configs/{{ ac.id }}/edit" class="btn btn-sm btn-outline-warning me-1">
                   <i class="bi bi-pencil"></i>
                 </a>
-                <form method="post" action="/configs/{{ ac.id }}/delete" class="d-inline"
+                <form method="post" action="/ipxe-configs/{{ ac.id }}/delete" class="d-inline"
                       onsubmit="return confirm('Supprimer cette config ?')">
                   <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
