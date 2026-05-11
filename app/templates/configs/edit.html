@@ -23,10 +23,15 @@
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label class="form-label">Version d'OS <span class="text-danger">*</span></label>
-              <select name="iso_version_id" class="form-select" required>
+              <select name="iso_version_id" class="form-select" required id="version-select"
+                      onchange="onVersionChange(this)">
                 <option value="">— Choisir —</option>
                 {% for v in versions %}
-                <option value="{{ v.id }}">{{ v.os_type.label }} {{ v.version_label }}</option>
+                <option value="{{ v.id }}"
+                        data-os-slug="{{ v.os_type.slug }}"
+                        data-os-boot="{{ v.os_type.boot_type }}">
+                  {{ v.os_type.label }} {{ v.version_label }}
+                </option>
                 {% endfor %}
               </select>
             </div>
@@ -37,6 +42,7 @@
                 <option value="{{ t }}">{{ t }}</option>
                 {% endfor %}
               </select>
+              <div class="form-text" id="type-hint"></div>
             </div>
           </div>
           {% endif %}
@@ -87,6 +93,32 @@
 
 {% block scripts %}
 <script>
+// Mapping OS slug → type de config par défaut (synchronisé avec config_scanner.py)
+const OS_CONFIG_TYPE = {{ os_config_type | tojson }};
+
+function onVersionChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const osSlug = opt.dataset.osSlug || '';
+  const suggestedType = OS_CONFIG_TYPE[osSlug] || 'custom';
+  const typeSelect = document.getElementById('config-type');
+  const hint = document.getElementById('type-hint');
+
+  // Sélectionner le type suggéré
+  for (let i = 0; i < typeSelect.options.length; i++) {
+    if (typeSelect.options[i].value === suggestedType) {
+      typeSelect.selectedIndex = i;
+      break;
+    }
+  }
+  hint.textContent = osSlug ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
+
+  // Pré-remplir l'éditeur si vide
+  const editor = document.getElementById('config-editor');
+  if (!editor.value.trim() && TEMPLATES[suggestedType]) {
+    insertTemplate(suggestedType);
+  }
+}
+
 const TEMPLATES = {
   preseed: `# Preseed Debian/Ubuntu
 d-i debian-installer/locale string fr_FR

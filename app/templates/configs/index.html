@@ -4,10 +4,24 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0"><i class="bi bi-file-code me-2 text-primary"></i>Configurations automatiques</h2>
-  <a href="/ipxe-configs/new" class="btn btn-primary">
-    <i class="bi bi-plus me-1"></i>Nouvelle config
-  </a>
+  <div class="d-flex gap-2">
+    <form method="post" action="/ipxe-configs/scan">
+      <button class="btn btn-outline-info" title="Scanne configs/ et importe les fichiers non enregistrés">
+        <i class="bi bi-search me-1"></i>Scanner les fichiers
+      </button>
+    </form>
+    <a href="/ipxe-configs/new" class="btn btn-primary">
+      <i class="bi bi-plus me-1"></i>Nouvelle config
+    </a>
+  </div>
 </div>
+
+{% if scan_result %}
+<div class="alert alert-info alert-dismissible fade show mb-4">
+  <i class="bi bi-info-circle me-2"></i>{{ scan_result }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
 
 <div class="card border-secondary">
   <div class="table-responsive">

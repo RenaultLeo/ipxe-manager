@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
-from app.models.models import IsoVersion, AutoConfig
+from app.models.models import OsType, IsoVersion, AutoConfig
 from app.config import settings
+from app.services.config_scanner import OS_CONFIG_TYPE
 
 router = APIRouter(prefix="/ipxe-configs")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -24,7 +25,8 @@ def _auth(request: Request):
 
 
 @router.get("", response_class=HTMLResponse)
-async def config_list(request: Request, db: Session = Depends(get_db)):
+async def config_list(request: Request, db: Session = Depends(get_db),
+                      scan_result: str = ""):
     redir = _auth(request)
     if redir:
         return redir
@@ -33,8 +35,22 @@ async def config_list(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         "configs/index.html",
         {"request": request, "configs": configs, "versions": versions,
-         "config_types": CONFIG_TYPES},
+         "config_types": CONFIG_TYPES, "scan_result": scan_result},
     )
+
+
+@router.post("/scan")
+async def config_scan(request: Request, db: Session = Depends(get_db)):
+    """Scan configs/ directory and auto-import unregistered config files."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    from app.services.config_scanner import scan_and_import
+    res = scan_and_import(db)
+    msg = f"Scan terminé — {res['imported']} importé(s), {res['skipped']} ignoré(s)"
+    if res["errors"]:
+        msg += f", {len(res['errors'])} erreur(s)"
+    return RedirectResponse(f"/ipxe-configs?scan_result={msg}", status_code=302)
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -46,7 +62,8 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         "configs/edit.html",
         {"request": request, "config": None, "versions": versions,
-         "config_types": CONFIG_TYPES, "server_url": settings.server_base_url},
+         "config_types": CONFIG_TYPES, "server_url": settings.server_base_url,
+         "os_config_type": OS_CONFIG_TYPE},
     )
 
 
@@ -95,7 +112,8 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
     return templates.TemplateResponse(
         "configs/edit.html",
         {"request": request, "config": cfg, "versions": versions,
-         "config_types": CONFIG_TYPES, "server_url": settings.server_base_url},
+         "config_types": CONFIG_TYPES, "server_url": settings.server_base_url,
+         "os_config_type": OS_CONFIG_TYPE},
     )
 
 
@@ -141,14 +159,19 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
 
 def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> str:
     """Write config content to disk and return the relative path."""
-    cfg_dir = settings.configs_dir / version.os_type.slug / str(version.id)
+    from app.services.slugify import slugify
+    version_slug = slugify(version.version_label)
+    cfg_dir = settings.configs_dir / version.os_type.slug / version_slug
     cfg_dir.mkdir(parents=True, exist_ok=True)
     ext_map = {
-        "preseed": "cfg", "kickstart": "cfg",
-        "unattend": "xml", "cloud-init": "yaml", "custom": "txt",
+        "preseed":    "cfg",
+        "kickstart":  "cfg",
+        "unattend":   "xml",
+        "cloud-init": "yaml",
+        "custom":     "txt",
     }
     ext = ext_map.get(cfg.config_type, "txt")
     fname = f"{cfg.config_type}_{cfg.id}.{ext}"
     file = cfg_dir / fname
     file.write_text(content, encoding="utf-8")
-    return f"configs/{version.os_type.slug}/{version.id}/{fname}"
+    return f"configs/{version.os_type.slug}/{version_slug}/{fname}"
