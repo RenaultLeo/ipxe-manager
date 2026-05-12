@@ -10,7 +10,7 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, AutoConfig
 from app.config import settings
-from app.services.config_scanner import OS_CONFIG_TYPE
+from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
 
 router = APIRouter(prefix="/ipxe-configs")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -63,7 +63,7 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
         "configs/edit.html",
         {"request": request, "config": None, "versions": versions,
          "config_types": CONFIG_TYPES, "server_url": settings.server_base_url,
-         "os_config_type": OS_CONFIG_TYPE},
+         "os_config_type": OS_CONFIG_TYPE, "forced_configs": FORCED_CONFIGS},
     )
 
 
@@ -84,6 +84,11 @@ async def config_create(
     if not version:
         raise HTTPException(404)
 
+    os_slug = version.os_type.slug
+    # Pour les OS built-in : forcer le type correct
+    if version.os_type.is_builtin and os_slug in FORCED_CONFIGS:
+        config_type = FORCED_CONFIGS[os_slug]["type"]
+
     cfg = AutoConfig(
         iso_version_id=iso_version_id,
         config_type=config_type,
@@ -96,6 +101,10 @@ async def config_create(
     file_path = _write_config_file(cfg, version, content)
     cfg.file_path = file_path
     db.commit()
+
+    # Pour Ubuntu : créer automatiquement un meta-data vide si pas encore présent
+    if os_slug == "ubuntu" and version.os_type.is_builtin:
+        _ensure_ubuntu_meta_data(version, db)
 
     return RedirectResponse("/ipxe-configs", status_code=302)
 
@@ -113,7 +122,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
         "configs/edit.html",
         {"request": request, "config": cfg, "versions": versions,
          "config_types": CONFIG_TYPES, "server_url": settings.server_base_url,
-         "os_config_type": OS_CONFIG_TYPE},
+         "os_config_type": OS_CONFIG_TYPE, "forced_configs": FORCED_CONFIGS},
     )
 
 
@@ -157,6 +166,27 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 
+def _ensure_ubuntu_meta_data(version: IsoVersion, db: Session):
+    """Crée un fichier meta-data vide pour Ubuntu si absent (requis par cloud-init/autoinstall)."""
+    from app.services.slugify import slugify
+    version_slug = slugify(version.version_label)
+    cfg_dir = settings.configs_dir / version.os_type.slug / version_slug
+    meta = cfg_dir / "meta-data"
+    if not meta.exists():
+        meta.write_text("instance-id: iid-local01\nlocal-hostname: ubuntu-pxe\n",
+                        encoding="utf-8")
+        # Enregistrer en base
+        ac = AutoConfig(
+            iso_version_id=version.id,
+            config_type="cloud-init",
+            label="meta-data",
+            content=meta.read_text(),
+            file_path=f"configs/{version.os_type.slug}/{version_slug}/meta-data",
+        )
+        db.add(ac)
+        db.commit()
+
+
 def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> str:
     """Write config content to disk and return the relative path."""
     from app.services.slugify import slugify
@@ -173,13 +203,22 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> st
     }
     ext = ext_map.get(cfg.config_type, "txt")
 
-    # Nom de fichier = label slugifié, ou type si label vide
-    base = slugify(cfg.label) if cfg.label and slugify(cfg.label) else cfg.config_type
-    fname = f"{base}.{ext}"
+    os_slug = version.os_type.slug
+    forced = FORCED_CONFIGS.get(os_slug) if version.os_type.is_builtin else None
+
+    if forced:
+        # OS built-in : utiliser le nom de fichier canonique
+        canonical = forced["filenames"][0]
+        fname = canonical
+    else:
+        # OS custom : label slugifié ou type
+        base = slugify(cfg.label) if cfg.label and slugify(cfg.label) else cfg.config_type
+        fname = f"{base}.{ext}" if ext else base
+
     dest = cfg_dir / fname
 
-    # Si le fichier existe déjà et appartient à une autre config, ajouter l'ID
-    if dest.exists():
+    # Pour les OS custom : gérer les conflits de nom
+    if not forced and dest.exists():
         existing_rel = f"configs/{version.os_type.slug}/{version_slug}/{fname}"
         from app.database import SessionLocal
         db_check = SessionLocal()
@@ -189,7 +228,9 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> st
         ).first()
         db_check.close()
         if conflict:
-            fname = f"{base}_{cfg.id}.{ext}"
+            base_name = Path(fname).stem
+            suffix = Path(fname).suffix
+            fname = f"{base_name}_{cfg.id}{suffix}"
             dest = cfg_dir / fname
 
     dest.write_text(content, encoding="utf-8")

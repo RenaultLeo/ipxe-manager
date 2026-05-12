@@ -38,7 +38,8 @@ def _migrate_columns():
     _add_column_if_missing("boot_entries", "bcd_path",           "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "boot_sdi_path",      "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "efi_path",           "VARCHAR(512)")
-    _add_column_if_missing("boot_entries", "modloop_path",        "VARCHAR(512)")
+    _add_column_if_missing("boot_entries",  "modloop_path",       "VARCHAR(512)")
+    _add_column_if_missing("os_types",      "is_builtin",         "BOOLEAN DEFAULT 0")
     _add_column_if_missing("boot_entries", "custom_ipxe_path",   "VARCHAR(512)")
 
 

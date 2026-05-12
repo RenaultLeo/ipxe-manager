@@ -14,7 +14,8 @@ class OsType(Base):
     slug = Column(String(32), unique=True, nullable=False)   # windows, ubuntu, debian …
     label = Column(String(64), nullable=False)               # Windows, Ubuntu, Debian …
     icon = Column(String(64), default="bi-hdd")             # Bootstrap Icon class
-    boot_type = Column(String(16), default="linux")          # linux | windows | custom
+    boot_type  = Column(String(16), default="linux")          # linux | windows | custom
+    is_builtin = Column(Boolean, default=False)               # True = OS de base, type de config forcé
     created_at = Column(DateTime, default=datetime.utcnow)
 
     versions = relationship("IsoVersion", back_populates="os_type", cascade="all, delete")

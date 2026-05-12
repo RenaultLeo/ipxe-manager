@@ -29,7 +29,8 @@
                 {% for v in versions %}
                 <option value="{{ v.id }}"
                         data-os-slug="{{ v.os_type.slug }}"
-                        data-os-boot="{{ v.os_type.boot_type }}">
+                        data-os-boot="{{ v.os_type.boot_type }}"
+                        data-is-builtin="{{ 'true' if v.os_type.is_builtin else 'false' }}">
                   {{ v.os_type.label }} {{ v.version_label }}
                 </option>
                 {% endfor %}
@@ -43,6 +44,13 @@
                 {% endfor %}
               </select>
               <div class="form-text" id="type-hint"></div>
+              <!-- Badge affiché pour les OS built-in -->
+              <div id="forced-badge" class="d-none mt-1">
+                <span class="badge bg-warning text-dark">
+                  <i class="bi bi-lock me-1"></i>Fichier : <span id="forced-fname"></span>
+                </span>
+                <div class="form-text text-warning" id="forced-desc"></div>
+              </div>
             </div>
           </div>
           {% endif %}
@@ -93,24 +101,40 @@
 
 {% block scripts %}
 <script>
-// Mapping OS slug → type de config par défaut (synchronisé avec config_scanner.py)
-const OS_CONFIG_TYPE = {{ os_config_type | tojson }};
+const OS_CONFIG_TYPE  = {{ os_config_type | tojson }};
+const FORCED_CONFIGS  = {{ forced_configs | tojson }};
 
 function onVersionChange(sel) {
-  const opt = sel.options[sel.selectedIndex];
-  const osSlug = opt.dataset.osSlug || '';
-  const suggestedType = OS_CONFIG_TYPE[osSlug] || 'custom';
+  const opt        = sel.options[sel.selectedIndex];
+  const osSlug     = opt.dataset.osSlug   || '';
+  const isBuiltin  = opt.dataset.isBuiltin === 'true';
   const typeSelect = document.getElementById('config-type');
-  const hint = document.getElementById('type-hint');
+  const hint       = document.getElementById('type-hint');
+  const badge      = document.getElementById('forced-badge');
+  const fnameEl    = document.getElementById('forced-fname');
+  const descEl     = document.getElementById('forced-desc');
 
-  // Sélectionner le type suggéré
+  const forced = isBuiltin ? FORCED_CONFIGS[osSlug] : null;
+  const suggestedType = (forced ? forced.type : null) || OS_CONFIG_TYPE[osSlug] || 'custom';
+
+  // Sélectionner le type (verrouillé si built-in)
   for (let i = 0; i < typeSelect.options.length; i++) {
     if (typeSelect.options[i].value === suggestedType) {
       typeSelect.selectedIndex = i;
       break;
     }
   }
-  hint.textContent = osSlug ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
+  typeSelect.disabled = !!forced;
+  hint.textContent = (!forced && osSlug) ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
+
+  // Badge nom de fichier forcé
+  if (forced) {
+    fnameEl.textContent = forced.filenames[0];
+    descEl.textContent  = forced.description || '';
+    badge.classList.remove('d-none');
+  } else {
+    badge.classList.add('d-none');
+  }
 
   // Pré-remplir l'éditeur si vide
   const editor = document.getElementById('config-editor');
