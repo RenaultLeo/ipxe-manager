@@ -136,7 +136,7 @@ EOF
 # ── 9. Configuration tftpd-hpa ────────────────────────────
 cat > /etc/default/tftpd-hpa <<EOF
 TFTP_USERNAME="tftp"
-TFTP_DIRECTORY="$DATA_DIR/tftpboot"
+TFTP_DIRECTORY="$DATA_DIR/tftpboot/"
 TFTP_ADDRESS="0.0.0.0:69"
 TFTP_OPTIONS="--secure --create --blocksize 1468"
 EOF
