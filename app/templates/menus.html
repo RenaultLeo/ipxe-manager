@@ -18,7 +18,6 @@
 </div>
 {% endif %}
 
-<!-- Chainload info -->
 <div class="alert alert-info mb-4">
   <i class="bi bi-info-circle me-2"></i>
   Menu principal iPXE (servi par <strong>Nginx</strong>) :
@@ -26,72 +25,229 @@
   — À utiliser dans <code>/srv/ipxe/tftpboot/boot.ipxe</code>.
 </div>
 
-{% if menu_files %}
-<!-- Menu tabs -->
-<ul class="nav nav-tabs mb-3" id="menuTab">
-  {% for mf in menu_files %}
-  <li class="nav-item">
-    <a class="nav-link {% if loop.first %}active{% endif %}"
-       data-bs-toggle="tab" href="#menu-{{ loop.index }}">
-      {{ mf.name }}
-    </a>
+<!-- ═══ Onglets ═══ -->
+<ul class="nav nav-tabs mb-3" id="mainTab" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab != 'custom' %}active{% endif %}"
+            id="tab-generated"
+            data-bs-toggle="tab" data-bs-target="#pane-generated"
+            type="button" role="tab">
+      <i class="bi bi-file-earmark-code me-1"></i>Menus générés
+      <span class="badge bg-secondary ms-1">{{ menu_files | length }}</span>
+    </button>
   </li>
-  {% endfor %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'custom' %}active{% endif %}"
+            id="tab-custom"
+            data-bs-toggle="tab" data-bs-target="#pane-custom"
+            type="button" role="tab">
+      <i class="bi bi-file-earmark-play me-1"></i>Scripts personnalisés
+      {% if custom_scripts %}
+      <span class="badge bg-primary ms-1">{{ custom_scripts | length }}</span>
+      {% endif %}
+    </button>
+  </li>
 </ul>
 
-<div class="tab-content">
-  {% for mf in menu_files %}
-  <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="menu-{{ loop.index }}">
-    <div class="card border-secondary">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>
-          <i class="bi bi-file-text me-2"></i>
-          <code>{{ mf.name }}</code>
-          <span class="badge bg-secondary ms-2 small">{{ mf.size }} octets</span>
-        </span>
-        <div class="d-flex gap-2">
-          <a href="{{ mf.url }}" class="btn btn-outline-info btn-sm" target="_blank">
-            <i class="bi bi-box-arrow-up-right me-1"></i>URL
-          </a>
-          <button type="button" class="btn btn-outline-warning btn-sm"
-                  onclick="toggleEdit('edit-{{ loop.index }}', 'view-{{ loop.index }}')">
-            <i class="bi bi-pencil me-1"></i>Modifier
-          </button>
+<div class="tab-content" id="mainTabContent">
+
+  <!-- ══ Onglet : Menus générés ══ -->
+  <div class="tab-pane fade {% if active_tab != 'custom' %}show active{% endif %}"
+       id="pane-generated" role="tabpanel">
+
+    {% if menu_files %}
+    <ul class="nav nav-tabs mb-3" id="menuTab" role="tablist">
+      {% for mf in menu_files %}
+      <li class="nav-item" role="presentation">
+        <button class="nav-link {% if loop.first %}active{% endif %} small"
+                data-bs-toggle="tab" data-bs-target="#menu-{{ loop.index }}"
+                type="button" role="tab">
+          {{ mf.name }}
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="tab-content">
+      {% for mf in menu_files %}
+      <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="menu-{{ loop.index }}">
+        <div class="card border-secondary">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>
+              <i class="bi bi-file-text me-2"></i>
+              <code>{{ mf.name }}</code>
+              <span class="badge bg-secondary ms-2 small">{{ mf.size }} octets</span>
+            </span>
+            <div class="d-flex gap-2">
+              <a href="{{ mf.url }}" class="btn btn-outline-info btn-sm" target="_blank">
+                <i class="bi bi-box-arrow-up-right me-1"></i>URL
+              </a>
+              <button type="button" class="btn btn-outline-warning btn-sm"
+                      onclick="toggleEdit('gedit-{{ loop.index }}', 'gview-{{ loop.index }}')">
+                <i class="bi bi-pencil me-1"></i>Modifier
+              </button>
+            </div>
+          </div>
+          <div id="gview-{{ loop.index }}" class="card-body p-0">
+            <pre class="p-3 mb-0 bg-dark text-light rounded-bottom font-monospace small"
+                 style="max-height:400px;overflow-y:auto">{{ mf.content }}</pre>
+          </div>
+          <div id="gedit-{{ loop.index }}" class="card-body d-none">
+            <form method="post" action="/ipxe-menus/{{ mf.name }}/save">
+              <textarea name="content" class="form-control font-monospace mb-2"
+                        rows="20" style="font-size:0.82rem">{{ mf.content }}</textarea>
+              <div class="d-flex gap-2">
+                <button class="btn btn-warning">
+                  <i class="bi bi-floppy me-1"></i>Sauvegarder
+                </button>
+                <button type="button" class="btn btn-outline-secondary"
+                        onclick="toggleEdit('gedit-{{ loop.index }}', 'gview-{{ loop.index }}')">
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
-      <!-- Read-only view -->
-      <div id="view-{{ loop.index }}" class="card-body p-0">
-        <pre class="p-3 mb-0 bg-dark text-light rounded-bottom font-monospace small"
-             style="max-height:400px;overflow-y:auto">{{ mf.content }}</pre>
-      </div>
-      <!-- Edit form -->
-      <div id="edit-{{ loop.index }}" class="card-body d-none">
-        <form method="post" action="/ipxe-menus/{{ mf.name }}/save">
-          <textarea name="content" class="form-control font-monospace mb-2"
-                    rows="20" style="font-size:0.82rem">{{ mf.content }}</textarea>
-          <div class="d-flex gap-2">
-            <button class="btn btn-warning">
-              <i class="bi bi-floppy me-1"></i>Sauvegarder
-            </button>
-            <button type="button" class="btn btn-outline-secondary"
-                    onclick="toggleEdit('edit-{{ loop.index }}', 'view-{{ loop.index }}')">
-              Annuler
-            </button>
-          </div>
-        </form>
-      </div>
+      {% endfor %}
     </div>
-  </div>
-  {% endfor %}
-</div>
 
-{% else %}
-<div class="alert alert-warning">
-  <i class="bi bi-exclamation-triangle me-2"></i>
-  Aucun menu généré. Ajoutez des ISOs puis cliquez sur
-  <strong>Régénérer tous les menus</strong>.
-</div>
-{% endif %}
+    {% else %}
+    <div class="alert alert-warning">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      Aucun menu généré. Ajoutez des ISOs puis cliquez sur
+      <strong>Régénérer tous les menus</strong>.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ══ Onglet : Scripts personnalisés ══ -->
+  <div class="tab-pane fade {% if active_tab == 'custom' %}show active{% endif %}"
+       id="pane-custom" role="tabpanel">
+
+    <p class="text-secondary small mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Ces scripts sont uploadés manuellement sur une version d'OS et apparaissent dans le sous-menu
+      <code>_autres.ipxe</code> correspondant.
+      Supprimer un script retire le fichier disque et regénère le menu automatiquement.
+    </p>
+
+    {% if custom_scripts %}
+    <div class="table-responsive mb-4">
+      <table class="table table-dark table-hover table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>OS</th>
+            <th>Version</th>
+            <th>Fichier</th>
+            <th class="text-end">Taille</th>
+            <th>URL</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in custom_scripts %}
+          <tr id="row-{{ s.boot_entry_id }}">
+            <td><span class="badge bg-secondary">{{ s.os_label }}</span></td>
+            <td>{{ s.version_label }}</td>
+            <td><code>{{ s.filename }}</code></td>
+            <td class="text-end text-secondary small">{{ s.size }} o</td>
+            <td>
+              <a href="{{ s.url }}" target="_blank" class="text-info small font-monospace text-truncate d-block"
+                 style="max-width:260px">{{ s.rel_path }}</a>
+            </td>
+            <td class="text-center">
+              <div class="d-flex gap-1 justify-content-center">
+                <button class="btn btn-outline-info btn-sm"
+                        onclick="openScriptPanel({{ s.boot_entry_id }})">
+                  <i class="bi bi-eye me-1"></i>Voir
+                </button>
+                <button class="btn btn-outline-warning btn-sm"
+                        onclick="openScriptEditor({{ s.boot_entry_id }})">
+                  <i class="bi bi-pencil me-1"></i>Modifier
+                </button>
+                <button class="btn btn-outline-danger btn-sm"
+                        onclick="confirmDelete({{ s.boot_entry_id }}, '{{ s.filename }}')">
+                  <i class="bi bi-trash me-1"></i>Supprimer
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Panneau Voir / Modifier inline -->
+          <tr id="panel-{{ s.boot_entry_id }}" class="d-none">
+            <td colspan="6" class="p-0">
+              <div class="border border-secondary rounded-bottom">
+
+                <!-- En-tête du panneau -->
+                <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom border-secondary bg-dark">
+                  <i class="bi bi-file-earmark-play text-primary"></i>
+                  <code class="text-light">{{ s.filename }}</code>
+                  <span class="badge bg-secondary">{{ s.os_label }}</span>
+                  <span class="text-secondary small">{{ s.version_label }}</span>
+                  <div class="ms-auto d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary active"
+                            id="btn-view-{{ s.boot_entry_id }}"
+                            onclick="switchPanelMode({{ s.boot_entry_id }}, 'view')">
+                      Aperçu
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary"
+                            id="btn-edit-{{ s.boot_entry_id }}"
+                            onclick="switchPanelMode({{ s.boot_entry_id }}, 'edit')">
+                      Éditeur
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary"
+                            onclick="closePanel({{ s.boot_entry_id }})">
+                      <i class="bi bi-x"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Aperçu lecture seule -->
+                <div id="view-{{ s.boot_entry_id }}" class="p-0">
+                  <pre class="p-3 mb-0 bg-dark text-light font-monospace small"
+                       style="max-height:380px;overflow-y:auto;white-space:pre-wrap">{{ s.content }}</pre>
+                </div>
+
+                <!-- Éditeur -->
+                <div id="edit-{{ s.boot_entry_id }}" class="p-3 d-none">
+                  <form method="post" action="/ipxe-menus/custom/{{ s.boot_entry_id }}/save">
+                    <textarea name="content" class="form-control font-monospace mb-2"
+                              rows="18" style="font-size:0.82rem">{{ s.content }}</textarea>
+                    <div class="d-flex gap-2">
+                      <button class="btn btn-warning btn-sm">
+                        <i class="bi bi-floppy me-1"></i>Sauvegarder
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              onclick="closePanel({{ s.boot_entry_id }})">
+                        Annuler
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Formulaire de suppression caché -->
+          <form id="delete-form-{{ s.boot_entry_id }}" method="post"
+                action="/ipxe-menus/custom/{{ s.boot_entry_id }}/delete" class="d-none"></form>
+
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% else %}
+    <div class="alert alert-secondary">
+      <i class="bi bi-info-circle me-2"></i>
+      Aucun script personnalisé. Uploadez un fichier <code>.ipxe</code> lors de la création
+      d'une version d'OS.
+    </div>
+    {% endif %}
+  </div><!-- /pane-custom -->
+
+</div><!-- /tab-content -->
 {% endblock %}
 
 {% block scripts %}
@@ -100,5 +256,55 @@ function toggleEdit(editId, viewId) {
   document.getElementById(editId).classList.toggle('d-none');
   document.getElementById(viewId).classList.toggle('d-none');
 }
+
+function openScriptPanel(id) {
+  document.getElementById('panel-' + id).classList.remove('d-none');
+  // vue par défaut
+  switchPanelMode(id, 'view');
+  document.getElementById('panel-' + id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function openScriptEditor(id) {
+  document.getElementById('panel-' + id).classList.remove('d-none');
+  switchPanelMode(id, 'edit');
+  document.getElementById('panel-' + id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closePanel(id) {
+  document.getElementById('panel-' + id).classList.add('d-none');
+}
+
+function switchPanelMode(id, mode) {
+  const view = document.getElementById('view-' + id);
+  const edit = document.getElementById('edit-' + id);
+  const btnV = document.getElementById('btn-view-' + id);
+  const btnE = document.getElementById('btn-edit-' + id);
+  if (mode === 'view') {
+    view.classList.remove('d-none');
+    edit.classList.add('d-none');
+    btnV.classList.add('active');
+    btnE.classList.remove('active');
+  } else {
+    view.classList.add('d-none');
+    edit.classList.remove('d-none');
+    btnV.classList.remove('active');
+    btnE.classList.add('active');
+  }
+}
+
+function confirmDelete(id, filename) {
+  if (confirm('Supprimer le script « ' + filename + ' » ?\nLe fichier disque sera supprimé et le menu regénéré.')) {
+    document.getElementById('delete-form-' + id).submit();
+  }
+}
+
+// Ré-ouvrir directement l'onglet custom si ?tab=custom dans l'URL
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('tab') === 'custom') {
+    const btn = document.getElementById('tab-custom');
+    if (btn) { btn.click(); }
+  }
+})();
 </script>
 {% endblock %}
