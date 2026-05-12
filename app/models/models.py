@@ -57,6 +57,9 @@ class BootEntry(Base):
     # EFI / UEFI
     efi_path = Column(String(512))
 
+    # Alpine Linux — modloop (module loop filesystem)
+    modloop_path = Column(String(512))
+
     # Script iPXE personnalisé (optionnel — chainload custom)
     custom_ipxe_path = Column(String(512))
 

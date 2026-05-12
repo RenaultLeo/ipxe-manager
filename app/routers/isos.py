@@ -75,6 +75,8 @@ async def upload_iso(
     file_kernel:      UploadFile = File(None),
     file_initrd:      UploadFile = File(None),
     kernel_args:      str = Form(""),
+    # Alpine modloop
+    file_modloop:     UploadFile = File(None),
     # Script iPXE custom (tous OS)
     file_custom_ipxe: UploadFile = File(None),
     db: Session = Depends(get_db),
@@ -163,6 +165,10 @@ async def upload_iso(
             has_boot_files = True
 
     # ── Script iPXE custom (optionnel, tous OS) ───────────────
+    if file_modloop and file_modloop.filename:
+        be.modloop_path = await save_boot_file(file_modloop, Path(file_modloop.filename).name)
+        has_boot_files = True
+
     if file_custom_ipxe and file_custom_ipxe.filename:
         be.custom_ipxe_path = await save_boot_file(file_custom_ipxe, Path(file_custom_ipxe.filename).name)
         has_boot_files = True

@@ -50,6 +50,7 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.bcd_path      = paths.get("bcd_path")
         be.boot_sdi_path = paths.get("boot_sdi_path")
         be.bootmgr_path  = paths.get("bootmgr_path")
+        be.modloop_path  = paths.get("modloop_path")
         be.updated_at    = datetime.utcnow()
 
         version.status = "ready"

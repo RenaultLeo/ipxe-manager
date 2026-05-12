@@ -23,8 +23,9 @@ WIN_FILES = {
 }
 
 # Préfixes Linux → champ BootEntry
-LINUX_KERNEL_PREFIXES = ("vmlinuz", "vmlinux", "linux", "kernel")
+LINUX_KERNEL_PREFIXES = ("vmlinuz", "vmlinux", "linux26", "linux", "kernel")
 LINUX_INITRD_PREFIXES  = ("initrd", "initramfs")
+LINUX_MODLOOP_NAMES    = {"modloop-lts", "modloop"}
 
 
 def scan_and_register(db: Session) -> dict:
@@ -87,9 +88,15 @@ def scan_and_register(db: Session) -> dict:
                         changed = True
                         logger.info("Registré %s → %s.%s", rel, "BootEntry", field)
                 else:
-                    # vmlinuz*
-                    if any(fname_lower == p or fname_lower.startswith(p + "-")
-                           for p in LINUX_KERNEL_PREFIXES):
+                    # modloop (Alpine)
+                    if fname_lower in LINUX_MODLOOP_NAMES:
+                        if not be.modloop_path:
+                            be.modloop_path = rel
+                            changed = True
+                            logger.info("Modloop registré : %s", rel)
+                    # vmlinuz / linux26 *
+                    elif any(fname_lower == p or fname_lower.startswith(p + "-")
+                             for p in LINUX_KERNEL_PREFIXES):
                         if not be.kernel_path:
                             be.kernel_path = rel
                             changed = True

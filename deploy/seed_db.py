@@ -21,6 +21,7 @@ DEFAULT_OS = [
     {"slug": "fedora",  "label": "Fedora",     "icon": "bi-hdd",      "boot_type": "linux"},
     {"slug": "proxmox", "label": "Proxmox VE", "icon": "bi-server",   "boot_type": "linux"},
     {"slug": "esxi",    "label": "VMware ESXi","icon": "bi-cpu",      "boot_type": "linux"},
+    {"slug": "alpine",  "label": "Alpine Linux","icon": "bi-hdd",      "boot_type": "linux"},
     {"slug": "tools",   "label": "Outils",     "icon": "bi-tools",    "boot_type": "linux"},
 ]
 

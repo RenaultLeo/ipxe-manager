@@ -35,7 +35,9 @@ def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
         "boot_sdi":     _http(be.boot_sdi_path)    if be and be.boot_sdi_path    else "",
         "bootmgr":      _http(be.bootmgr_path)     if be and be.bootmgr_path     else "",
         "custom_ipxe":  _http(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
-        "kernel_args":  be.kernel_args if be else "",
+        "modloop":      _http(be.modloop_path)     if be and be.modloop_path     else "",
+        # Pour Alpine : injecter modloop= dans les kernel args automatiquement
+        "kernel_args":  _build_kernel_args(be, os_type.slug),
         "boot_type":    os_type.boot_type or "linux",
         "autoconfigs": [
             {
@@ -133,6 +135,16 @@ def regenerate_all(db: Session) -> list[str]:
     written.append(str(out))
 
     return written
+
+
+def _build_kernel_args(be, os_slug: str) -> str:
+    """Assemble les kernel args, en ajoutant modloop= pour Alpine."""
+    args = be.kernel_args if be and be.kernel_args else ""
+    if os_slug == "alpine" and be and be.modloop_path:
+        modloop_url = _http(be.modloop_path)
+        if f"modloop=" not in args:
+            args = f"{args} modloop={modloop_url}".strip()
+    return args
 
 
 def _http(relative_path: str | None) -> str:

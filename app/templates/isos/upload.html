@@ -26,7 +26,7 @@
               <select name="os_type_id" class="form-select" id="os-select" required>
                 <option value="">— Choisir —</option>
                 {% for ot in os_types %}
-                <option value="{{ ot.id }}" data-boot="{{ ot.boot_type }}">
+                <option value="{{ ot.id }}" data-boot="{{ ot.boot_type }}" data-slug="{{ ot.slug }}">
                   {{ ot.label }}
                 </option>
                 {% endfor %}
@@ -103,20 +103,33 @@
               <div class="card border-info mb-3">
                 <div class="card-header text-info small">
                   <i class="bi bi-terminal me-1"></i>Fichiers Linux
+                  <span class="text-muted ms-2">— noms attendus par distro :</span>
+                  <span id="distro-hint" class="badge bg-secondary ms-1 small"></span>
                 </div>
                 <div class="card-body">
                   <div class="row g-3">
                     <div class="col-md-6">
-                      <label class="form-label">vmlinuz / kernel</label>
+                      <label class="form-label">
+                        <span id="lbl-kernel">vmlinuz</span> / kernel
+                      </label>
                       <input type="file" name="file_kernel" class="form-control">
                     </div>
                     <div class="col-md-6">
-                      <label class="form-label">initrd</label>
+                      <label class="form-label">
+                        <span id="lbl-initrd">initrd</span>
+                      </label>
                       <input type="file" name="file_initrd" class="form-control">
+                    </div>
+                    <!-- modloop (Alpine uniquement) -->
+                    <div class="col-md-6" id="field-modloop" style="display:none">
+                      <label class="form-label">modloop-lts <span class="text-muted small">(Alpine)</span></label>
+                      <input type="file" name="file_modloop" class="form-control">
+                      <div class="form-text text-muted">Module loop filesystem Alpine</div>
                     </div>
                     <div class="col-12">
                       <label class="form-label">Arguments kernel</label>
                       <input type="text" name="kernel_args" class="form-control font-monospace"
+                             id="kernel-args-input"
                              placeholder="ex: quiet splash console=ttyS0 net.ifnames=0">
                       <div class="form-text text-muted">Paramètres passés au kernel au boot</div>
                     </div>
@@ -178,12 +191,32 @@
 
 {% block scripts %}
 <script>
-// Show/hide boot fields depending on OS type
+// Mapping slug → labels + hint
+const DISTRO_HINTS = {
+  debian:  { kernel: 'vmlinuz',    initrd: 'initrd.gz',      hint: 'vmlinuz + initrd.gz' },
+  ubuntu:  { kernel: 'vmlinuz',    initrd: 'initrd / initrd.gz', hint: 'vmlinuz + initrd' },
+  centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  fedora:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  proxmox: { kernel: 'linux26 / vmlinuz', initrd: 'initrd.img', hint: 'linux26 + initrd.img' },
+  alpine:  { kernel: 'vmlinuz-lts', initrd: 'initramfs-lts', hint: 'vmlinuz-lts + initramfs-lts + modloop-lts', modloop: true },
+};
+
 document.getElementById('os-select').addEventListener('change', function() {
   const opt = this.options[this.selectedIndex];
   const bootType = opt.dataset.boot || '';
+  const slug = opt.value ? opt.dataset.slug || '' : '';
   document.getElementById('fields-windows').classList.toggle('d-none', bootType !== 'windows');
   document.getElementById('fields-linux').classList.toggle('d-none', bootType !== 'linux');
+
+  if (bootType === 'linux') {
+    const info = DISTRO_HINTS[slug] || {};
+    document.getElementById('lbl-kernel').textContent = info.kernel || 'vmlinuz';
+    document.getElementById('lbl-initrd').textContent = info.initrd || 'initrd';
+    document.getElementById('distro-hint').textContent = info.hint || '';
+    document.getElementById('field-modloop').style.display = info.modloop ? '' : 'none';
+  }
 });
 
 // XHR upload with progress bar

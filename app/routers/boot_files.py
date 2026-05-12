@@ -119,6 +119,8 @@ async def upload_boot_file(
         be.bootmgr_path  = relative
     elif file_role == "efi":
         be.efi_path           = relative
+    elif file_role == "modloop":
+        be.modloop_path       = relative
     elif file_role == "custom_ipxe":
         be.custom_ipxe_path   = relative
 
