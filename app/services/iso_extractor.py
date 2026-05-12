@@ -135,9 +135,20 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
 
     logger.info("Extraction %s → %s", iso.name, dest)
 
-    with tempfile.TemporaryDirectory() as tmp:
+    rule = DISTRO_RULES.get(os_slug, _GENERIC_RULE)
+
+    if rule["type"] == "skip":
+        raise ExtractionError(
+            f"L'extraction automatique n'est pas supportée pour {os_slug}. "
+            "Uploader les fichiers manuellement."
+        )
+
+    if rule["type"] == "windows":
+        # Windows : extraction COMPLÈTE de l'ISO directement dans dest
+        # (tous les fichiers de l'ISO sont nécessaires pour setup.exe via Samba)
+        logger.info("Extraction complète Windows → %s", dest)
         proc = subprocess.run(
-            [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
+            [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
             capture_output=True, text=True,
             timeout=settings.extract_timeout,
         )
@@ -145,18 +156,20 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
             raise ExtractionError(
                 f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
             )
-        extracted = Path(tmp)
-        rule = DISTRO_RULES.get(os_slug, _GENERIC_RULE)
-
-        if rule["type"] == "windows":
-            paths = _find_windows(extracted, dest, os_slug, version_slug)
-        elif rule["type"] == "skip":
-            raise ExtractionError(
-                f"L'extraction automatique n'est pas supportée pour {os_slug}. "
-                "Uploader les fichiers manuellement."
+        paths = _find_windows_in_dest(dest, os_slug, version_slug)
+    else:
+        # Linux : extraction dans un dossier temp, copie des fichiers de boot seulement
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
+                capture_output=True, text=True,
+                timeout=settings.extract_timeout,
             )
-        else:
-            paths = _find_linux(extracted, dest, os_slug, version_slug, rule)
+            if proc.returncode not in (0, 1):
+                raise ExtractionError(
+                    f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
+                )
+            paths = _find_linux(Path(tmp), dest, os_slug, version_slug, rule)
 
     logger.info("Extraction terminée : %s", paths)
     return paths
@@ -219,36 +232,37 @@ def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str, rule: di
 
 # ── Windows ────────────────────────────────────────────────────────────────────
 
-def _find_windows(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
+def _find_windows_in_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
+    """
+    Après extraction complète de l'ISO Windows dans `dest`,
+    localise BCD, boot.sdi et boot.wim et retourne leurs chemins relatifs.
+    Les fichiers restent à leur emplacement d'origine dans l'arborescence.
+    """
     result: dict = {}
     base = f"boot/{os_slug}/{version_slug}"
 
-    for lower_name, (out_name, field) in WIN_EXACT.items():
-        # BCD n'a pas d'extension
-        if lower_name == "bcd":
-            candidates = [
-                f for f in src.rglob("*")
-                if f.is_file() and f.name.upper() == "BCD" and not f.suffix
-            ]
-        else:
-            candidates = [
-                f for f in src.rglob("*")
-                if f.is_file() and f.name.lower() == lower_name
-            ]
+    searches = [
+        ("bcd",      lambda f: f.name.upper() == "BCD" and not f.suffix, "bcd_path"),
+        ("boot.sdi", lambda f: f.name.lower() == "boot.sdi",             "boot_sdi_path"),
+        ("boot.wim", lambda f: f.name.lower() == "boot.wim",             "boot_wim_path"),
+    ]
 
-        logger.debug("%s candidats : %d", out_name, len(candidates))
+    for label, match_fn, field in searches:
+        candidates = [f for f in dest.rglob("*") if f.is_file() and match_fn(f)]
         if candidates:
             chosen = max(candidates, key=lambda f: f.stat().st_size)
-            shutil.copy2(chosen, dest / out_name)
-            result[field] = f"{base}/{out_name}"
-            logger.info("%s copié depuis %s", out_name, chosen)
+            # Chemin relatif à partir de dest
+            rel = chosen.relative_to(dest)
+            result[field] = f"{base}/{rel.as_posix()}"
+            logger.info("%s détecté : %s", label, rel)
         else:
-            logger.warning("%s non trouvé dans l'ISO", out_name)
+            logger.warning("%s non trouvé après extraction", label)
 
     if not result:
         raise ExtractionError(
             "Aucun fichier Windows (BCD / boot.sdi / boot.wim) trouvé dans l'ISO."
         )
+    logger.info("Extraction Windows complète — %d fichiers de boot détectés", len(result))
     return result
 
 

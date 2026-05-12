@@ -54,6 +54,9 @@ goto ${selected}
 {% if e.boot_wim %}
   initrd {{ e.boot_wim }} boot.wim
 {% endif %}
+{% if e.unattend_url %}
+  initrd {{ e.unattend_url }} autounattend.xml
+{% endif %}
   boot
 
 {% endfor %}

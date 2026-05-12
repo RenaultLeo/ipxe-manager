@@ -141,6 +141,64 @@ async def upload_boot_file(
     return RedirectResponse("/boot-files", status_code=302)
 
 
+@router.post("/{version_id}/replace-wim")
+async def replace_boot_wim(
+    version_id: int,
+    request: Request,
+    file_boot_wim: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Remplace uniquement le fichier boot.wim d'une version Windows."""
+    redir = _auth(request)
+    if redir:
+        return redir
+
+    version = db.query(IsoVersion).get(version_id)
+    if not version:
+        raise HTTPException(404)
+    if version.os_type.boot_type != "windows":
+        raise HTTPException(400, "Opération réservée aux versions Windows")
+
+    be = version.boot_entry
+    if not be:
+        raise HTTPException(404, "Aucun BootEntry pour cette version")
+
+    from app.services.slugify import slugify
+    version_slug = slugify(version.version_label)
+    os_slug = version.os_type.slug
+
+    # Trouver le boot.wim existant ou définir un emplacement par défaut
+    if be.boot_wim_path:
+        dest = Path(settings.http_root) / be.boot_wim_path
+    else:
+        # Emplacement par défaut : sources/boot.wim (standard Windows)
+        dest = settings.boot_dir / os_slug / version_slug / "sources" / "boot.wim"
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    # Sauvegarder l'ancien avant d'écraser
+    if dest.exists():
+        backup = dest.with_suffix(".wim.bak")
+        shutil.copy2(dest, backup)
+
+    # Écrire le nouveau fichier
+    content = await file_boot_wim.read()
+    dest.write_bytes(content)
+
+    # Mettre à jour le chemin en base
+    rel = f"boot/{os_slug}/{version_slug}/sources/boot.wim"
+    be.boot_wim_path = rel
+    db.commit()
+
+    try:
+        from app.tasks.jobs import regenerate_menus_task
+        regenerate_menus_task.delay()
+    except Exception:
+        pass
+
+    return RedirectResponse(f"/isos/{version_id}", status_code=302)
+
+
 @router.post("/{version_id}/args")
 async def update_kernel_args(
     version_id: int,

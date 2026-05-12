@@ -33,6 +33,7 @@ def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
         "boot_wim":     _http(be.boot_wim_path)    if be and be.boot_wim_path    else "",
         "bcd":          _http(be.bcd_path)         if be and be.bcd_path         else "",
         "boot_sdi":     _http(be.boot_sdi_path)    if be and be.boot_sdi_path    else "",
+        "unattend_url": _find_unattend_url(v, os_type),
         "bootmgr":      _http(be.bootmgr_path)     if be and be.bootmgr_path     else "",
         "custom_ipxe":  _http(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      _http(be.modloop_path)     if be and be.modloop_path     else "",
@@ -145,6 +146,18 @@ def _build_kernel_args(be, os_slug: str) -> str:
         if f"modloop=" not in args:
             args = f"{args} modloop={modloop_url}".strip()
     return args
+
+
+def _find_unattend_url(v: IsoVersion, os_type: OsType) -> str:
+    """Cherche autounattend.xml à la racine du dossier boot de la version."""
+    if os_type.boot_type != "windows":
+        return ""
+    from app.services.slugify import slugify
+    version_slug = slugify(v.version_label)
+    path = settings.boot_dir / os_type.slug / version_slug / "autounattend.xml"
+    if path.exists():
+        return _http(f"boot/{os_type.slug}/{version_slug}/autounattend.xml")
+    return ""
 
 
 def _http(relative_path: str | None) -> str:
