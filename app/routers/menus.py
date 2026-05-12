@@ -11,7 +11,6 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, BootEntry
 from app.config import settings
-from app.services.slugify import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +47,9 @@ def _collect_custom_scripts(db: Session) -> list[dict]:
         .join(IsoVersion.os_type)
         .all()
     )
+    http_root = Path(settings.http_root)
     for e in entries:
-        path = settings.http_root / e.custom_ipxe_path
+        path = http_root / e.custom_ipxe_path
         content = ""
         size = 0
         if path.exists():
@@ -152,7 +152,7 @@ async def custom_script_save(
     if not entry or not entry.custom_ipxe_path:
         raise HTTPException(404)
 
-    path = settings.http_root / entry.custom_ipxe_path
+    path = Path(settings.http_root) / entry.custom_ipxe_path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -181,7 +181,7 @@ async def custom_script_delete(
         raise HTTPException(404)
 
     # Supprimer le fichier disque
-    path = settings.http_root / entry.custom_ipxe_path
+    path = Path(settings.http_root) / entry.custom_ipxe_path
     if path.exists():
         try:
             path.unlink()
