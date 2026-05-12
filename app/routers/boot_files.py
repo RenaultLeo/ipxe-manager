@@ -118,7 +118,9 @@ async def upload_boot_file(
     elif file_role == "bootmgr":
         be.bootmgr_path  = relative
     elif file_role == "efi":
-        be.efi_path      = relative
+        be.efi_path           = relative
+    elif file_role == "custom_ipxe":
+        be.custom_ipxe_path   = relative
 
     if kernel_args:
         be.kernel_args = kernel_args

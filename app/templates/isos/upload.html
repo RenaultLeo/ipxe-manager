@@ -127,6 +127,25 @@
 
           </div><!-- /boot-fields -->
 
+          <!-- Script iPXE custom -->
+          <div class="card border-secondary mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span class="small">
+                <i class="bi bi-file-code me-1 text-warning"></i>
+                Script iPXE personnalisé <span class="text-muted">(optionnel)</span>
+              </span>
+              <span class="badge bg-warning text-dark small">Sous-menu "Autres"</span>
+            </div>
+            <div class="card-body">
+              <input type="file" name="file_custom_ipxe" class="form-control"
+                     accept=".ipxe,.txt">
+              <div class="form-text text-muted">
+                Si fourni, cette version apparaîtra dans le sous-menu
+                <strong>Autres</strong> de l'OS et chaînera vers ce script au lieu du boot standard.
+              </div>
+            </div>
+          </div>
+
           <div class="mb-3">
             <label class="form-label">Notes</label>
             <textarea name="notes" class="form-control" rows="2" placeholder="Notes optionnelles…"></textarea>

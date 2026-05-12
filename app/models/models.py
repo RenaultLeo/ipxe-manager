@@ -57,6 +57,9 @@ class BootEntry(Base):
     # EFI / UEFI
     efi_path = Column(String(512))
 
+    # Script iPXE personnalisé (optionnel — chainload custom)
+    custom_ipxe_path = Column(String(512))
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     iso_version = relationship("IsoVersion", back_populates="boot_entry")

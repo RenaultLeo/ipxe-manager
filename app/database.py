@@ -34,10 +34,11 @@ def init_db():
 
 def _migrate_columns():
     """Add columns introduced after initial deploy without needing Alembic."""
-    _add_column_if_missing("boot_entries", "bootmgr_path",  "VARCHAR(512)")
-    _add_column_if_missing("boot_entries", "bcd_path",       "VARCHAR(512)")
-    _add_column_if_missing("boot_entries", "boot_sdi_path",  "VARCHAR(512)")
-    _add_column_if_missing("boot_entries", "efi_path",       "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "bootmgr_path",      "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "bcd_path",           "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "boot_sdi_path",      "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "efi_path",           "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "custom_ipxe_path",   "VARCHAR(512)")
 
 
 def _add_column_if_missing(table: str, column: str, col_type: str):

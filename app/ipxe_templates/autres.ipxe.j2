@@ -1,0 +1,23 @@
+#!ipxe
+
+########################################
+# Sous-menu {{ os_type.label }} — Scripts personnalisés
+########################################
+
+:start
+menu === {{ os_type.label }} — Scripts personnalisés ===
+{% for e in entries %}
+item c{{ e.id }} {{ e.label }}
+{% endfor %}
+item --gap
+item back Retour à {{ os_type.label }}
+choose selected || goto back
+goto ${selected}
+
+{% for e in entries %}
+:c{{ e.id }}
+  chain --autofree {{ e.custom_ipxe }}
+{% endfor %}
+
+:back
+chain --autofree {{ server_url }}/menus/{{ os_type.slug }}.ipxe

@@ -11,6 +11,9 @@ item v{{ e.id }} {{ e.label }}{% if e.autoconfigs %} [+conf]{% endif %}
 
 {% endfor %}
 item --gap
+{% if has_autres %}
+item autres Autres versions {{ os_type.label }}…
+{% endif %}
 item back Retour au menu principal
 choose selected || goto back
 goto ${selected}
@@ -47,5 +50,10 @@ goto ${selected}
 
 {% endfor %}
 
+{% if has_autres %}
+:autres
+chain --autofree {{ server_url }}/menus/{{ os_type.slug }}_autres.ipxe
+
+{% endif %}
 :back
 chain --autofree {{ server_url }}/menus/menu.ipxe

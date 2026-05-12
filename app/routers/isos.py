@@ -72,9 +72,11 @@ async def upload_iso(
     file_boot_sdi: UploadFile = File(None),
     file_bootmgr:  UploadFile = File(None),
     # Linux boot files
-    file_kernel:   UploadFile = File(None),
-    file_initrd:   UploadFile = File(None),
-    kernel_args:   str = Form(""),
+    file_kernel:      UploadFile = File(None),
+    file_initrd:      UploadFile = File(None),
+    kernel_args:      str = Form(""),
+    # Script iPXE custom (tous OS)
+    file_custom_ipxe: UploadFile = File(None),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
@@ -159,6 +161,11 @@ async def upload_iso(
             fname = Path(file_initrd.filename).name
             be.initrd_path = await save_boot_file(file_initrd, fname)
             has_boot_files = True
+
+    # ── Script iPXE custom (optionnel, tous OS) ───────────────
+    if file_custom_ipxe and file_custom_ipxe.filename:
+        be.custom_ipxe_path = await save_boot_file(file_custom_ipxe, "custom.ipxe")
+        has_boot_files = True
 
     if has_boot_files:
         version.status = "ready"
