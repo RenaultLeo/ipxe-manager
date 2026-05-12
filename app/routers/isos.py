@@ -248,19 +248,46 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
     if not version:
         raise HTTPException(404)
 
-    # Remove ISO file
-    if version.iso_path and Path(version.iso_path).exists():
-        Path(version.iso_path).unlink(missing_ok=True)
+    try:
+        os_slug = version.os_type.slug
 
-    # Remove extracted boot files
-    from app.services.iso_extractor import cleanup_boot_files
-    cleanup_boot_files(version.os_type.slug, version.id)
+        # 1. Supprimer le fichier ISO du disque
+        if version.iso_path:
+            Path(version.iso_path).unlink(missing_ok=True)
 
-    db.delete(version)
-    db.commit()
+        # 2. Supprimer les fichiers boot (dossier slug ET dossier ID pour compat)
+        from app.services.slugify import slugify
+        version_slug = slugify(version.version_label)
+        for boot_path in [
+            settings.boot_dir / os_slug / version_slug,
+            settings.boot_dir / os_slug / str(version_id),
+        ]:
+            if boot_path.exists():
+                shutil.rmtree(boot_path, ignore_errors=True)
 
-    # Regenerate menus
-    from app.tasks.jobs import regenerate_menus_task
-    regenerate_menus_task.delay()
+        # 3. Supprimer les fichiers de config auto
+        for cfg_path in [
+            settings.configs_dir / os_slug / version_slug,
+            settings.configs_dir / os_slug / str(version_id),
+        ]:
+            if cfg_path.exists():
+                shutil.rmtree(cfg_path, ignore_errors=True)
+
+        # 4. Supprimer l'entrée en DB (cascade : BootEntry + AutoConfigs)
+        db.delete(version)
+        db.commit()
+
+        # 5. Régénérer les menus
+        try:
+            from app.services.menu_generator import regenerate_all
+            regenerate_all(db)
+        except Exception:
+            pass
+
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        raise HTTPException(500, f"Erreur lors de la suppression : {exc}")
 
     return RedirectResponse("/isos", status_code=302)
