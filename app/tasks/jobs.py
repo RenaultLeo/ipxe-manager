@@ -177,7 +177,21 @@ def compile_ipxe_task(self, menu_url: str):
 
         # ── 3. Générer embed.ipxe ────────────────────────────────────────────
         embed_path = src_dir / "src" / "embed.ipxe"
-        embed_content = f"#!ipxe\ndhcp\nchain {menu_url}\n"
+        embed_content = (
+            "#!ipxe\n"
+            "\n"
+            "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)\n"
+            "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
+            "\n"
+            f"chain --autofree {menu_url} ||\n"
+            f"  echo iPXE : impossible de charger {menu_url} &&\n"
+            "  sleep 5 &&\n"
+            "  goto start\n"
+            "\n"
+            ":start\n"
+            "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
+            f"chain --autofree {menu_url}\n"
+        )
         embed_path.write_text(embed_content, encoding="utf-8")
         logs.append(f"embed.ipxe généré :\n{embed_content}")
         self.update_state(state="PROGRESS", meta={"step": "embed", "logs": logs})
