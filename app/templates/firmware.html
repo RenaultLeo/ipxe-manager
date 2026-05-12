@@ -123,22 +123,40 @@
 
 <!-- ═══ Statut de compilation ═══ -->
 {% if task_id %}
-<div class="card border-secondary mb-4">
-  <div class="card-header">
-    <i class="bi bi-gear-wide-connected me-2 text-warning"></i>
-    Compilation en cours
-    <span class="badge bg-secondary ms-2 small font-monospace">{{ task_id[:16] }}…</span>
+<div class="card border-warning mb-4" id="build-card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>
+      <span class="spinner-border spinner-border-sm text-warning me-2" id="build-spinner"></span>
+      <i class="bi bi-gear-wide-connected me-1 text-warning"></i>
+      Compilation en cours
+      <span class="badge bg-secondary ms-2 small font-monospace">{{ task_id[:16] }}…</span>
+    </span>
+    <form method="post" action="/firmware/cancel/{{ task_id }}"
+          onsubmit="return confirm('Annuler la compilation en cours ?\n\nLes sources resteront sur disque, la prochaine compilation reprendra plus vite.')">
+      <button class="btn btn-outline-danger btn-sm">
+        <i class="bi bi-stop-circle me-1"></i>Annuler
+      </button>
+    </form>
   </div>
   <div class="card-body p-0"
        hx-get="/firmware/status/{{ task_id }}"
        hx-trigger="every 4s"
        hx-swap="innerHTML"
+       hx-on::after-swap="onStatusUpdate()"
        id="build-status">
     <div class="p-3 text-secondary small">
       <span class="spinner-border spinner-border-sm me-2"></span>
       Connexion au worker Celery…
     </div>
   </div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('cancelled') %}
+<div class="alert alert-warning">
+  <i class="bi bi-stop-circle me-2"></i>
+  <strong>Compilation annulée.</strong>
+  Les sources sont conservées — la prochaine compilation reprendra avec <code>git pull</code> sans tout recloner.
 </div>
 {% endif %}
 
@@ -185,4 +203,25 @@ if exists user-class and option user-class = "iPXE" {
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+function onStatusUpdate() {
+  const statusDiv = document.getElementById('build-status');
+  if (!statusDiv) return;
+  const isDone = statusDiv.querySelector('.alert-success, .alert-danger');
+  if (isDone) {
+    statusDiv.removeAttribute('hx-trigger');
+    if (window.htmx) htmx.process(statusDiv);
+    const spinner = document.getElementById('build-spinner');
+    if (spinner) spinner.classList.add('d-none');
+    const card = document.getElementById('build-card');
+    if (card) {
+      card.classList.remove('border-warning');
+      card.classList.add('border-secondary');
+    }
+  }
+}
+</script>
 {% endblock %}

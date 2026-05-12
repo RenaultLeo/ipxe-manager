@@ -129,6 +129,24 @@ async def firmware_build(
         return RedirectResponse("/firmware?error=celery", status_code=302)
 
 
+@router.post("/cancel/{task_id}")
+async def firmware_cancel(task_id: str, request: Request):
+    redir = _auth(request)
+    if redir:
+        return redir
+
+    try:
+        from celery.result import AsyncResult
+        from app.tasks.celery_app import celery
+        celery.control.revoke(task_id, terminate=True, signal="SIGTERM")
+        AsyncResult(task_id).forget()
+        logger.info("compile_ipxe_task %s annulé", task_id)
+    except Exception:
+        logger.exception("Erreur annulation task %s", task_id)
+
+    return RedirectResponse("/firmware?cancelled=1", status_code=302)
+
+
 @router.get("/status/{task_id}", response_class=HTMLResponse)
 async def firmware_task_status(task_id: str, request: Request):
     """Endpoint HTMX pour le polling du statut de compilation."""
