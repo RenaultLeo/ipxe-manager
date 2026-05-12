@@ -39,16 +39,36 @@
   </div>
 
   <div class="col-md-4">
+    <div class="card h-100 {% if status.snponly %}border-success{% else %}border-secondary{% endif %}">
+      <div class="card-body">
+        <h6 class="card-title text-secondary small text-uppercase mb-2">
+          <i class="bi bi-file-binary me-1"></i>snponly.efi
+          <span class="badge bg-primary ms-1" style="font-size:0.65rem">VMs</span>
+        </h6>
+        <p class="text-secondary small mb-1">UEFI via drivers EFI (virtio, e1000…)</p>
+        {% if status.snponly %}
+        <p class="mb-1"><span class="badge bg-success">Présent</span></p>
+        <p class="text-secondary small mb-1">{{ (status.snponly.size / 1024) | round(1) }} Ko</p>
+        <code class="small text-muted">{{ status.snponly.path }}</code>
+        {% else %}
+        <span class="badge bg-danger">Absent</span>
+        <p class="text-secondary small mt-1 mb-0">Pas encore compilé</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
     <div class="card h-100 {% if status.efi %}border-success{% else %}border-secondary{% endif %}">
       <div class="card-body">
         <h6 class="card-title text-secondary small text-uppercase mb-2">
-          <i class="bi bi-file-binary me-1"></i>ipxe.efi <span class="text-muted">(UEFI)</span>
+          <i class="bi bi-file-binary me-1"></i>ipxe.efi
+          <span class="badge bg-secondary ms-1" style="font-size:0.65rem">bare-metal</span>
         </h6>
+        <p class="text-secondary small mb-1">UEFI drivers intégrés (physique)</p>
         {% if status.efi %}
         <p class="mb-1"><span class="badge bg-success">Présent</span></p>
-        <p class="text-secondary small mb-1">
-          {{ (status.efi.size / 1024) | round(1) }} Ko
-        </p>
+        <p class="text-secondary small mb-1">{{ (status.efi.size / 1024) | round(1) }} Ko</p>
         <code class="small text-muted">{{ status.efi.path }}</code>
         {% else %}
         <span class="badge bg-danger">Absent</span>
@@ -57,6 +77,9 @@
       </div>
     </div>
   </div>
+
+</div>
+<div class="row g-3 mb-4">
 
   <div class="col-md-4">
     <div class="card h-100 border-secondary">
@@ -185,20 +208,35 @@
       Pointez votre serveur DHCP vers les fichiers compilés dans
       <code>{{ tftp_root }}</code> :
     </p>
-    <pre class="bg-dark text-light p-3 rounded small mb-2"><code># ISC DHCP — extrait
-if exists user-class and option user-class = "iPXE" {
+    <div class="alert alert-info py-2 small mb-2">
+      <i class="bi bi-info-circle me-1"></i>
+      Pour les <strong>VMs Proxmox/QEMU/VMware</strong>, utiliser <code>snponly.efi</code> —
+      il délègue aux drivers réseau de l'EFI (virtio-net, e1000…) contrairement à
+      <code>ipxe.efi</code> qui embarque ses propres drivers (plutôt pour le bare-metal).
+    </div>
+    <pre class="bg-dark text-light p-3 rounded small mb-2"><code># pfSense → Services > DHCP Server > [interface]
+# Coller dans "Additional BOOTP/DHCP Options" tout en bas :
+
+option client-architecture code 93 = unsigned integer 16;
+
+if exists user-class and ( option user-class = "iPXE" ) {
+  # Client déjà sous iPXE → menu direct
   filename "http://{{ menu_url.split('//')[1].split('/')[0] }}/menus/menu.ipxe";
-} elsif option arch = 00:07 {
-  filename "ipxe.efi";        # UEFI x86_64
-} elsif option arch = 00:0b {
-  filename "ipxe.efi";        # UEFI ARM64
+} elsif option client-architecture = 00:07 {
+  # UEFI x86_64 — VMs : snponly.efi  |  bare-metal : ipxe.efi
+  filename "snponly.efi";
+} elsif option client-architecture = 00:0b {
+  filename "snponly.efi";   # UEFI ARM64
 } else {
-  filename "undionly.kpxe";   # BIOS / Legacy
-}</code></pre>
+  filename "undionly.kpxe"; # BIOS / Legacy
+}
+
+# Next server (TFTP) : définir aussi dans le champ "Next Server"
+# de la section Network Booting → {{ tftp_root.split('/')[-1] | default('192.168.2.6') }}
+</code></pre>
     <p class="text-secondary small mb-0">
-      Les clients PXE chargeront <code>undionly.kpxe</code> ou <code>ipxe.efi</code>
-      depuis le TFTP, qui chainloaderont automatiquement vers
-      <code>{{ menu_url }}</code>.
+      Flux de boot : DHCP → TFTP (<code>snponly.efi</code>) → iPXE refait DHCP
+      → reçoit directement <code>{{ menu_url }}</code> grâce à la condition <code>user-class = "iPXE"</code>.
     </p>
   </div>
 </div>

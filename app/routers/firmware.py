@@ -47,6 +47,7 @@ def _firmware_status() -> dict:
     return {
         "undionly":     file_info(tftp / "undionly.kpxe"),
         "efi":          file_info(tftp / "ipxe.efi"),
+        "snponly":      file_info(tftp / "snponly.efi"),
         "embed":        embed_content,
         "src_cloned":   (src / ".git").exists(),
         "tftp_dir":     str(tftp),

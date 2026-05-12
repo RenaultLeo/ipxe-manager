@@ -203,24 +203,31 @@ def compile_ipxe_task(self, menu_url: str):
         self.update_state(state="PROGRESS", meta={"step": "compile_bios", "logs": logs})
         run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe"], cwd=make_dir)
 
-        # ── 5. Compiler ipxe.efi (UEFI x86_64) ──────────────────────────────
-        logs.append("Compilation ipxe.efi (UEFI)…")
+        # ── 5a. Compiler snponly.efi (UEFI — utilise drivers réseau EFI de la VM) ─
+        # snponly.efi délègue au SNP (Simple Network Protocol) de l'EFI :
+        # compatible virtio-net, e1000, vmxnet3, etc. sans driver intégré.
+        logs.append("Compilation snponly.efi (UEFI SNP — VMs / matériel avec driver EFI)…")
         self.update_state(state="PROGRESS", meta={"step": "compile_efi", "logs": logs})
+        run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe"], cwd=make_dir)
+
+        # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
+        logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
         run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe"], cwd=make_dir)
 
         # ── 6. Copier les binaires en TFTP ───────────────────────────────────
         logs.append(f"Copie des binaires vers {tftp_dir}")
         self.update_state(state="PROGRESS", meta={"step": "copy", "logs": logs})
 
-        kpxe_src = make_dir / "bin" / "undionly.kpxe"
-        efi_src  = make_dir / "bin-x86_64-efi" / "ipxe.efi"
+        kpxe_src     = make_dir / "bin" / "undionly.kpxe"
+        efi_src      = make_dir / "bin-x86_64-efi" / "ipxe.efi"
+        snponly_src  = make_dir / "bin-x86_64-efi" / "snponly.efi"
 
-        shutil.copy2(kpxe_src, tftp_dir / "undionly.kpxe")
-        shutil.copy2(efi_src,  tftp_dir / "ipxe.efi")
+        shutil.copy2(kpxe_src,    tftp_dir / "undionly.kpxe")
+        shutil.copy2(efi_src,     tftp_dir / "ipxe.efi")
+        shutil.copy2(snponly_src, tftp_dir / "snponly.efi")
 
-        # Permissions lisibles par tftpd
-        (tftp_dir / "undionly.kpxe").chmod(0o644)
-        (tftp_dir / "ipxe.efi").chmod(0o644)
+        for fname in ("undionly.kpxe", "ipxe.efi", "snponly.efi"):
+            (tftp_dir / fname).chmod(0o644)
 
         logs.append("Compilation terminée avec succès.")
         return {
@@ -229,6 +236,7 @@ def compile_ipxe_task(self, menu_url: str):
             "embed":        embed_content,
             "undionly":     str(tftp_dir / "undionly.kpxe"),
             "efi":          str(tftp_dir / "ipxe.efi"),
+            "snponly":      str(tftp_dir / "snponly.efi"),
             "logs":         "\n".join(logs),
         }
 
