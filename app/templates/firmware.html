@@ -134,7 +134,10 @@
        hx-trigger="every 4s"
        hx-swap="innerHTML"
        id="build-status">
-    {% include "firmware_status.html" %}
+    <div class="p-3 text-secondary small">
+      <span class="spinner-border spinner-border-sm me-2"></span>
+      Connexion au worker Celery…
+    </div>
   </div>
 </div>
 {% endif %}
