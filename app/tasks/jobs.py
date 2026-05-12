@@ -2,6 +2,7 @@
 Celery background jobs:
   - extract_iso_task      : extracts boot files from an uploaded ISO
   - regenerate_menus_task : regenerates all .ipxe menu files
+  - compile_ipxe_task     : compile les firmwares iPXE (undionly.kpxe + ipxe.efi)
 """
 import logging
 from datetime import datetime
@@ -108,3 +109,119 @@ def regenerate_menus_task():
         return {"written": written}
     finally:
         db.close()
+
+
+@celery.task(
+    bind=True,
+    name="compile_ipxe",
+    soft_time_limit=2400,   # 40 min
+    time_limit=2700,        # 45 min hard
+)
+def compile_ipxe_task(self, menu_url: str):
+    """
+    Clone (ou pull) le dépôt iPXE officiel, génère embed.ipxe avec un
+    chainload vers menu_url, compile undionly.kpxe et ipxe.efi puis
+    copie les binaires dans le répertoire TFTP.
+
+    Retourne un dict avec les paths des fichiers produits et les logs.
+    """
+    import subprocess
+    import shutil
+    from pathlib import Path
+    from app.config import settings
+
+    logs: list[str] = []
+    tftp_dir = Path(settings.tftp_root)
+    src_dir  = settings.ipxe_src_dir
+    build_dir = Path(settings.build_dir)
+
+    def run(cmd: list[str], cwd=None) -> str:
+        """Lance une commande, ajoute sa sortie aux logs, lève en cas d'erreur."""
+        logs.append(f"$ {' '.join(cmd)}")
+        try:
+            result = subprocess.run(
+                cmd, cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True, timeout=1800,
+            )
+            logs.append(result.stdout[-4000:] if len(result.stdout) > 4000 else result.stdout)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Commande échouée (code {result.returncode}) : {' '.join(cmd)}\n{result.stdout[-2000:]}"
+                )
+            return result.stdout
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Timeout dépassé pour : {' '.join(cmd)}")
+
+    try:
+        self.update_state(state="PROGRESS", meta={"step": "init", "logs": logs})
+
+        # ── 1. Créer les répertoires nécessaires ────────────────────────────
+        build_dir.mkdir(parents=True, exist_ok=True)
+        tftp_dir.mkdir(parents=True, exist_ok=True)
+
+        # ── 2. Cloner ou mettre à jour les sources iPXE ─────────────────────
+        if (src_dir / ".git").exists():
+            logs.append("Sources iPXE déjà présentes — git pull")
+            self.update_state(state="PROGRESS", meta={"step": "git_pull", "logs": logs})
+            run(["git", "pull", "--ff-only"], cwd=src_dir)
+        else:
+            logs.append("Clonage du dépôt iPXE (peut prendre quelques minutes)…")
+            self.update_state(state="PROGRESS", meta={"step": "git_clone", "logs": logs})
+            run([
+                "git", "clone", "--depth=1",
+                "https://github.com/ipxe/ipxe.git",
+                str(src_dir),
+            ])
+
+        # ── 3. Générer embed.ipxe ────────────────────────────────────────────
+        embed_path = src_dir / "src" / "embed.ipxe"
+        embed_content = f"#!ipxe\ndhcp\nchain {menu_url}\n"
+        embed_path.write_text(embed_content, encoding="utf-8")
+        logs.append(f"embed.ipxe généré :\n{embed_content}")
+        self.update_state(state="PROGRESS", meta={"step": "embed", "logs": logs})
+
+        make_dir = src_dir / "src"
+
+        # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
+        logs.append("Compilation undionly.kpxe (BIOS)…")
+        self.update_state(state="PROGRESS", meta={"step": "compile_bios", "logs": logs})
+        run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe"], cwd=make_dir)
+
+        # ── 5. Compiler ipxe.efi (UEFI x86_64) ──────────────────────────────
+        logs.append("Compilation ipxe.efi (UEFI)…")
+        self.update_state(state="PROGRESS", meta={"step": "compile_efi", "logs": logs})
+        run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe"], cwd=make_dir)
+
+        # ── 6. Copier les binaires en TFTP ───────────────────────────────────
+        logs.append(f"Copie des binaires vers {tftp_dir}")
+        self.update_state(state="PROGRESS", meta={"step": "copy", "logs": logs})
+
+        kpxe_src = make_dir / "bin" / "undionly.kpxe"
+        efi_src  = make_dir / "bin-x86_64-efi" / "ipxe.efi"
+
+        shutil.copy2(kpxe_src, tftp_dir / "undionly.kpxe")
+        shutil.copy2(efi_src,  tftp_dir / "ipxe.efi")
+
+        # Permissions lisibles par tftpd
+        (tftp_dir / "undionly.kpxe").chmod(0o644)
+        (tftp_dir / "ipxe.efi").chmod(0o644)
+
+        logs.append("Compilation terminée avec succès.")
+        return {
+            "status":       "success",
+            "menu_url":     menu_url,
+            "embed":        embed_content,
+            "undionly":     str(tftp_dir / "undionly.kpxe"),
+            "efi":          str(tftp_dir / "ipxe.efi"),
+            "logs":         "\n".join(logs),
+        }
+
+    except SoftTimeLimitExceeded:
+        logs.append("TIMEOUT : compilation annulée après 40 minutes.")
+        raise
+    except Exception as exc:
+        logs.append(f"ERREUR : {exc}")
+        logger.exception("compile_ipxe_task a échoué")
+        raise

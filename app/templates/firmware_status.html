@@ -1,0 +1,47 @@
+{% set steps = {
+  "init":         "Initialisation…",
+  "git_clone":    "Clonage du dépôt iPXE…",
+  "git_pull":     "Mise à jour des sources…",
+  "embed":        "Génération embed.ipxe…",
+  "compile_bios": "Compilation undionly.kpxe (BIOS)…",
+  "compile_efi":  "Compilation ipxe.efi (UEFI)…",
+  "copy":         "Copie des binaires en TFTP…",
+} %}
+
+{% if done %}
+  {% if success %}
+  <div class="alert alert-success rounded-0 mb-0">
+    <i class="bi bi-check-circle me-2"></i>
+    <strong>Compilation terminée avec succès !</strong>
+    Les firmwares sont disponibles dans <code>{{ result.get('undionly', '') | replace(result.get('undionly','').split('undionly')[0], '') if result else '' }}</code>.
+    <a href="/firmware" class="alert-link ms-2">Rafraîchir la page</a>
+  </div>
+  {% else %}
+  <div class="alert alert-danger rounded-0 mb-0">
+    <i class="bi bi-x-circle me-2"></i>
+    <strong>Erreur :</strong> {{ error }}
+  </div>
+  {% endif %}
+{% else %}
+<div class="p-3">
+  <!-- Barre de progression par étapes -->
+  {% set step_list = ["git_clone", "git_pull", "embed", "compile_bios", "compile_efi", "copy"] %}
+  <div class="d-flex gap-2 flex-wrap mb-3">
+    {% for s in step_list %}
+    <span class="badge {% if step == s %}bg-warning text-dark{% elif step_list.index(s) < step_list.index(step) if step in step_list else false %}bg-success{% else %}bg-secondary{% endif %}">
+      {% if step == s %}<span class="spinner-border spinner-border-sm me-1" style="width:.7rem;height:.7rem"></span>{% endif %}
+      {{ steps.get(s, s) }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <!-- Logs en temps réel -->
+  {% if logs %}
+  <pre class="bg-dark text-light p-2 rounded small mb-0"
+       style="max-height:200px;overflow-y:auto;white-space:pre-wrap;font-size:0.75rem">{% for line in logs %}{{ line }}
+{% endfor %}</pre>
+  {% else %}
+  <div class="text-secondary small">En attente du worker Celery…</div>
+  {% endif %}
+</div>
+{% endif %}

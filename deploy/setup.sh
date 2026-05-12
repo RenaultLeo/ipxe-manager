@@ -27,7 +27,9 @@ apt-get install -y -qq \
     p7zip-full p7zip wimtools genisoimage xorriso \
     samba samba-common-bin \
     curl wget unzip rsync ca-certificates \
-    iproute2 procps
+    iproute2 procps \
+    build-essential gcc binutils make liblzma-dev isolinux \
+    mtools libgcc-s1
 
 # ── 2. Utilisateur système ────────────────────────────────
 if ! id "$APP_USER" &>/dev/null; then

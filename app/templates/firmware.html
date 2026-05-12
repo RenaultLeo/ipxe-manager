@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Firmware iPXE — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-cpu me-2 text-primary"></i>Firmware iPXE
+  </h2>
+  <form method="post" action="/firmware/build" id="build-form">
+    <input type="hidden" name="menu_url" id="build-menu-url" value="{{ menu_url }}">
+    <button class="btn btn-primary" {% if building %}disabled{% endif %}>
+      <i class="bi bi-hammer me-1"></i>
+      {% if building %}Compilation en cours…{% else %}Compiler le firmware{% endif %}
+    </button>
+  </form>
+</div>
+
+<!-- ═══ Statut fichiers TFTP ═══ -->
+<div class="row g-3 mb-4">
+
+  <div class="col-md-4">
+    <div class="card h-100 {% if status.undionly %}border-success{% else %}border-secondary{% endif %}">
+      <div class="card-body">
+        <h6 class="card-title text-secondary small text-uppercase mb-2">
+          <i class="bi bi-file-binary me-1"></i>undionly.kpxe <span class="text-muted">(BIOS)</span>
+        </h6>
+        {% if status.undionly %}
+        <p class="mb-1"><span class="badge bg-success">Présent</span></p>
+        <p class="text-secondary small mb-1">
+          {{ (status.undionly.size / 1024) | round(1) }} Ko
+        </p>
+        <code class="small text-muted">{{ status.undionly.path }}</code>
+        {% else %}
+        <span class="badge bg-danger">Absent</span>
+        <p class="text-secondary small mt-1 mb-0">Pas encore compilé</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100 {% if status.efi %}border-success{% else %}border-secondary{% endif %}">
+      <div class="card-body">
+        <h6 class="card-title text-secondary small text-uppercase mb-2">
+          <i class="bi bi-file-binary me-1"></i>ipxe.efi <span class="text-muted">(UEFI)</span>
+        </h6>
+        {% if status.efi %}
+        <p class="mb-1"><span class="badge bg-success">Présent</span></p>
+        <p class="text-secondary small mb-1">
+          {{ (status.efi.size / 1024) | round(1) }} Ko
+        </p>
+        <code class="small text-muted">{{ status.efi.path }}</code>
+        {% else %}
+        <span class="badge bg-danger">Absent</span>
+        <p class="text-secondary small mt-1 mb-0">Pas encore compilé</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100 border-secondary">
+      <div class="card-body">
+        <h6 class="card-title text-secondary small text-uppercase mb-2">
+          <i class="bi bi-folder2 me-1"></i>Répertoires
+        </h6>
+        <p class="small mb-1">
+          <span class="text-secondary">TFTP :</span><br>
+          <code class="text-info small">{{ tftp_root }}</code>
+        </p>
+        <p class="small mb-0">
+          <span class="text-secondary">Sources :</span><br>
+          <code class="text-info small">{{ status.build_dir }}</code>
+          {% if status.src_cloned %}
+          <span class="badge bg-success ms-1 small">cloné</span>
+          {% else %}
+          <span class="badge bg-secondary ms-1 small">non cloné</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ embed.ipxe actuel ═══ -->
+<div class="card border-secondary mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-file-code me-2"></i><code>embed.ipxe</code>
+      — script intégré dans les firmwares compilés</span>
+    <button class="btn btn-sm btn-outline-secondary"
+            onclick="document.getElementById('embed-editor').classList.toggle('d-none')">
+      <i class="bi bi-pencil me-1"></i>Personnaliser
+    </button>
+  </div>
+  <div class="card-body p-0">
+    {% if status.embed %}
+    <pre class="p-3 mb-0 bg-dark text-success font-monospace small"
+         style="white-space:pre-wrap">{{ status.embed }}</pre>
+    {% else %}
+    <div class="p-3 text-secondary small">
+      L'embed sera généré automatiquement lors de la compilation avec l'URL ci-dessous.
+    </div>
+    {% endif %}
+  </div>
+  <!-- Éditeur embed personnalisé (optionnel) -->
+  <div id="embed-editor" class="card-body border-top border-secondary d-none">
+    <form method="post" action="/firmware/build">
+      <div class="mb-2">
+        <label class="form-label small text-secondary">URL chainload (menu.ipxe)</label>
+        <input type="text" name="menu_url" class="form-control form-control-sm font-monospace"
+               value="{{ menu_url }}" id="custom-url">
+      </div>
+      <p class="text-secondary small mb-2">
+        L'embed généré sera : <code>#!ipxe<br>dhcp<br>chain &lt;url&gt;</code>
+      </p>
+      <button class="btn btn-warning btn-sm">
+        <i class="bi bi-hammer me-1"></i>Compiler avec cette URL
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ Statut de compilation ═══ -->
+{% if task_id %}
+<div class="card border-secondary mb-4">
+  <div class="card-header">
+    <i class="bi bi-gear-wide-connected me-2 text-warning"></i>
+    Compilation en cours
+    <span class="badge bg-secondary ms-2 small font-monospace">{{ task_id[:16] }}…</span>
+  </div>
+  <div class="card-body p-0"
+       hx-get="/firmware/status/{{ task_id }}"
+       hx-trigger="every 4s"
+       hx-swap="innerHTML"
+       id="build-status">
+    {% include "firmware_status.html" %}
+  </div>
+</div>
+{% endif %}
+
+{% if result %}
+  {% if result.state == "SUCCESS" %}
+  <div class="alert alert-success">
+    <i class="bi bi-check-circle me-2"></i>
+    <strong>Compilation réussie !</strong>
+    Les firmwares ont été copiés dans <code>{{ tftp_root }}</code>.
+  </div>
+  {% else %}
+  <div class="alert alert-danger">
+    <i class="bi bi-x-circle me-2"></i>
+    <strong>Échec :</strong> {{ result.result }}
+  </div>
+  {% endif %}
+{% endif %}
+
+<!-- ═══ Guide configuration DHCP ═══ -->
+<div class="card border-secondary">
+  <div class="card-header">
+    <i class="bi bi-info-circle me-2 text-info"></i>Configuration serveur DHCP
+  </div>
+  <div class="card-body">
+    <p class="text-secondary small mb-2">
+      Pointez votre serveur DHCP vers les fichiers compilés dans
+      <code>{{ tftp_root }}</code> :
+    </p>
+    <pre class="bg-dark text-light p-3 rounded small mb-2"><code># ISC DHCP — extrait
+if exists user-class and option user-class = "iPXE" {
+  filename "http://{{ menu_url.split('//')[1].split('/')[0] }}/menus/menu.ipxe";
+} elsif option arch = 00:07 {
+  filename "ipxe.efi";        # UEFI x86_64
+} elsif option arch = 00:0b {
+  filename "ipxe.efi";        # UEFI ARM64
+} else {
+  filename "undionly.kpxe";   # BIOS / Legacy
+}</code></pre>
+    <p class="text-secondary small mb-0">
+      Les clients PXE chargeront <code>undionly.kpxe</code> ou <code>ipxe.efi</code>
+      depuis le TFTP, qui chainloaderont automatiquement vers
+      <code>{{ menu_url }}</code>.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

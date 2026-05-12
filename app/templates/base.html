@@ -48,6 +48,11 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if '/firmware' in request.url.path %}active{% endif %}" href="/firmware">
+            <i class="bi bi-cpu me-1"></i>Firmware
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if '/settings' in request.url.path %}active{% endif %}" href="/settings">
             <i class="bi bi-gear me-1"></i>Paramètres
           </a>

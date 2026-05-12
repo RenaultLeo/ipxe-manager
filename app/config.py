@@ -15,9 +15,14 @@ class Settings(BaseSettings):
     tftp_root: str = "/srv/ipxe/tftpboot"
     http_root: str = "/srv/ipxe/http"
     iso_root: str = "/srv/ipxe/isos"
+    build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
 
     max_upload_size: int = 53_687_091_200  # 50 GB
     extract_timeout: int = 3600
+
+    @property
+    def ipxe_src_dir(self) -> Path:
+        return Path(self.build_dir) / "ipxe-src"
 
     @property
     def menus_dir(self) -> Path:
