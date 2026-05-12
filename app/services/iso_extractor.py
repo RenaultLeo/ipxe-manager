@@ -156,6 +156,8 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
             raise ExtractionError(
                 f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
             )
+        # Corriger les permissions pour que Nginx (www-data) puisse servir les fichiers
+        _fix_permissions(dest)
         paths = _find_windows_in_dest(dest, os_slug, version_slug)
     else:
         # Linux : extraction dans un dossier temp, copie des fichiers de boot seulement
@@ -312,6 +314,26 @@ def _find_by_priority(root: Path, names: list[str], mode: str = "extra") -> Path
             return max(candidates, key=lambda f: f.stat().st_size)
 
     return None
+
+
+# ── Permissions ────────────────────────────────────────────────────────────────
+
+def _fix_permissions(path: Path):
+    """
+    Rend tous les fichiers lisibles par Nginx (www-data).
+    Dossiers → 755, fichiers → 644.
+    7z conserve parfois les permissions ISO (souvent 400/500) qui bloquent Nginx.
+    """
+    try:
+        for p in path.rglob("*"):
+            if p.is_dir():
+                p.chmod(0o755)
+            else:
+                p.chmod(0o644)
+        path.chmod(0o755)
+        logger.info("Permissions corrigées sur %s", path)
+    except Exception as exc:
+        logger.warning("Impossible de corriger les permissions sur %s : %s", path, exc)
 
 
 # ── Nettoyage ──────────────────────────────────────────────────────────────────
