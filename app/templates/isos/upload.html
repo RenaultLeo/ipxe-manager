@@ -57,42 +57,22 @@
             <div id="fields-windows" class="d-none">
               <div class="card border-warning mb-3">
                 <div class="card-header text-warning small">
-                  <i class="bi bi-windows me-1"></i>Fichiers Windows requis
+                  <i class="bi bi-windows me-1"></i>Windows — boot.wim personnalisé
                 </div>
                 <div class="card-body">
-                  <div class="row g-3">
-                    <div class="col-md-6">
-                      <label class="form-label">
-                        BCD <span class="text-danger">*</span>
-                        <span class="text-muted fw-normal small">— boot/BCD</span>
-                      </label>
-                      <input type="file" name="file_bcd" class="form-control">
-                      <div class="form-text">Indique à Windows comment démarrer</div>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label">
-                        boot.sdi <span class="text-danger">*</span>
-                        <span class="text-muted fw-normal small">— boot/boot.sdi</span>
-                      </label>
-                      <input type="file" name="file_boot_sdi" class="form-control">
-                      <div class="form-text">Disque virtuel temporaire en RAM</div>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label">
-                        boot.wim <span class="text-danger">*</span>
-                        <span class="text-muted fw-normal small">— sources/boot.wim</span>
-                      </label>
-                      <input type="file" name="file_boot_wim" class="form-control">
-                      <div class="form-text">Mini-OS Windows (écran d'installation)</div>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label">
-                        bootmgr.efi
-                        <span class="text-muted fw-normal small">— optionnel (UEFI)</span>
-                      </label>
-                      <input type="file" name="file_bootmgr" class="form-control">
-                      <div class="form-text">Uniquement pour boot UEFI</div>
-                    </div>
+                  <p class="text-secondary small mb-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    BCD et boot.sdi sont extraits automatiquement depuis l'ISO.
+                    Vous pouvez fournir un <strong>boot.wim custom</strong> (WinPE personnalisé)
+                    — sinon celui de l'ISO sera utilisé.
+                  </p>
+                  <div class="col-md-6">
+                    <label class="form-label">
+                      boot.wim
+                      <span class="text-muted fw-normal small">— optionnel</span>
+                    </label>
+                    <input type="file" name="file_boot_wim" class="form-control" accept=".wim">
+                    <div class="form-text">Remplace le boot.wim extrait de l'ISO</div>
                   </div>
                 </div>
               </div>
