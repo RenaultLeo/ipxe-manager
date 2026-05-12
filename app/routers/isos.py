@@ -164,7 +164,7 @@ async def upload_iso(
 
     # ── Script iPXE custom (optionnel, tous OS) ───────────────
     if file_custom_ipxe and file_custom_ipxe.filename:
-        be.custom_ipxe_path = await save_boot_file(file_custom_ipxe, "custom.ipxe")
+        be.custom_ipxe_path = await save_boot_file(file_custom_ipxe, Path(file_custom_ipxe.filename).name)
         has_boot_files = True
 
     if has_boot_files:
