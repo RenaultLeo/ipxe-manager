@@ -324,6 +324,9 @@ systemctl enable --now smbd nmbd
 systemctl enable --now ipxe-manager
 systemctl enable --now ipxe-celery
 
+# tftpd-hpa peut avoir démarré pendant la mise à jour des fichiers ; redémarrer une fois tout écrit.
+systemctl restart tftpd-hpa
+
 # ── Résumé ────────────────────────────────────────────────────────────────────
 echo ""
 echo "======================================================"

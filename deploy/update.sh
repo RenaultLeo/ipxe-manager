@@ -19,7 +19,7 @@ cd "$APP_DIR"
 "$VENV/bin/python" deploy/seed_db.py
 
 echo "==> Redémarrage des services…"
-systemctl restart ipxe-manager ipxe-celery
+systemctl restart ipxe-manager ipxe-celery tftpd-hpa
 
 echo ""
 echo "Mise à jour terminée."
