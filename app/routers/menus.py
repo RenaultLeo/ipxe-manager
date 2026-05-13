@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
+from app.services.os_type_order import sort_os_types_for_ui
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
             "request":        request,
             "menu_files":     _collect_menu_files(),
             "custom_scripts": _collect_custom_scripts(db),
-            "os_types":       db.query(OsType).all(),
+            "os_types":       sort_os_types_for_ui(db.query(OsType).all()),
             "server_url":     settings.server_base_url,
             "remote_chains":  remote_chains,
         },
@@ -105,7 +106,7 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
     except Exception:
         err = traceback.format_exc()
         logger.error("Erreur régénération menus :\n%s", err)
-        os_types = db.query(OsType).all()
+        os_types = sort_os_types_for_ui(db.query(OsType).all())
         menu_files = []
         if settings.menus_dir.exists():
             for f in sorted(settings.menus_dir.glob("*.ipxe")):

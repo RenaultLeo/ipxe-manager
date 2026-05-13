@@ -13,16 +13,16 @@ from app.models.models import OsType
 
 DEFAULT_OS = [
     {"slug": "windows", "label": "Windows",     "icon": "bi-windows",  "boot_type": "windows", "is_builtin": True},
-    {"slug": "winpe",   "label": "WinPE",       "icon": "bi-terminal", "boot_type": "windows", "is_builtin": True},
     {"slug": "ubuntu",  "label": "Ubuntu",      "icon": "bi-ubuntu",   "boot_type": "linux",   "is_builtin": True},
     {"slug": "debian",  "label": "Debian",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "centos",  "label": "CentOS",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "rocky",   "label": "Rocky Linux", "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
+    {"slug": "alpine",  "label": "Alpine Linux", "icon": "bi-hdd",     "boot_type": "linux",   "is_builtin": True},
     {"slug": "alma",    "label": "AlmaLinux",   "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "fedora",  "label": "Fedora",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "proxmox", "label": "Proxmox VE",  "icon": "bi-server",   "boot_type": "linux",   "is_builtin": True},
+    {"slug": "winpe",   "label": "WinPE",       "icon": "bi-terminal", "boot_type": "windows", "is_builtin": True},
     {"slug": "esxi",    "label": "VMware ESXi", "icon": "bi-cpu",      "boot_type": "linux",   "is_builtin": True},
-    {"slug": "alpine",  "label": "Alpine Linux", "icon": "bi-hdd",     "boot_type": "linux",   "is_builtin": True},
     {"slug": "tools",   "label": "Outils",      "icon": "bi-tools",    "boot_type": "linux",   "is_builtin": False},
 ]
 

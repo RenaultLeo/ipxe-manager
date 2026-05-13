@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import is_authenticated, hash_password
 from app.models.models import AppSetting, OsType
+from app.services.os_type_order import sort_os_types_for_ui
 from app.config import settings as app_settings
 
 router = APIRouter(prefix="/settings")
@@ -48,7 +49,7 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
         "http_root": app_settings.http_root,
         "iso_root": app_settings.iso_root,
     }
-    os_types = db.query(OsType).all()
+    os_types = sort_os_types_for_ui(db.query(OsType).all())
     return templates.TemplateResponse(
         "settings.html",
         {"request": request, "current": current, "os_types": os_types},

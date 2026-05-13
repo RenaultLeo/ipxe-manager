@@ -11,6 +11,7 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, Upload
 from app.services.disk_info import fmt_size
+from app.services.os_type_order import sort_os_types_for_ui
 from app.config import settings
 
 router = APIRouter(prefix="/isos")
@@ -32,7 +33,7 @@ async def iso_list(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:
         return redir
-    os_types = db.query(OsType).all()
+    os_types = sort_os_types_for_ui(db.query(OsType).all())
     versions = db.query(IsoVersion).order_by(IsoVersion.created_at.desc()).all()
     return templates.TemplateResponse(
         "isos/index.html",
@@ -52,7 +53,7 @@ async def upload_form(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:
         return redir
-    os_types = db.query(OsType).all()
+    os_types = sort_os_types_for_ui(db.query(OsType).all())
     return templates.TemplateResponse(
         "isos/upload.html",
         {"request": request, "os_types": os_types},

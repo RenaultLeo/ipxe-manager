@@ -8,6 +8,7 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.services.disk_info import get_disk_usage, fmt_size
 from app.models.models import OsType, IsoVersion, Upload
+from app.services.os_type_order import sort_os_types_for_ui
 from app.config import settings
 
 router = APIRouter()
@@ -29,7 +30,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
     try:
         disk = get_disk_usage()
-        os_types = db.query(OsType).all()
+        os_types = sort_os_types_for_ui(db.query(OsType).all())
 
         stats = []
         for ot in os_types:

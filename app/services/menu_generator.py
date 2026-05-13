@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
+from app.services.os_type_order import sort_os_types_for_ui
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def regenerate_all(db: Session) -> list[str]:
     env = _jinja_env()
     written: list[str] = []
 
-    os_types = db.query(OsType).all()
+    os_types = sort_os_types_for_ui(db.query(OsType).all())
 
     # Per-OS sub-menus
     for os_type in os_types:
