@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -8,28 +9,60 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
-from app.models.models import OsType, IsoVersion, AutoConfig
+from app.models.models import IsoVersion, AutoConfig
 from app.config import settings
 from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
+from app.services.slugify import slugify
 
 router = APIRouter(prefix="/ipxe-configs")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 CONFIG_TYPES = [
-    "preseed",          # Debian
-    "kickstart",        # CentOS / Rocky / Alma / Fedora / ESXi
-    "unattend",         # Windows
-    "cloud-init",       # Ubuntu (user-data / meta-data)
-    "proxmox-answer",   # Proxmox (answer.toml)
-    "alpine-answer",    # Alpine (answers / alpine.apkovl.tar.gz)
+    "preseed",
+    "kickstart",
+    "unattend",
+    "cloud-init",
+    "proxmox-answer",
+    "alpine-answer",
     "custom",
 ]
+
+UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
 
 
 def _auth(request: Request):
     if not is_authenticated(request):
         return RedirectResponse("/login", status_code=302)
     return None
+
+
+def _ubuntu_bundle_rel_path(os_slug: str, version_slug: str, cloud_slug: str) -> str:
+    return f"configs/{os_slug}/{version_slug}/{UBUNTU_CLOUD_PREFIX}{cloud_slug}"
+
+
+def _write_ubuntu_cloud_bundle(
+    version: IsoVersion,
+    cloud_slug: str,
+    user_data: str,
+    meta_data: str,
+) -> str:
+    """Écrit user-data + meta-data dans conf-cloudInit-<slug>/. Retourne le chemin relatif du dossier."""
+    version_slug = slugify(version.version_label)
+    base = settings.configs_dir / version.os_type.slug / version_slug
+    bundle_dir = base / f"{UBUNTU_CLOUD_PREFIX}{cloud_slug}"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    (bundle_dir / "user-data").write_text(user_data, encoding="utf-8")
+    (bundle_dir / "meta-data").write_text(meta_data, encoding="utf-8")
+    return _ubuntu_bundle_rel_path(version.os_type.slug, version_slug, cloud_slug)
+
+
+def _delete_ubuntu_bundle_disk(cfg: AutoConfig):
+    if not cfg.ubuntu_cloud_slug or not cfg.file_path:
+        return
+    root = Path(settings.http_root)
+    bundle = root / cfg.file_path.lstrip("/")
+    if bundle.is_dir() and bundle.name.startswith(UBUNTU_CLOUD_PREFIX):
+        shutil.rmtree(bundle, ignore_errors=True)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -49,7 +82,6 @@ async def config_list(request: Request, db: Session = Depends(get_db),
 
 @router.post("/scan")
 async def config_scan(request: Request, db: Session = Depends(get_db)):
-    """Scan configs/ directory and auto-import unregistered config files."""
     redir = _auth(request)
     if redir:
         return redir
@@ -80,9 +112,11 @@ async def config_create(
     request: Request,
     iso_version_id: int = Form(...),
     config_type: str = Form(...),
-    forced_filename: str = Form(""),   # fichier choisi parmi multi-file (Ubuntu, Alpine, Windows)
+    forced_filename: str = Form(""),
+    cloud_bundle_name: str = Form(""),
     label: str = Form(""),
     content: str = Form(""),
+    content_meta: str = Form(""),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
@@ -94,8 +128,6 @@ async def config_create(
         raise HTTPException(404)
 
     os_slug = version.os_type.slug
-    # Pour les OS built-in : forcer le type canonique si l'utilisateur n'a pas sélectionné
-    # un type valide (laisse le choix libre sinon)
     if version.os_type.is_builtin and os_slug in FORCED_CONFIGS:
         if config_type not in CONFIG_TYPES:
             config_type = FORCED_CONFIGS[os_slug]["type"]
@@ -103,20 +135,46 @@ async def config_create(
     cfg = AutoConfig(
         iso_version_id=iso_version_id,
         config_type=config_type,
-        label=label or config_type,
+        label=label or "user-data",
         content=content,
     )
+
+    if (
+        os_slug == "ubuntu"
+        and version.os_type.is_builtin
+        and config_type == "cloud-init"
+    ):
+        slug = slugify(cloud_bundle_name.strip())
+        if not slug:
+            raise HTTPException(
+                400,
+                "Pour Ubuntu, indiquez un nom de dossier de configuration (slug non vide).",
+            )
+        dup = (
+            db.query(AutoConfig)
+            .filter(
+                AutoConfig.iso_version_id == version.id,
+                AutoConfig.config_type == "cloud-init",
+                AutoConfig.ubuntu_cloud_slug == slug,
+            )
+            .first()
+        )
+        if dup:
+            raise HTTPException(400, f"Une config « {UBUNTU_CLOUD_PREFIX}{slug} » existe déjà pour cette version.")
+        cfg.meta_data_content = content_meta
+        cfg.ubuntu_cloud_slug = slug
+        db.add(cfg)
+        db.flush()
+        fp = _write_ubuntu_cloud_bundle(version, slug, content, content_meta or "")
+        cfg.file_path = fp
+        db.commit()
+        return RedirectResponse("/ipxe-configs", status_code=302)
+
     db.add(cfg)
     db.flush()
-
     file_path = _write_config_file(cfg, version, content, forced_filename=forced_filename)
     cfg.file_path = file_path
     db.commit()
-
-    # Pour Ubuntu : s'assurer que meta-data existe (requis par cloud-init)
-    if os_slug == "ubuntu" and version.os_type.is_builtin:
-        _ensure_ubuntu_meta_data(version, db)
-
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 
@@ -143,6 +201,7 @@ async def config_update(
     request: Request,
     label: str = Form(""),
     content: str = Form(""),
+    content_meta: str = Form(""),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
@@ -152,13 +211,27 @@ async def config_update(
     if not cfg:
         raise HTTPException(404)
 
-    cfg.label = label or cfg.config_type
+    cfg.label = label or cfg.label or "user-data"
     cfg.content = content
     cfg.updated_at = datetime.utcnow()
-    file_path = _write_config_file(cfg, cfg.iso_version, content)
-    cfg.file_path = file_path
-    db.commit()
 
+    ver = cfg.iso_version
+    if (
+        cfg.config_type == "cloud-init"
+        and ver.os_type.slug == "ubuntu"
+        and cfg.ubuntu_cloud_slug
+    ):
+        cfg.meta_data_content = content_meta
+        fp = _write_ubuntu_cloud_bundle(
+            ver, cfg.ubuntu_cloud_slug, content, content_meta or ""
+        )
+        cfg.file_path = fp
+        db.commit()
+        return RedirectResponse("/ipxe-configs", status_code=302)
+
+    fp = _write_config_file(cfg, ver, content)
+    cfg.file_path = fp
+    db.commit()
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 
@@ -170,38 +243,20 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
     cfg = db.query(AutoConfig).get(config_id)
     if not cfg:
         raise HTTPException(404)
-    if cfg.file_path:
+
+    if cfg.ubuntu_cloud_slug and cfg.file_path:
+        _delete_ubuntu_bundle_disk(cfg)
+    elif cfg.file_path:
         Path(settings.http_root).joinpath(cfg.file_path).unlink(missing_ok=True)
+
     db.delete(cfg)
     db.commit()
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 
-def _ensure_ubuntu_meta_data(version: IsoVersion, db: Session):
-    """Crée un fichier meta-data vide pour Ubuntu si absent (requis par cloud-init/autoinstall)."""
-    from app.services.slugify import slugify
-    version_slug = slugify(version.version_label)
-    cfg_dir = settings.configs_dir / version.os_type.slug / version_slug
-    meta = cfg_dir / "meta-data"
-    if not meta.exists():
-        meta.write_text("instance-id: iid-local01\nlocal-hostname: ubuntu-pxe\n",
-                        encoding="utf-8")
-        # Enregistrer en base
-        ac = AutoConfig(
-            iso_version_id=version.id,
-            config_type="cloud-init",
-            label="meta-data",
-            content=meta.read_text(),
-            file_path=f"configs/{version.os_type.slug}/{version_slug}/meta-data",
-        )
-        db.add(ac)
-        db.commit()
-
-
 def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
                        forced_filename: str = "") -> str:
     """Write config content to disk and return the relative path."""
-    from app.services.slugify import slugify
     version_slug = slugify(version.version_label)
     cfg_dir = settings.configs_dir / version.os_type.slug / version_slug
     cfg_dir.mkdir(parents=True, exist_ok=True)
@@ -210,9 +265,9 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
         "preseed":          "cfg",
         "kickstart":        "cfg",
         "unattend":         "xml",
-        "cloud-init":       "",     # pas d'extension : user-data, meta-data
+        "cloud-init":       "",
         "proxmox-answer":   "toml",
-        "alpine-answer":    "",     # pas d'extension : answers (ou .tar.gz géré manuellement)
+        "alpine-answer":    "",
         "custom":           "txt",
     }
 
@@ -220,14 +275,15 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
     forced = FORCED_CONFIGS.get(os_slug) if version.os_type.is_builtin else None
 
     if forced:
-        # OS built-in : utiliser le fichier choisi par l'utilisateur (multi_file)
-        # ou le premier fichier canonique par défaut
-        if forced.get("multi_file") and forced_filename in forced["filenames"]:
+        if forced.get("multi_file") and forced.get("filenames") and forced_filename in forced["filenames"]:
             fname = forced_filename
-        else:
+        elif forced.get("filenames"):
             fname = forced["filenames"][0]
+        else:
+            base = slugify(cfg.label) if cfg.label and slugify(cfg.label) else cfg.config_type
+            ext = ext_map.get(cfg.config_type, "txt")
+            fname = f"{base}.{ext}" if ext else base
     else:
-        # OS custom : label slugifié ou type
         ext = ext_map.get(cfg.config_type, "txt")
         base = slugify(cfg.label) if cfg.label and slugify(cfg.label) else cfg.config_type
         fname = f"{base}.{ext}" if ext else base
@@ -246,6 +302,7 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
                 base_name = Path(fname).stem
                 suffix = Path(fname).suffix
                 fname = f"{base_name}_{cfg.id}{suffix}"
+                dest = cfg_dir / fname
 
     dest = cfg_dir / fname
     dest.write_text(content, encoding="utf-8")

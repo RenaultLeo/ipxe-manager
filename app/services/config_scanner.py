@@ -12,6 +12,8 @@ from app.services.slugify import slugify
 
 logger = logging.getLogger(__name__)
 
+UBUNTU_CLOUD_BUNDLE_PREFIX = "conf-cloudInit-"
+
 # ── Mapping OS slug → type de config par défaut ───────────────────────────────
 OS_CONFIG_TYPE: dict[str, str] = {
     "windows":  "unattend",
@@ -55,11 +57,12 @@ FORCED_CONFIGS: dict[str, dict] = {
         "multi_file":  False,
     },
     "ubuntu": {
-        "type":        "cloud-init",
-        "filenames":   ["user-data", "meta-data"],
-        "description": "user-data (config autoinstall) ou meta-data (identité instance)",
-        "ext":         "",
-        "multi_file":  True,
+        "type":         "cloud-init",
+        # Un seul dossier conf-cloudInit-<nom> avec user-data + meta-data (plus de multi_file)
+        "description":  "Autoinstall — dossier conf-cloudInit-… avec user-data et meta-data",
+        "ext":          "",
+        "multi_file":   False,
+        "ubuntu_bundle": True,
     },
     "centos": {
         "type":        "kickstart",
@@ -163,9 +166,8 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         else:  # centos, esxi…
             return f"ks={url}"
     elif config_type == "cloud-init":
-        # Ubuntu autoinstall : pointe sur le dossier contenant user-data + meta-data
-        # url doit se terminer par / (le dossier, pas le fichier)
-        base_url = url.rsplit("/", 1)[0] + "/" if not url.endswith("/") else url
+        # Ubuntu autoinstall (nocloud-net) — URL du dossier, toujours avec / final
+        base_url = url.rstrip("/") + "/"
         return f"autoinstall ds=nocloud-net;s={base_url}"
     elif config_type == "unattend":
         return ""   # injecté comme initrd dans wimboot (Windows)
@@ -216,6 +218,44 @@ def scan_and_import(db: Session) -> dict:
                 logger.debug("Pas de version trouvée pour %s/%s — ignoré", os_slug, version_key)
                 results["skipped"] += 1
                 continue
+
+            # Ubuntu : dossiers conf-cloudInit-<slug>/ avec user-data + meta-data
+            if os_slug == "ubuntu":
+                for sub in sorted(ver_dir.iterdir()):
+                    if not sub.is_dir() or not sub.name.startswith(UBUNTU_CLOUD_BUNDLE_PREFIX):
+                        continue
+                    slug = sub.name[len(UBUNTU_CLOUD_BUNDLE_PREFIX) :]
+                    ud_path = sub / "user-data"
+                    md_path = sub / "meta-data"
+                    if not ud_path.is_file() or not md_path.is_file():
+                        continue
+                    rel_bundle = f"configs/{os_slug}/{version_key}/{sub.name}"
+                    if rel_bundle in existing:
+                        results["skipped"] += 1
+                        continue
+                    try:
+                        ud_txt = ud_path.read_text(encoding="utf-8", errors="replace")
+                        md_txt = md_path.read_text(encoding="utf-8", errors="replace")
+                        ac = AutoConfig(
+                            iso_version_id=version.id,
+                            config_type="cloud-init",
+                            label=slug or sub.name,
+                            content=ud_txt,
+                            meta_data_content=md_txt,
+                            ubuntu_cloud_slug=slug,
+                            file_path=rel_bundle,
+                        )
+                        db.add(ac)
+                        db.flush()
+                        existing.add(rel_bundle)
+                        results["imported"] += 1
+                        logger.info(
+                            "Config bundle importée : %s (Ubuntu autoinstall)", rel_bundle
+                        )
+                    except Exception as exc:
+                        msg = f"{rel_bundle}: {exc}"
+                        results["errors"].append(msg)
+                        logger.exception("Erreur import bundle %s", rel_bundle)
 
             for f in sorted(ver_dir.iterdir()):
                 if not f.is_file():

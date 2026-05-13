@@ -76,7 +76,9 @@ class AutoConfig(Base):
     iso_version_id = Column(Integer, ForeignKey("iso_versions.id"), nullable=False)
     config_type = Column(String(32))   # preseed | kickstart | unattend | cloud-init | custom
     label = Column(String(128), default="")
-    content = Column(Text, default="")
+    content = Column(Text, default="")            # Ubuntu cloud-init bundle : corps user-data
+    meta_data_content = Column(Text, default="")  # Ubuntu bundle : corps meta-data
+    ubuntu_cloud_slug = Column(String(128))         # dossier conf-cloudInit-<slug> si bundle
     file_path = Column(String(512))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

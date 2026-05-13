@@ -39,7 +39,13 @@
             <i class="{{ c.iso_version.os_type.icon }} me-1 text-primary"></i>
             {{ c.iso_version.os_type.label }} {{ c.iso_version.version_label }}
           </td>
-          <td><span class="badge bg-info text-dark">{{ c.config_type }}</span></td>
+          <td>{% if c.ubuntu_cloud_slug %}
+            <span class="badge bg-info text-dark" title="Dossier nocloud avec user-data + meta-data">user-data</span>
+            {% elif c.iso_version.os_type.slug == 'ubuntu' and c.config_type == 'cloud-init' %}
+            <span class="badge bg-secondary">user-data (fichier seul)</span>
+            {% else %}
+            <span class="badge bg-info text-dark">{{ c.config_type }}</span>
+            {% endif %}</td>
           <td>{{ c.label }}</td>
           <td class="font-monospace small text-muted">{{ c.file_path or '—' }}</td>
           <td class="text-muted small">{{ c.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>

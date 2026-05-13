@@ -46,7 +46,7 @@
               <div class="form-text text-muted" id="type-hint"></div>
             </div>
 
-            <!-- Choix de fichier pour les distros multi-file (Ubuntu, Alpine, Windows) -->
+            <!-- Choix de fichier pour les distros multi-file (Alpine, Windows, …) -->
             <div class="col-md-6 d-none" id="file-choice-wrap">
               <label class="form-label">Fichier à créer <span class="text-danger">*</span></label>
               <select name="forced_filename" class="form-select" id="file-choice">
@@ -56,38 +56,76 @@
           </div>
           {% endif %}
 
+          {% if config %}
+          <div class="mb-3">
+            <label class="form-label text-muted">Version d'OS</label>
+            <div class="form-control bg-secondary border-secondary py-2 small">
+              <i class="{{ config.iso_version.os_type.icon }} me-1"></i>
+              {{ config.iso_version.os_type.label }} {{ config.iso_version.version_label }}
+            </div>
+          </div>
+          {% endif %}
+
+          {# Création Ubuntu autoinstall : nom du dossier conf-cloudInit-… #}
+          <div class="mb-3 d-none" id="ubuntu-bundle-name-wrap">
+            <label class="form-label">Nom du dossier de configuration <span class="text-danger">*</span></label>
+            <input type="text" name="cloud_bundle_name" id="cloud-bundle-name-input"
+                   class="form-control" maxlength="128" autocomplete="off"
+                   placeholder="Ex. prod-web, classe-a — lettres et chiffres, tirets après normalisation">
+            <div class="form-text">Chemin réel sous la version&nbsp;: <code class="small" id="bundle-path-preview"></code></div>
+          </div>
+
+          {% if config and config.ubuntu_cloud_slug %}
+          <div class="mb-3">
+            <label class="form-label text-muted">Dossier (fixe)</label>
+            <input type="text" class="form-control font-monospace" readonly
+                   value="conf-cloudInit-{{ config.ubuntu_cloud_slug }}">
+          </div>
+          {% endif %}
+
           <div class="mb-3">
             <label class="form-label">Label</label>
             <input type="text" name="label" class="form-control"
                    value="{{ config.label if config else '' }}"
-                   placeholder="Description de la configuration">
+                   placeholder="Description affichée dans le menu iPXE">
           </div>
 
-          <div class="mb-3">
+          <div class="mb-3" id="user-data-editor-block">
             <div class="d-flex justify-content-between align-items-center mb-1">
-              <label class="form-label mb-0">Contenu <span class="text-danger">*</span></label>
+              <label class="form-label mb-0"><span id="primary-editor-title">Contenu</span> <span class="text-danger" id="primary-required-star">*</span></label>
               <div class="btn-group btn-group-sm" id="templates-btn">
                 <button type="button" class="btn btn-outline-secondary dropdown-toggle"
                         data-bs-toggle="dropdown">
                   <i class="bi bi-lightning me-1"></i>Template
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end">
+                <ul class="dropdown-menu dropdown-menu-end" id="template-dropdown-ul">
                   <li><a class="dropdown-item" href="#" onclick="insertTemplate('preseed')">Preseed (Debian)</a></li>
                   <li><a class="dropdown-item" href="#" onclick="insertTemplate('kickstart')">Kickstart (RHEL/CentOS/ESXi)</a></li>
                   <li><a class="dropdown-item" href="#" onclick="insertTemplate('unattend')">Unattend.xml (Windows)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('cloud-init')">user-data cloud-init (Ubuntu)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('meta-data')">meta-data (Ubuntu)</a></li>
+                  <li><a class="dropdown-item ubuntu-template-pair d-none" href="#" onclick="insertUbuntuAutoinstallPair();return false;">Ubuntu autoinstall (user-data + meta-data)</a></li>
+                  <li><a class="dropdown-item tpl-cloud-init-simple" href="#" onclick="insertTemplate('cloud-init')">user-data (Ubuntu, fichier plat — ancien schéma)</a></li>
                   <li><a class="dropdown-item" href="#" onclick="insertTemplate('proxmox-answer')">answer.toml (Proxmox)</a></li>
                   <li><a class="dropdown-item" href="#" onclick="insertTemplate('alpine-answer')">answers (Alpine)</a></li>
                 </ul>
               </div>
             </div>
-            <textarea name="content" id="config-editor" class="form-control font-monospace"
-                      rows="20" style="font-size:0.82rem">{{ config.content if config else '' }}</textarea>
+            <textarea name="content" id="config-editor" class="form-control font-monospace" required
+                      rows="14" style="font-size:0.82rem">{{ config.content if config else '' }}</textarea>
             <div class="form-text">
               Variables disponibles : <code>{{ '{{ server_url }}' }}</code>,
               <code>{{ '{{ hostname }}' }}</code>
             </div>
+          </div>
+
+          <div class="mb-3 d-none" id="meta-data-editor-wrap">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0">meta-data <span class="text-danger">*</span></label>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertTemplateIntoMeta('meta-data')">
+                <i class="bi bi-lightning me-1"></i>meta-data vide
+              </button>
+            </div>
+            <textarea name="content_meta" id="config-meta-editor" class="form-control font-monospace"
+                      rows="8" style="font-size:0.82rem">{{ config.meta_data_content if config else '' }}</textarea>
           </div>
 
           <div class="d-flex gap-2">
@@ -107,17 +145,55 @@
 <script>
 const OS_CONFIG_TYPE  = {{ os_config_type | tojson }};
 const FORCED_CONFIGS  = {{ forced_configs | tojson }};
+const UBUNTU_BUNDLE_PREFIX = "conf-cloudInit-";
+/** Contexte serveur édition : bundle Ubuntu avec user-data + meta-data */
+const EDIT_UBUNTU_AUTOSTALL_BUNDLE = {{ (config is not none and config.ubuntu_cloud_slug) | tojson }};
+/** Édition d'une ancienne entrée Ubuntu (un seul fichier user-data plat) */
+const EDIT_LEGACY_UBUNTU_CLOUD =
+  {{ (
+    config is not none
+    and config.iso_version.os_type.slug == 'ubuntu'
+    and config.config_type == 'cloud-init'
+    and not config.ubuntu_cloud_slug
+  ) | tojson }};
 
 // Labels affichés pour chaque type dans la liste
 const TYPE_LABELS = {
   'preseed':        'preseed — Debian',
   'kickstart':      'kickstart — CentOS / Rocky / Alma / Fedora / ESXi',
   'unattend':       'unattend — Windows (autounattend.xml)',
-  'cloud-init':     'cloud-init — Ubuntu (user-data / meta-data)',
+  'cloud-init':     'Ubuntu autoinstall — user-data / meta-data (dossier conf-cloudInit-…)',
   'proxmox-answer': 'proxmox-answer — Proxmox (answer.toml)',
   'alpine-answer':  'alpine-answer — Alpine (answers / apkovl)',
   'custom':         'custom',
 };
+
+function slugifyJs(s) {
+  if (!s) return '';
+  return s.toLowerCase().trim()
+    .replace(/[^\w\s.\-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function isUbuntuDualEditorMode() {
+  if (EDIT_UBUNTU_AUTOSTALL_BUNDLE) return true;
+  const sel = document.getElementById('version-select');
+  if (!sel) return false;
+  const opt = sel.options[sel.selectedIndex];
+  const osSlug = opt?.dataset?.osSlug || '';
+  const forced = FORCED_CONFIGS[osSlug];
+  return !!(osSlug === 'ubuntu' && forced && forced.ubuntu_bundle);
+}
+
+function updateBundlePathPreview() {
+  const inp = document.getElementById('cloud-bundle-name-input');
+  const out = document.getElementById('bundle-path-preview');
+  if (!out) return;
+  const slug = slugifyJs(inp ? inp.value : '');
+  out.textContent = slug ? (UBUNTU_BUNDLE_PREFIX + slug + '/') : '—';
+}
 
 function onVersionChange(sel) {
   const opt       = sel.options[sel.selectedIndex];
@@ -149,8 +225,8 @@ function onVersionChange(sel) {
   typeSelect.disabled = !!forced;
   hint.textContent = (!forced && osSlug) ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
 
-  // Sélecteur de fichier pour les distros multi-file
-  if (forced && forced.multi_file) {
+  // Sélecteur de fichier pour les distros multi-file (pas Ubuntu bundle)
+  if (forced && forced.multi_file && !forced.ubuntu_bundle) {
     fileSelect.innerHTML = '';
     forced.filenames.forEach(fn => {
       const o = document.createElement('option');
@@ -164,11 +240,43 @@ function onVersionChange(sel) {
     fileSelect.innerHTML = '';
   }
 
-  // Pré-remplir l'éditeur si vide
+  applyUbuntuEditorsLayout();
+  updateBundlePathPreview();
+
   const editor = document.getElementById('config-editor');
-  if (!editor.value.trim() && TEMPLATES[suggestedType]) {
+  if (!editor.value.trim() && suggestedType && !isUbuntuDualEditorMode() && TEMPLATES[suggestedType]) {
     insertTemplate(suggestedType);
   }
+  if (isUbuntuDualEditorMode() && !EDIT_UBUNTU_AUTOSTALL_BUNDLE && !editor.value.trim()) {
+    insertUbuntuAutoinstallPair();
+  }
+}
+
+function applyUbuntuEditorsLayout() {
+  const dual = isUbuntuDualEditorMode();
+  const legacy = EDIT_LEGACY_UBUNTU_CLOUD;
+  const showUserDataCaption = dual || legacy;
+
+  const nameWrap = document.getElementById('ubuntu-bundle-name-wrap');
+  const metaWrap = document.getElementById('meta-data-editor-wrap');
+  const title = document.getElementById('primary-editor-title');
+  const pairTpl = document.querySelector('.ubuntu-template-pair');
+  const simpleUd = document.querySelector('.tpl-cloud-init-simple');
+
+  if (nameWrap) {
+    nameWrap.classList.toggle('d-none', !dual || !!EDIT_UBUNTU_AUTOSTALL_BUNDLE);
+  }
+  if (metaWrap) {
+    metaWrap.classList.toggle('d-none', !dual);
+    const ta = document.getElementById('config-meta-editor');
+    if (ta) ta.required = dual;
+  }
+  if (title) title.textContent = showUserDataCaption ? 'user-data' : 'Contenu';
+  if (pairTpl) pairTpl.parentElement?.classList?.toggle?.('d-none', !dual);
+  if (simpleUd) simpleUd.classList.toggle('d-none', dual);
+
+  const bundleInp = document.getElementById('cloud-bundle-name-input');
+  if (bundleInp) bundleInp.required = dual && !EDIT_UBUNTU_AUTOSTALL_BUNDLE;
 }
 
 const TEMPLATES = {
@@ -296,13 +404,33 @@ DISKOPTS="-m sys /dev/sda"
 };
 
 function insertTemplate(type) {
-  document.getElementById('config-editor').value = TEMPLATES[type] || '';
+  const ed = document.getElementById('config-editor');
+  if (!ed || !type) return;
+  ed.value = TEMPLATES[type] || '';
 }
 
-// Les champs disabled ne sont pas envoyés au POST — réactiver au submit pour garder config_type.
+function insertUbuntuAutoinstallPair() {
+  insertTemplate('cloud-init');
+  const meta = document.getElementById('config-meta-editor');
+  if (meta && (!meta.value || !meta.value.trim())) meta.value = TEMPLATES['meta-data'] || '';
+}
+
+function insertTemplateIntoMeta(key) {
+  const meta = document.getElementById('config-meta-editor');
+  if (!meta || !TEMPLATES[key]) return;
+  meta.value = TEMPLATES[key];
+}
+
+document.getElementById('cloud-bundle-name-input')?.addEventListener('input', updateBundlePathPreview);
+
 document.querySelector('#config-type')?.closest('form')?.addEventListener('submit', () => {
   const s = document.getElementById('config-type');
   if (s) s.disabled = false;
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  applyUbuntuEditorsLayout();
+  updateBundlePathPreview();
 });
 </script>
 {% endblock %}
