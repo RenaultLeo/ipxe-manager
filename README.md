@@ -1,30 +1,42 @@
 # iPXE Manager
 
-Interface web complète pour gérer un serveur iPXE : upload d'ISOs, extraction de fichiers boot, génération automatique de menus `.ipxe`, configurations automatiques (preseed / kickstart / unattend).
+**iPXE Manager** est une interface web (FastAPI) pour administrer un petit **datacenter PXE** depuis une machine Debian : tu centralises les ISOs, les noyaux/initrd, les menus iPXE et les fichiers d’installation automatique (preseed, kickstart, cloud-init, etc.), sans retoucher à la main tous les scripts à chaque nouvelle version.
+
+En pratique, la machine joue le rôle de **serveur TFTP** pour le premier chargement (iPXE BIOS/UEFI), puis sert le reste en **HTTP** (menus, fichiers de boot, configs). Les opérations longues (extraction d’ISO, compilation du firmware iPXE) passent par **Celery**, pour que l’interface reste réactive.
+
+---
 
 ## Architecture
 
+L’installation type est une **VM Proxmox** (ou équivalent) sous **Debian 12 (Bookworm)**. Tout le contenu « données » (ISOs, fichiers extraits, menus) vit sous **`/srv/ipxe/`** pour faciliter sauvegardes et montages disque.
+
+Schéma logique des briques :
+
 ```
-VM Ubuntu 24.04 (Proxmox)
-├── tftpd-hpa          → chainload initial (BIOS/UEFI)
-├── Nginx              → reverse proxy + serveur de fichiers boot
-├── FastAPI (uvicorn)  → interface web de gestion
-├── Celery + Redis     → extraction ISO en arrière-plan
-└── SQLite             → base de données
+├── tftpd-hpa          → première étape PXE : firmwares iPXE sur le port 69 (TFTP)
+├── Nginx              → reverse proxy vers l’API + service direct des gros fichiers
+│                        (menus .ipxe, /boot/, /configs/) pour de meilleures perf
+├── FastAPI + Jinja2   → pages web, authentification, formulaires
+├── Celery + Redis     → file d’attente : extraction ISO, régénération menus,
+│                        compilation iPXE depuis les sources officielles
+├── Samba (smbd/nmbd) → partage SMB en lecture seule (boot / ISOs), pratique pour
+│                       certains scénarios Windows / copies manuelles
+└── SQLite             → références (versions, chemins, configs, chainloads distants)
 ```
 
-## Installation rapide
+**Pourquoi ces deux modes TFTP + HTTP ?** Le firmware iPXE téléchargé au boot via TFTP est volontairement limité en taille ; une fois iPXE lançé, il charge le **menu principal** et tous les gros fichiers (ISO extrait, WIM, squashfs, etc.) en **HTTP**, ce qui est plus simple à mettre à jour et à dimensionner.
 
-### 1. Créer la VM sur Proxmox
+---
 
-- **OS** : Debian 12 (Bookworm) — recommandé, ou Ubuntu Server 24.04 LTS
-- **CPU** : 4 vCPU
-- **RAM** : 4 GB minimum (8 GB recommandé)
-- **Disque système** : 32 GB
-- **Disque données** : 500 GB+ monté sur `/srv/ipxe/` (ISOs)
-- **Réseau** : Bridge `vmbr0` sur le LAN (IP statique)
+## Prérequis VM
 
-Configurer une IP statique dans `/etc/netplan/00-installer-config.yaml` :
+- **OS** : Debian 12 (recommandé ; le script `setup.sh` vise Bookworm / environnements proches).
+- **vCPU** : 4 cœurs pour des extractions et compilations confortables (2 minimum possible).
+- **RAM** : 4 Go minimum, **8 Go** si tu compiles souvent le firmware iPXE ou extrais de grosses ISO Windows.
+- **Disque** : volume système (32 Go suffisent souvent) ; **à part**, beaucoup d’espace pour les ISOs sous `/srv/ipxe/isos/` et les arborescences extraites sous `http/boot/`.
+- **Réseau** : une IP **fixe** sur le LAN (les menus et le DHCP pointent vers cette IP).
+
+Exemple **Netplan** (adapter l’interface et la passerelle à ton site) :
 
 ```yaml
 network:
@@ -44,115 +56,191 @@ network:
 sudo netplan apply
 ```
 
-### 2. Cloner le projet et lancer l'installation
+---
+
+## Installation rapide
+
+### Cloner le dépôt
+
+Dépôt public : **https://github.com/RenaultLeo/ipxe-manager**
 
 ```bash
-git clone https://github.com/vous/ipxe-manager.git /tmp/ipxe-manager
-sudo bash /tmp/ipxe-manager/deploy/setup.sh 192.168.2.6
+sudo mkdir -p /srv/ipxe
+sudo git clone https://github.com/RenaultLeo/ipxe-manager.git /srv/ipxe/app
 ```
 
-Le script installe et configure automatiquement tous les services.
+### Lancer le script d’installation
 
-### 3. Configurer le DHCP
+Le second argument est l’**IP du serveur** telle qu’elle sera annoncée aux clients (menus HTTP, embed, etc.) :
 
-Sur votre serveur DHCP (pfSense, Mikrotik, ISC DHCP…) :
-
-| Option | BIOS | UEFI |
-|--------|------|------|
-| next-server | `192.168.2.6` | `192.168.2.6` |
-| filename | `undionly.kpxe` | `ipxe.efi` |
-
-Exemple ISC DHCP :
-```
-next-server 192.168.2.6;
-if exists user-class and option user-class = "iPXE" {
-    filename "http://192.168.2.6/menus/menu.ipxe";
-} elsif option arch = 00:07 {
-    filename "ipxe.efi";
-} else {
-    filename "undionly.kpxe";
-}
+```bash
+sudo bash /srv/ipxe/app/deploy/setup.sh 192.168.2.6
 ```
 
-## Utilisation
+Ce que fait **`deploy/setup.sh`** (synthèse) :
 
-### Interface web
+- Installe les paquets : Nginx, tftpd-hpa, Redis, Python, p7zip, outils de build pour iPXE, Samba, etc.
+- Crée l’utilisateur système **`ipxe`**, les répertoires sous `/srv/ipxe/`, les unités **`ipxe-manager`** et **`ipxe-celery`**.
+- Configure **Nginx** avec des alias pour `/menus/`, `/boot/`, etc., et des limites d’upload pour les grosses ISO.
+- Écrit **`/etc/default/tftpd-hpa`** et **redémarre `tftpd-hpa` à la fin** : pendant le script, le service peut démarrer avec une config encore incomplète ; le redémarrage final évite un TFTP qui ne lit qu’une partie des paramètres ou des répertoires.
+- Initialise la base avec **`deploy/seed_db.py`** (types d’OS par défaut : Windows, Ubuntu, Debian, Rocky, Alma, Fedora, Proxmox, ESXi, Alpine, etc.).
+- Télécharge **`wimboot`** et, si besoin, des binaires iPXE **génériques** en secours dans TFTP (en attendant ta propre compilation depuis l’UI **Firmware**).
 
-Ouvrir `http://192.168.2.6/` — mot de passe par défaut : `admin`
+### Première connexion
 
-**IMPORTANT** : Changer le mot de passe dans **Paramètres → Mot de passe admin** immédiatement.
+- Ouvre **`http://<IP>/`** dans un navigateur.
+- Identifiants par défaut : **`admin` / `admin`**.
+- Va dans **Paramètres** et **change immédiatement le mot de passe** (et vérifie **`SERVER_BASE_URL`** / URL de base si ton accès passe par un reverse proxy ou un autre port).
 
-### Ajouter une ISO
+---
 
-1. **Paramètres** → Ajouter un type d'OS si nécessaire (Ubuntu, Debian, Windows…)
-2. **ISOs** → Uploader une ISO → choisir le type et le label de version
-3. Cliquer **Extraire depuis l'ISO** → Celery extrait `vmlinuz`, `initrd` ou `boot.wim` en arrière-plan
-4. Les **Menus iPXE** sont régénérés automatiquement
+## DHCP et boot réseau
 
-### Upload manuel de fichiers boot
+Le **serveur DHCP** (souvent **pfSense**, routeur, ou `isc-dhcp-server`) doit :
 
-Via **Fichiers Boot** : uploader `vmlinuz`, `initrd`, `boot.wim` individuellement et les associer à une version d'ISO.
+1. Indiquer le **serveur TFTP** (**next-server / option 66**) : l’IP de la machine iPXE Manager.
+2. Donner un **fichier de démarrage** selon l’architecture du client :
+   - **BIOS / Legacy** : en général **`undionly.kpxe`** (iPXE PXE stack).
+   - **UEFI x86_64 en VM** (Proxmox, QEMU, VMware…) : de préférence **`snponly.efi`**, qui utilise la **pile réseau de l’EFI** (virtio, e1000…). **`ipxe.efi`** reste utile surtout pour du **bare-metal** avec drivers intégrés iPXE.
 
-### Configurations automatiques
+3. Une fois le client **déjà sous iPXE** (user-class `iPXE`), il est préférable de lui donner directement l’**URL HTTP** du menu central (`http://<IP>/menus/menu.ipxe`), pour **éviter un double chainload** iPXE qui casse souvent l’accès réseau.
 
-Via **Configs Auto** : créer des fichiers preseed / kickstart / unattend.xml / cloud-init avec l'éditeur intégré (templates disponibles). Ces fichiers sont intégrés dans les menus iPXE des versions Linux avec sous-menu de sélection.
+L’interface **Firmware** affiche un bloc d’aide avec un exemple de clauses DHCP (pfSense / options) aligné sur les binaires que tu compiles.
 
-## Structure des répertoires sur le serveur
+---
+
+## Parcours métier dans l’interface
+
+### Dashboard
+
+Vue d’ensemble : espace disque, statistiques par type d’OS, **jobs Celery** récents ou en cours. Les heures d’affichage des jobs suivent le **fuseau du navigateur** ; l’upload seul d’un ISO n’ouvre plus un faux job bloqué en « en cours ».
+
+### ISOs
+
+Tu crées une **version** pour un type d’OS (label lisible : « 22.04 LTS », « 11 », etc.). Tu peux :
+
+- Uploader **une ISO** (stockée sous `/srv/ipxe/isos/...`) puis, quand tu es prêt, lancer **Extraire depuis l’ISO** : une tâche Celery décompresse avec **7z** et peuple `http/boot/<os>/<slug-version>/` selon les règles de la distribution.
+- Ou **ne pas** fournir d’ISO et uploader uniquement **vmlinuz**, **initrd**, etc. (chemins enregistrés tels quels, **sans forcer** des noms génériques quand ce n’est pas voulu).
+
+Pour **Windows**, l’extraction est **complète** (toute l’arborescence ISO) afin que les chemins d’installation réseau fonctionnent ; tu peux ensuite **remplacer uniquement `boot.wim`** depuis la fiche version. Un **`autounattend.xml`** à la racine du dossier version peut être pris en charge par le menu si présent.
+
+Pour **Ubuntu**, l’ISO est aussi extraite **en entier** (cas autoinstall / accès aux couches live) ; noyau et initrd sont résolus dans **`casper/`**.
+
+### Fichiers Boot
+
+Page de gestion centralisée : remplacer ou compléter kernel, initrd, modloop (Alpine), éléments Windows, args kernel, etc. Les **libellés** reflètent les **vrais noms de fichier** sur disque (ex. `vmlinuz-lts`).
+
+### Configs Auto (auto-install)
+
+Tu relies une **config à une version**. Les **OS fournis par défaut** (seed) ont un **type imposé** (cohérent avec le boot) :
+
+| Famille | Type / fichiers typiques |
+|---------|---------------------------|
+| Debian | `preseed.cfg` |
+| Ubuntu | cloud-init : **`user-data`** et **`meta-data`** (le second peut être auto-créé pour un minimum viable) |
+| CentOS / Rocky / Alma / Fedora | kickstart : `ks.cfg` |
+| ESXi | `ks.cfg` |
+| Windows | `autounattend.xml` / `unattend.xml` (choix du fichier quand les deux existent côté UX) |
+| Proxmox | `answer.toml` |
+| Alpine | `answers` ou `alpine.apkovl.tar.gz` |
+
+Les arguments noyau iPXE (preseed URL, `inst.ks`, `autoinstall ds=nocloud-net`, etc.) sont dérivés automatiquement là où c’est prévu.
+
+### Menus iPXE
+
+- **Menus générés** : tous les `.ipxe` sous `menus/` ; tu peux prévisualiser l’URL ou **éditer** un fichier (attention : une régénération globale peut réécraser ce que tu as modifié manuellement selon le flux).
+- **Scripts personnalisés** : versions qui ont un `.ipxe` uploadé ; sous-menu **Autres** dans le menu OS ; actions voir / modifier / supprimer.
+- **Serveurs distants** : tu enregistres des **noms + URL exactes** vers d’autres menus (autre machine, autre `menu.ipxe`). Elles sont ajoutées **en bas du menu central** sous une section dédiée avec des `chain --autofree`.
+
+### Firmware
+
+Un job Celery **clone ou met à jour** le dépôt **ipxe/ipxe**, écrit **`embed.ipxe`** (chainload vers ton `menu.ipxe` avec logique DHCP résiliente), puis compile **`undionly.kpxe`**, **`snponly.efi`**, **`ipxe.efi`** et les copie dans **TFTP**. L’UI montre la **progression par étapes** (badges verts pour ce qui est terminé). Tu peux **annuler** une compilation en cours.
+
+### Paramètres
+
+Clé secrète de session, URL de base publique, mot de passe administrateur.
+
+---
+
+## Structure des répertoires (référence)
 
 ```
 /srv/ipxe/
-├── tftpboot/               # Racine TFTP
-│   ├── ipxe.efi            # Firmware iPXE UEFI
-│   ├── undionly.kpxe       # Firmware iPXE BIOS
-│   └── boot.ipxe           # Chainload vers HTTP
-├── http/                   # Racine HTTP (servi par Nginx)
-│   ├── menus/              # Fichiers .ipxe générés
-│   │   ├── menu.ipxe       # Menu central
-│   │   ├── ubuntu.ipxe
-│   │   ├── windows.ipxe
-│   │   └── …
-│   ├── boot/               # Fichiers de boot extraits
-│   │   ├── ubuntu/22/      # vmlinuz, initrd
-│   │   └── windows/5/      # boot.wim
-│   └── configs/            # Preseed, kickstart, unattend
-├── isos/                   # ISOs brutes uploadées
-└── app/                    # Code FastAPI + BDD SQLite
-    ├── .env
-    └── ipxe.db
+├── tftpboot/              # Racine TFTP (firmwares vus par les clients au premier boot)
+├── build/                 # Sources iPXE + embed généré lors de la compilation UI
+├── http/
+│   ├── menus/             # menu.ipxe, debian.ipxe, windows.ipxe, *_autres.ipxe, …
+│   ├── boot/              # Arborescences extraites ou uploadées par OS / version
+│   └── configs/           # Fichiers créés par Configs Auto (par OS / version)
+├── isos/                  # ISO brutes
+├── venv/                  # Environnement Python du service
+└── app/
+    ├── .env               # Variables (chemins, REDIS, secrets…)
+    └── ipxe.db            # SQLite (ou chemin défini dans la config)
 ```
 
-## Services systemd
+---
+
+## Services systemd (vérification rapide)
 
 ```bash
-systemctl status ipxe-manager    # Interface web
-systemctl status ipxe-celery      # Worker extraction + compilation firmware
-systemctl status tftpd-hpa       # TFTP
-systemctl status nginx            # Serveur web
-systemctl status redis-server     # Broker Celery
+systemctl status ipxe-manager    # Processus web (uvicorn derrière le service)
+systemctl status ipxe-celery      # Worker Celery (ISO, menus, firmware)
+systemctl status tftpd-hpa nginx redis-server
+systemctl status smbd nmbd        # Samba fichier
 ```
+
+Journal utile en cas de souci :
+
+```bash
+journalctl -u ipxe-manager -u ipxe-celery -f --no-pager
+```
+
+---
+
+## Mise à jour du code sur le serveur
+
+Depuis la machine de production :
+
+```bash
+sudo bash /srv/ipxe/app/deploy/update.sh
+```
+
+Le script enchaîne : **`git pull`**, mise à jour **`pip`**, exécution de **`deploy/seed_db.py`** (nouvelles colonnes / graines idempotentes), puis **redémarrage** de **`ipxe-manager`**, **`ipxe-celery`** et **`tftpd-hpa`**.
+
+Si tu ajoutes des champs en base et que le service ne les voit pas tout de suite, tu peux aussi lancer manuellement (en utilisateur adapté, selon ton déploiement) :
+
+```bash
+sudo -u ipxe /srv/ipxe/venv/bin/python /srv/ipxe/app/deploy/seed_db.py
+```
+
+---
 
 ## Développement local
 
+Sur ta machine de développement :
+
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate         # Linux/Mac
-# .venv\Scripts\activate          # Windows
+source .venv/bin/activate          # Linux / macOS
+# .venv\Scripts\activate           # Windows
 pip install -r requirements.txt
-
-# Créer un .env local (adapter les chemins)
 cp .env.example .env
+# Éditer .env : DATABASE_URL, REDIS, chemins http_root / tftp_root en local si besoin
 
 uvicorn app.main:app --reload --port 8000
-# Celery (dans un autre terminal)
+```
+
+Dans un **second terminal**, lance un worker Celery pour tester extraction / firmware :
+
+```bash
 celery -A app.tasks.celery_app worker --loglevel=info
 ```
 
-## Mise à jour
+Sans Redis/Celery local, certaines actions (extraction, compile) resteront en attente ; l’UI peut quand même servir à parcourir les écrans.
 
-```bash
-cd /tmp
-git pull origin main
-sudo rsync -av app/ /srv/ipxe/app/app/
-sudo rsync -av static/ /srv/ipxe/app/static/
-sudo systemctl restart ipxe-manager ipxe-celery
-```
+---
+
+## Licence
+
+**MIT** — voir le fichier `LICENSE` à la racine du dépôt.
