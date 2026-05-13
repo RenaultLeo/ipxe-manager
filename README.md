@@ -125,7 +125,7 @@ Via **Configs Auto** : créer des fichiers preseed / kickstart / unattend.xml / 
 
 ```bash
 systemctl status ipxe-manager    # Interface web
-systemctl status celery-worker   # Worker extraction
+systemctl status ipxe-celery      # Worker extraction + compilation firmware
 systemctl status tftpd-hpa       # TFTP
 systemctl status nginx            # Serveur web
 systemctl status redis-server     # Broker Celery
@@ -154,5 +154,5 @@ cd /tmp
 git pull origin main
 sudo rsync -av app/ /srv/ipxe/app/app/
 sudo rsync -av static/ /srv/ipxe/app/static/
-sudo systemctl restart ipxe-manager celery-worker
+sudo systemctl restart ipxe-manager ipxe-celery
 ```

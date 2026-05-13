@@ -2,12 +2,12 @@
 # ============================================================
 # iPXE Manager — Installation complète
 # Debian 12 / Ubuntu 24.04
-# Usage : bash setup.sh [IP_DU_SERVEUR]
+# Usage : sudo bash setup.sh [IP_DU_SERVEUR]
 # ============================================================
 set -euo pipefail
 
 SERVER_IP="${1:-$(hostname -I | awk '{print $1}')}"
-REPO_URL="https://github.com/mrlele35/ipxe-manager.git"
+REPO_URL="https://github.com/RenaultLeo/ipxe-manager.git"
 APP_DIR="/srv/ipxe/app"
 DATA_DIR="/srv/ipxe"
 VENV="/srv/ipxe/venv"
@@ -16,62 +16,76 @@ LOG_DIR="/var/log/ipxe-manager"
 
 echo "======================================================"
 echo "  iPXE Manager — Installation"
-echo "  IP : $SERVER_IP"
+echo "  IP détectée : $SERVER_IP"
 echo "======================================================"
 
-# ── 1. Paquets système ────────────────────────────────────
+# ── 1. Paquets système ────────────────────────────────────────────────────────
+echo "[1/14] Installation des paquets système…"
 apt-get update -qq
 apt-get install -y -qq \
-    sudo git nginx tftpd-hpa redis-server \
-    python3 python3-venv python3-pip \
-    p7zip-full p7zip wimtools genisoimage xorriso \
-    samba samba-common-bin \
-    curl wget unzip rsync ca-certificates \
+    sudo git curl wget unzip rsync ca-certificates \
     iproute2 procps \
-    build-essential gcc binutils make liblzma-dev isolinux \
-    mtools libgcc-s1
+    nginx tftpd-hpa redis-server \
+    python3 python3-venv python3-pip \
+    p7zip-full wimtools genisoimage xorriso \
+    samba samba-common-bin \
+    build-essential gcc binutils make liblzma-dev mtools \
+    isolinux || true   # isolinux peut manquer sur certaines archi
 
-# ── 2. Utilisateur système ────────────────────────────────
+# Désactiver le service AD DC de Samba (non utilisé — on veut juste smbd/nmbd)
+systemctl disable --now samba-ad-dc 2>/dev/null || true
+
+# ── 2. Utilisateur système ────────────────────────────────────────────────────
+echo "[2/14] Création de l'utilisateur $APP_USER…"
 if ! id "$APP_USER" &>/dev/null; then
     useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$APP_USER"
     echo "  Utilisateur $APP_USER créé."
+else
+    echo "  Utilisateur $APP_USER déjà présent."
 fi
 
-# Sudoers : ipxe peut monter/démonter des ISOs sans mot de passe
+# Sudoers : ipxe peut lancer 7z en sudo pour l'extraction ISO
 cat > /etc/sudoers.d/ipxe-manager <<'EOF'
-# iPXE Manager — permissions pour le user ipxe
-ipxe ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/mount, /usr/bin/umount
+# iPXE Manager — permissions sudo pour l'extraction d'ISO
+ipxe ALL=(ALL) NOPASSWD: /usr/bin/7z, /usr/bin/7za, /bin/mount, /bin/umount
 EOF
 chmod 440 /etc/sudoers.d/ipxe-manager
-echo "  Sudoers configuré pour $APP_USER."
+echo "  Sudoers configuré."
 
-# ── 3. Arborescence des données ───────────────────────────
+# ── 3. Arborescence des données ───────────────────────────────────────────────
+echo "[3/14] Création de l'arborescence…"
 mkdir -p \
     "$DATA_DIR/tftpboot" \
     "$DATA_DIR/http/menus" \
     "$DATA_DIR/http/boot" \
     "$DATA_DIR/http/configs" \
     "$DATA_DIR/isos" \
+    "$DATA_DIR/build" \
     "$LOG_DIR"
 
-# ── 4. Clone du repo dans /srv/ipxe/app ──────────────────
+# Permissions publiques sur http/ pour que Nginx puisse servir les fichiers
+chmod -R 755 "$DATA_DIR/http"
+
+# ── 4. Clone du repo ──────────────────────────────────────────────────────────
+echo "[4/14] Récupération du code source…"
 if [ -d "$APP_DIR/.git" ]; then
     echo "  Repo déjà présent — git pull…"
-    git -C "$APP_DIR" pull origin main
+    git -C "$APP_DIR" pull --ff-only origin main || echo "  ! git pull échoué — conserve la version actuelle."
 else
-    echo "  Clonage du repo…"
+    echo "  Clonage de $REPO_URL…"
     rm -rf "$APP_DIR"
     git clone "$REPO_URL" "$APP_DIR"
 fi
 
-# ── 5. Environnement Python ───────────────────────────────
-echo "  Création du virtualenv…"
+# ── 5. Environnement Python ───────────────────────────────────────────────────
+echo "[5/14] Création du virtualenv Python…"
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip wheel
 "$VENV/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 echo "  Dépendances Python installées."
 
-# ── 6. Fichier .env ───────────────────────────────────────
+# ── 6. Fichier .env ───────────────────────────────────────────────────────────
+echo "[6/14] Configuration de l'environnement (.env)…"
 if [ ! -f "$APP_DIR/.env" ]; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     cat > "$APP_DIR/.env" <<EOF
@@ -83,67 +97,65 @@ REDIS_URL=redis://localhost:6379/0
 TFTP_ROOT=/srv/ipxe/tftpboot
 HTTP_ROOT=/srv/ipxe/http
 ISO_ROOT=/srv/ipxe/isos
+BUILD_DIR=/srv/ipxe/build
 MAX_UPLOAD_SIZE=53687091200
 EXTRACT_TIMEOUT=3600
 EOF
-    echo "  .env créé (mot de passe : admin)"
+    echo "  .env créé — mot de passe par défaut : admin (à changer !)"
 else
     echo "  .env déjà présent — conservé."
+    # S'assurer que BUILD_DIR est présent dans le .env existant
+    grep -q "BUILD_DIR" "$APP_DIR/.env" || echo "BUILD_DIR=/srv/ipxe/build" >> "$APP_DIR/.env"
 fi
 
-# ── 7. Initialisation de la base de données ──────────────
-echo "  Initialisation de la base de données…"
+# ── 7. Base de données ────────────────────────────────────────────────────────
+echo "[7/14] Initialisation de la base de données…"
 cd "$APP_DIR"
-"$VENV/bin/python" -c "
-from app.database import init_db
-from app.models.models import OsType
-from app.database import SessionLocal
-import sys, os
-sys.path.insert(0, '.')
-os.chdir('$APP_DIR')
-init_db()
-db = SessionLocal()
-defaults = [
-    ('windows', 'Windows',    'bi-windows', 'windows'),
-    ('winpe',   'WinPE',      'bi-terminal','windows'),
-    ('ubuntu',  'Ubuntu',     'bi-ubuntu',  'linux'),
-    ('debian',  'Debian',     'bi-hdd',     'linux'),
-    ('centos',  'CentOS',     'bi-hdd',     'linux'),
-    ('rocky',   'Rocky Linux','bi-hdd',     'linux'),
-    ('alma',    'AlmaLinux',  'bi-hdd',     'linux'),
-    ('fedora',  'Fedora',     'bi-hdd',     'linux'),
-    ('proxmox', 'Proxmox VE', 'bi-server',  'linux'),
-]
-for slug, label, icon, boot_type in defaults:
-    if not db.query(OsType).filter(OsType.slug==slug).first():
-        db.add(OsType(slug=slug, label=label, icon=icon, boot_type=boot_type))
-db.commit()
-db.close()
-print('  Base initialisée.')
-"
+"$VENV/bin/python" deploy/seed_db.py
+echo "  Base initialisée avec tous les OS de base."
 
-# ── 8. TFTP — firmwares iPXE ──────────────────────────────
-echo "  Téléchargement des firmwares iPXE…"
-wget -q -O "$DATA_DIR/tftpboot/ipxe.efi"       https://boot.ipxe.org/ipxe.efi       || echo "  ! ipxe.efi : échec (réseau ?)"
-wget -q -O "$DATA_DIR/tftpboot/undionly.kpxe"  https://boot.ipxe.org/undionly.kpxe  || echo "  ! undionly.kpxe : échec"
-wget -q -O "$DATA_DIR/http/wimboot"             https://github.com/ipxe/wimboot/releases/latest/download/wimboot || echo "  ! wimboot : échec"
+# ── 8. Firmwares iPXE (génériques — en attendant la compilation custom) ───────
+echo "[8/14] Téléchargement des firmwares iPXE génériques…"
+# Ces binaires seront remplacés lors de la compilation depuis /firmware dans l'UI
+if [ ! -f "$DATA_DIR/tftpboot/undionly.kpxe" ]; then
+    wget -q -O "$DATA_DIR/tftpboot/undionly.kpxe" \
+        https://boot.ipxe.org/undionly.kpxe \
+        && echo "  undionly.kpxe téléchargé." \
+        || echo "  ! undionly.kpxe : échec réseau, à télécharger manuellement."
+fi
+if [ ! -f "$DATA_DIR/tftpboot/ipxe.efi" ]; then
+    wget -q -O "$DATA_DIR/tftpboot/ipxe.efi" \
+        https://boot.ipxe.org/ipxe.efi \
+        && echo "  ipxe.efi téléchargé." \
+        || echo "  ! ipxe.efi : échec réseau, à télécharger manuellement."
+fi
+if [ ! -f "$DATA_DIR/tftpboot/snponly.efi" ]; then
+    wget -q -O "$DATA_DIR/tftpboot/snponly.efi" \
+        https://boot.ipxe.org/snponly.efi \
+        && echo "  snponly.efi téléchargé (recommandé pour VMs)." \
+        || echo "  ! snponly.efi : à compiler via l'interface web (/firmware)."
+fi
 
-# Fichier de chainload TFTP → HTTP
-cat > "$DATA_DIR/tftpboot/boot.ipxe" <<EOF
-#!ipxe
-dhcp
-chain http://$SERVER_IP/menus/menu.ipxe || shell
-EOF
+# wimboot pour le boot Windows PE
+if [ ! -f "$DATA_DIR/http/wimboot" ]; then
+    wget -q -O "$DATA_DIR/http/wimboot" \
+        "https://github.com/ipxe/wimboot/releases/latest/download/wimboot" \
+        && echo "  wimboot téléchargé." \
+        || echo "  ! wimboot : échec réseau."
+fi
 
-# ── 9. Configuration tftpd-hpa ────────────────────────────
+# ── 9. TFTP — tftpd-hpa ───────────────────────────────────────────────────────
+echo "[9/14] Configuration de tftpd-hpa…"
 cat > /etc/default/tftpd-hpa <<EOF
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="$DATA_DIR/tftpboot/"
 TFTP_ADDRESS="0.0.0.0:69"
 TFTP_OPTIONS="--secure --create --blocksize 1468"
 EOF
+chmod -R 755 "$DATA_DIR/tftpboot"
 
-# ── 10. Configuration Nginx ───────────────────────────────
+# ── 10. Nginx ─────────────────────────────────────────────────────────────────
+echo "[10/14] Configuration Nginx…"
 cat > /etc/nginx/sites-available/ipxe-manager <<'NGINX'
 server {
     listen 80;
@@ -152,39 +164,59 @@ server {
     access_log /var/log/nginx/ipxe-manager.access.log;
     error_log  /var/log/nginx/ipxe-manager.error.log;
 
-    sendfile on;
-    tcp_nopush on;
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout 65;
+
+    # Upload ISO volumineux (jusqu'à 60 Go)
     client_max_body_size 60G;
+
+    # ── Fichiers statiques iPXE (bypasse FastAPI pour les performances) ──
 
     location /menus/ {
         alias /srv/ipxe/http/menus/;
         add_header Content-Type text/plain;
         expires -1;
     }
+
     location /boot/ {
         alias /srv/ipxe/http/boot/;
+        autoindex off;
         sendfile on;
+        aio threads;
+        output_buffers 1 128k;
         expires 1d;
     }
+
     location /configs/ {
         alias /srv/ipxe/http/configs/;
         add_header Content-Type text/plain;
         expires -1;
     }
+
+    # wimboot — binaire pour le boot Windows PE
     location /wimboot {
         alias /srv/ipxe/http/wimboot;
         add_header Content-Type application/octet-stream;
     }
+
     location /static/ {
         alias /srv/ipxe/app/static/;
         expires 7d;
+        add_header Cache-Control "public, immutable";
     }
+
+    # ── Interface web FastAPI ──────────────────────────────────────────────
     location / {
         proxy_pass         http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
         proxy_read_timeout  3600;
         proxy_send_timeout  3600;
         proxy_request_buffering off;
@@ -194,12 +226,14 @@ NGINX
 
 ln -sf /etc/nginx/sites-available/ipxe-manager /etc/nginx/sites-enabled/ipxe-manager
 rm -f /etc/nginx/sites-enabled/default
-nginx -t && systemctl reload nginx
+nginx -t && echo "  Nginx : config OK."
 
-# ── 11. Services systemd ──────────────────────────────────
+# ── 11. Services systemd ──────────────────────────────────────────────────────
+echo "[11/14] Création des services systemd…"
+
 cat > /etc/systemd/system/ipxe-manager.service <<EOF
 [Unit]
-Description=iPXE Manager — FastAPI
+Description=iPXE Manager — FastAPI Web App
 After=network.target redis.service
 
 [Service]
@@ -211,14 +245,16 @@ EnvironmentFile=$APP_DIR/.env
 ExecStart=$VENV/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
 Restart=always
 RestartSec=5
+StandardOutput=append:$LOG_DIR/uvicorn.log
+StandardError=append:$LOG_DIR/uvicorn.log
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/celery-worker.service <<EOF
+cat > /etc/systemd/system/ipxe-celery.service <<EOF
 [Unit]
-Description=iPXE Manager — Celery worker
+Description=iPXE Manager — Celery Worker (extraction ISO + compilation firmware)
 After=network.target redis.service
 
 [Service]
@@ -230,12 +266,19 @@ EnvironmentFile=$APP_DIR/.env
 ExecStart=$VENV/bin/celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
 Restart=always
 RestartSec=10
+StandardOutput=append:$LOG_DIR/celery.log
+StandardError=append:$LOG_DIR/celery.log
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# ── 12. Samba (partage Windows pour boot HTTP/SMB) ───────
+# Supprimer l'ancienne unité si elle existait sous un autre nom
+systemctl disable --now celery-worker 2>/dev/null || true
+rm -f /etc/systemd/system/celery-worker.service
+
+# ── 12. Samba (partage SMB pour installation Windows via réseau) ──────────────
+echo "[12/14] Configuration Samba…"
 cat > /etc/samba/smb.conf <<EOF
 [global]
    workgroup = WORKGROUP
@@ -244,9 +287,11 @@ cat > /etc/samba/smb.conf <<EOF
    map to guest = bad user
    log file = /var/log/samba/log.%m
    max log size = 1000
+   # Désactiver les fonctionnalités AD DC
+   server role = standalone server
 
 [boot]
-   comment = iPXE Boot Files
+   comment = iPXE Boot Files (Windows install)
    path = $DATA_DIR/http/boot
    browseable = yes
    read only = yes
@@ -259,37 +304,52 @@ cat > /etc/samba/smb.conf <<EOF
    read only = yes
    guest ok = yes
 EOF
-systemctl enable --now smbd nmbd
-echo "  Samba configuré (partage [boot] et [isos] en lecture seule)."
 
-# ── 12b. Permissions ─────────────────────────────────────
+# ── 13. Permissions finales ───────────────────────────────────────────────────
+echo "[13/14] Application des permissions…"
 chown -R "$APP_USER:$APP_USER" "$DATA_DIR" "$LOG_DIR"
 chmod 640 "$APP_DIR/.env"
+# http/boot doit être lisible par Nginx (www-data) ET par Samba
+chmod -R o+rX "$DATA_DIR/http/boot" 2>/dev/null || true
+chmod -R o+rX "$DATA_DIR/http/menus" 2>/dev/null || true
+chmod -R o+rX "$DATA_DIR/http/configs" 2>/dev/null || true
 
-# ── 13. Démarrage des services ────────────────────────────
+# ── 14. Démarrage de tous les services ────────────────────────────────────────
+echo "[14/14] Démarrage des services…"
 systemctl daemon-reload
 systemctl enable --now redis-server
 systemctl enable --now tftpd-hpa
-systemctl enable --now nginx
+systemctl reload-or-restart nginx
+systemctl enable --now smbd nmbd
 systemctl enable --now ipxe-manager
-systemctl enable --now celery-worker
+systemctl enable --now ipxe-celery
 
-# ── 14. Résumé ────────────────────────────────────────────
+# ── Résumé ────────────────────────────────────────────────────────────────────
 echo ""
 echo "======================================================"
 echo "  Installation terminée !"
 echo "======================================================"
 echo ""
-echo "  Interface web : http://$SERVER_IP/"
-echo "  Login         : admin  (changer dans Paramètres !)"
-echo "  Menu iPXE     : http://$SERVER_IP/menus/menu.ipxe"
+echo "  Interface web  : http://$SERVER_IP/"
+echo "  Login          : admin  /  Mot de passe : admin"
+echo "  Menu iPXE HTTP : http://$SERVER_IP/menus/menu.ipxe"
+echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
+echo "  Samba share    : \\\\$SERVER_IP\\boot"
 echo ""
-echo "  Mise à jour future :"
-echo "    cd $APP_DIR && git pull && systemctl restart ipxe-manager"
+echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
+echo "  FIRMWARE  : Compiler un firmware custom avec embed depuis /firmware"
 echo ""
-systemctl is-active --quiet ipxe-manager  && echo "  [OK] ipxe-manager"  || echo "  [!!] ipxe-manager FAILED"
-systemctl is-active --quiet celery-worker && echo "  [OK] celery-worker" || echo "  [!!] celery-worker FAILED"
-systemctl is-active --quiet nginx         && echo "  [OK] nginx"         || echo "  [!!] nginx FAILED"
-systemctl is-active --quiet tftpd-hpa     && echo "  [OK] tftpd-hpa"     || echo "  [!!] tftpd-hpa FAILED"
-systemctl is-active --quiet redis-server  && echo "  [OK] redis"         || echo "  [!!] redis FAILED"
+echo "  Mise à jour :"
+echo "    cd $APP_DIR && git pull && systemctl restart ipxe-manager ipxe-celery"
+echo "    $VENV/bin/python deploy/seed_db.py   # si nouvelles migrations DB"
+echo ""
+
+# Statut de chaque service
+for svc in ipxe-manager ipxe-celery nginx tftpd-hpa redis-server smbd; do
+    if systemctl is-active --quiet "$svc"; then
+        echo "  [OK] $svc"
+    else
+        echo "  [!!] $svc — PROBLÈME (voir: journalctl -u $svc)"
+    fi
+done
 echo ""

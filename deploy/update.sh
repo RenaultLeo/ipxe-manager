@@ -14,10 +14,14 @@ git -C "$APP_DIR" pull origin main
 echo "==> Mise à jour des dépendances Python…"
 "$VENV/bin/pip" install -q --upgrade -r "$APP_DIR/requirements.txt"
 
+echo "==> Migrations base de données…"
+cd "$APP_DIR"
+"$VENV/bin/python" deploy/seed_db.py
+
 echo "==> Redémarrage des services…"
-systemctl restart ipxe-manager celery-worker
+systemctl restart ipxe-manager ipxe-celery
 
 echo ""
 echo "Mise à jour terminée."
-systemctl is-active ipxe-manager  && echo "  v ipxe-manager OK" || echo "  x ipxe-manager FAILED"
-systemctl is-active celery-worker && echo "  v celery-worker OK" || echo "  x celery-worker FAILED"
+systemctl is-active ipxe-manager  && echo "  [OK] ipxe-manager"  || echo "  [!!] ipxe-manager FAILED"
+systemctl is-active ipxe-celery   && echo "  [OK] ipxe-celery"   || echo "  [!!] ipxe-celery FAILED"

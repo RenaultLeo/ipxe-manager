@@ -60,7 +60,7 @@ sqlite3 "$DB" "ALTER TABLE boot_entries ADD COLUMN bcd_path VARCHAR(512);" 2>/de
 
 # ── Redémarrage ───────────────────────────────────────────
 echo "==> Redémarrage des services…"
-systemctl restart ipxe-manager celery-worker
+systemctl restart ipxe-manager ipxe-celery
 
 echo ""
 echo "Tous les patchs appliqués."
