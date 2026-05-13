@@ -15,7 +15,15 @@ from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
 router = APIRouter(prefix="/ipxe-configs")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
-CONFIG_TYPES = ["preseed", "kickstart", "unattend", "cloud-init", "custom"]
+CONFIG_TYPES = [
+    "preseed",          # Debian
+    "kickstart",        # CentOS / Rocky / Alma / Fedora / ESXi
+    "unattend",         # Windows
+    "cloud-init",       # Ubuntu (user-data / meta-data)
+    "proxmox-answer",   # Proxmox (answer.toml)
+    "alpine-answer",    # Alpine (answers / alpine.apkovl.tar.gz)
+    "custom",
+]
 
 
 def _auth(request: Request):
@@ -72,6 +80,7 @@ async def config_create(
     request: Request,
     iso_version_id: int = Form(...),
     config_type: str = Form(...),
+    forced_filename: str = Form(""),   # fichier choisi parmi multi-file (Ubuntu, Alpine, Windows)
     label: str = Form(""),
     content: str = Form(""),
     db: Session = Depends(get_db),
@@ -85,9 +94,11 @@ async def config_create(
         raise HTTPException(404)
 
     os_slug = version.os_type.slug
-    # Pour les OS built-in : forcer le type correct
+    # Pour les OS built-in : forcer le type canonique si l'utilisateur n'a pas sélectionné
+    # un type valide (laisse le choix libre sinon)
     if version.os_type.is_builtin and os_slug in FORCED_CONFIGS:
-        config_type = FORCED_CONFIGS[os_slug]["type"]
+        if config_type not in CONFIG_TYPES:
+            config_type = FORCED_CONFIGS[os_slug]["type"]
 
     cfg = AutoConfig(
         iso_version_id=iso_version_id,
@@ -98,11 +109,11 @@ async def config_create(
     db.add(cfg)
     db.flush()
 
-    file_path = _write_config_file(cfg, version, content)
+    file_path = _write_config_file(cfg, version, content, forced_filename=forced_filename)
     cfg.file_path = file_path
     db.commit()
 
-    # Pour Ubuntu : créer automatiquement un meta-data vide si pas encore présent
+    # Pour Ubuntu : s'assurer que meta-data existe (requis par cloud-init)
     if os_slug == "ubuntu" and version.os_type.is_builtin:
         _ensure_ubuntu_meta_data(version, db)
 
@@ -187,7 +198,8 @@ def _ensure_ubuntu_meta_data(version: IsoVersion, db: Session):
         db.commit()
 
 
-def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> str:
+def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
+                       forced_filename: str = "") -> str:
     """Write config content to disk and return the relative path."""
     from app.services.slugify import slugify
     version_slug = slugify(version.version_label)
@@ -195,43 +207,46 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str) -> st
     cfg_dir.mkdir(parents=True, exist_ok=True)
 
     ext_map = {
-        "preseed":    "cfg",
-        "kickstart":  "cfg",
-        "unattend":   "xml",
-        "cloud-init": "yaml",
-        "custom":     "txt",
+        "preseed":          "cfg",
+        "kickstart":        "cfg",
+        "unattend":         "xml",
+        "cloud-init":       "",     # pas d'extension : user-data, meta-data
+        "proxmox-answer":   "toml",
+        "alpine-answer":    "",     # pas d'extension : answers (ou .tar.gz géré manuellement)
+        "custom":           "txt",
     }
-    ext = ext_map.get(cfg.config_type, "txt")
 
     os_slug = version.os_type.slug
     forced = FORCED_CONFIGS.get(os_slug) if version.os_type.is_builtin else None
 
     if forced:
-        # OS built-in : utiliser le nom de fichier canonique
-        canonical = forced["filenames"][0]
-        fname = canonical
+        # OS built-in : utiliser le fichier choisi par l'utilisateur (multi_file)
+        # ou le premier fichier canonique par défaut
+        if forced.get("multi_file") and forced_filename in forced["filenames"]:
+            fname = forced_filename
+        else:
+            fname = forced["filenames"][0]
     else:
         # OS custom : label slugifié ou type
+        ext = ext_map.get(cfg.config_type, "txt")
         base = slugify(cfg.label) if cfg.label and slugify(cfg.label) else cfg.config_type
         fname = f"{base}.{ext}" if ext else base
 
+        dest = cfg_dir / fname
+        if dest.exists():
+            existing_rel = f"configs/{version.os_type.slug}/{version_slug}/{fname}"
+            from app.database import SessionLocal
+            db_check = SessionLocal()
+            conflict = db_check.query(AutoConfig).filter(
+                AutoConfig.file_path == existing_rel,
+                AutoConfig.id != cfg.id,
+            ).first()
+            db_check.close()
+            if conflict:
+                base_name = Path(fname).stem
+                suffix = Path(fname).suffix
+                fname = f"{base_name}_{cfg.id}{suffix}"
+
     dest = cfg_dir / fname
-
-    # Pour les OS custom : gérer les conflits de nom
-    if not forced and dest.exists():
-        existing_rel = f"configs/{version.os_type.slug}/{version_slug}/{fname}"
-        from app.database import SessionLocal
-        db_check = SessionLocal()
-        conflict = db_check.query(AutoConfig).filter(
-            AutoConfig.file_path == existing_rel,
-            AutoConfig.id != cfg.id,
-        ).first()
-        db_check.close()
-        if conflict:
-            base_name = Path(fname).stem
-            suffix = Path(fname).suffix
-            fname = f"{base_name}_{cfg.id}{suffix}"
-            dest = cfg_dir / fname
-
     dest.write_text(content, encoding="utf-8")
     return f"configs/{version.os_type.slug}/{version_slug}/{fname}"

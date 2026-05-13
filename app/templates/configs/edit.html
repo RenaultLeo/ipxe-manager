@@ -43,14 +43,15 @@
                 <option value="{{ t }}">{{ t }}</option>
                 {% endfor %}
               </select>
-              <div class="form-text" id="type-hint"></div>
-              <!-- Badge affiché pour les OS built-in -->
-              <div id="forced-badge" class="d-none mt-1">
-                <span class="badge bg-warning text-dark">
-                  <i class="bi bi-lock me-1"></i>Fichier : <span id="forced-fname"></span>
-                </span>
-                <div class="form-text text-warning" id="forced-desc"></div>
-              </div>
+              <div class="form-text text-muted" id="type-hint"></div>
+            </div>
+
+            <!-- Choix de fichier pour les distros multi-file (Ubuntu, Alpine, Windows) -->
+            <div class="col-md-6 d-none" id="file-choice-wrap">
+              <label class="form-label">Fichier à créer <span class="text-danger">*</span></label>
+              <select name="forced_filename" class="form-select" id="file-choice">
+              </select>
+              <div class="form-text text-info" id="file-choice-desc"></div>
             </div>
           </div>
           {% endif %}
@@ -71,10 +72,13 @@
                   <i class="bi bi-lightning me-1"></i>Template
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('preseed')">Preseed (Debian/Ubuntu)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('kickstart')">Kickstart (RHEL/CentOS)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('preseed')">Preseed (Debian)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('kickstart')">Kickstart (RHEL/CentOS/ESXi)</a></li>
                   <li><a class="dropdown-item" href="#" onclick="insertTemplate('unattend')">Unattend.xml (Windows)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('cloud-init')">Cloud-init</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('cloud-init')">user-data cloud-init (Ubuntu)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('meta-data')">meta-data (Ubuntu)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('proxmox-answer')">answer.toml (Proxmox)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('alpine-answer')">answers (Alpine)</a></li>
                 </ul>
               </div>
             </div>
@@ -104,36 +108,60 @@
 const OS_CONFIG_TYPE  = {{ os_config_type | tojson }};
 const FORCED_CONFIGS  = {{ forced_configs | tojson }};
 
-function onVersionChange(sel) {
-  const opt        = sel.options[sel.selectedIndex];
-  const osSlug     = opt.dataset.osSlug   || '';
-  const isBuiltin  = opt.dataset.isBuiltin === 'true';
-  const typeSelect = document.getElementById('config-type');
-  const hint       = document.getElementById('type-hint');
-  const badge      = document.getElementById('forced-badge');
-  const fnameEl    = document.getElementById('forced-fname');
-  const descEl     = document.getElementById('forced-desc');
+// Labels affichés pour chaque type dans la liste
+const TYPE_LABELS = {
+  'preseed':        'preseed — Debian',
+  'kickstart':      'kickstart — CentOS / Rocky / Alma / Fedora / ESXi',
+  'unattend':       'unattend — Windows (autounattend.xml)',
+  'cloud-init':     'cloud-init — Ubuntu (user-data / meta-data)',
+  'proxmox-answer': 'proxmox-answer — Proxmox (answer.toml)',
+  'alpine-answer':  'alpine-answer — Alpine (answers / apkovl)',
+  'custom':         'custom',
+};
 
-  const forced = isBuiltin ? FORCED_CONFIGS[osSlug] : null;
+function onVersionChange(sel) {
+  const opt       = sel.options[sel.selectedIndex];
+  const osSlug    = opt.dataset.osSlug  || '';
+  const isBuiltin = opt.dataset.isBuiltin === 'true';
+
+  const typeSelect    = document.getElementById('config-type');
+  const hint          = document.getElementById('type-hint');
+  const fileWrap      = document.getElementById('file-choice-wrap');
+  const fileSelect    = document.getElementById('file-choice');
+  const fileDesc      = document.getElementById('file-choice-desc');
+
+  const forced        = isBuiltin ? FORCED_CONFIGS[osSlug] : null;
   const suggestedType = (forced ? forced.type : null) || OS_CONFIG_TYPE[osSlug] || 'custom';
 
-  // Sélectionner le type (verrouillé si built-in)
+  // Mettre à jour les labels du dropdown de type
+  for (let i = 0; i < typeSelect.options.length; i++) {
+    const v = typeSelect.options[i].value;
+    typeSelect.options[i].textContent = TYPE_LABELS[v] || v;
+  }
+
+  // Sélectionner le type suggéré (non verrouillé)
   for (let i = 0; i < typeSelect.options.length; i++) {
     if (typeSelect.options[i].value === suggestedType) {
       typeSelect.selectedIndex = i;
       break;
     }
   }
-  typeSelect.disabled = !!forced;
-  hint.textContent = (!forced && osSlug) ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
+  typeSelect.disabled = false;
+  hint.textContent = osSlug ? `Type recommandé pour ${osSlug} : ${suggestedType}` : '';
 
-  // Badge nom de fichier forcé
-  if (forced) {
-    fnameEl.textContent = forced.filenames[0];
-    descEl.textContent  = forced.description || '';
-    badge.classList.remove('d-none');
+  // Sélecteur de fichier pour les distros multi-file
+  if (forced && forced.multi_file) {
+    fileSelect.innerHTML = '';
+    forced.filenames.forEach(fn => {
+      const o = document.createElement('option');
+      o.value = fn; o.textContent = fn;
+      fileSelect.appendChild(o);
+    });
+    fileDesc.textContent = forced.description || '';
+    fileWrap.classList.remove('d-none');
   } else {
-    badge.classList.add('d-none');
+    fileWrap.classList.add('d-none');
+    fileSelect.innerHTML = '';
   }
 
   // Pré-remplir l'éditeur si vide
@@ -211,19 +239,60 @@ systemctl enable sshd
 </unattend>`,
 
   'cloud-init': `#cloud-config
-hostname: pxe-node
-locale: fr_FR.UTF-8
-timezone: Europe/Paris
-users:
-  - name: admin
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/bash
-    ssh_authorized_keys: []
-packages:
-  - openssh-server
-  - curl
-runcmd:
-  - systemctl enable ssh`
+autoinstall:
+  version: 1
+  locale: fr_FR
+  keyboard:
+    layout: fr
+  identity:
+    hostname: ubuntu-pxe
+    username: admin
+    password: '$6$rounds=4096$changeme'
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - openssh-server
+  late-commands:
+    - echo 'admin ALL=(ALL) NOPASSWD:ALL' >> /target/etc/sudoers`,
+
+  'meta-data': `instance-id: iid-local01
+local-hostname: ubuntu-pxe`,
+
+  'proxmox-answer': `[global]
+keyboard = fr
+country = fr
+fqdn = proxmox.local
+mailto = admin@example.com
+timezone = Europe/Paris
+root_password = changeme
+root_email = admin@example.com
+
+[network]
+source = from-dhcp
+
+[disk-setup]
+filesystem = ext4
+disk_list = sda
+`,
+
+  'alpine-answer': `# Réponses pour setup-alpine
+KEYMAPOPTS="fr fr"
+HOSTNAMEOPTS="-n alpine-pxe"
+INTERFACESOPTS="auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+"
+DNSOPTS="-d local -n 1.1.1.1"
+TIMEZONEOPTS="-z Europe/Paris"
+PROXYOPTS="none"
+APKREPOSOPTS="-1"
+SSHDOPTS="-c openssh"
+NTPOPTS="-c chrony"
+DISKOPTS="-m sys /dev/sda"
+`,
 };
 
 function insertTemplate(type) {

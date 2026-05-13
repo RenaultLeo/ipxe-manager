@@ -16,87 +16,99 @@ logger = logging.getLogger(__name__)
 OS_CONFIG_TYPE: dict[str, str] = {
     "windows":  "unattend",
     "winpe":    "unattend",
-    "ubuntu":   "cloud-init",   # user-data / meta-data (autoinstall)
+    "ubuntu":   "cloud-init",       # user-data / meta-data (autoinstall)
     "debian":   "preseed",
     "centos":   "kickstart",
     "rocky":    "kickstart",
     "alma":     "kickstart",
     "fedora":   "kickstart",
-    "proxmox":  "custom",       # answer.toml
-    "esxi":     "kickstart",    # ks.cfg
-    "alpine":   "custom",       # answers / apkovl
+    "proxmox":  "proxmox-answer",   # answer.toml
+    "esxi":     "kickstart",        # ks.cfg
+    "alpine":   "alpine-answer",    # answers / apkovl
     "tools":    "custom",
 }
 
 # ── Config forcée pour les OS built-in ────────────────────────────────────────
-# Structure : {slug: {"type": str, "filenames": [str, ...], "description": str}}
-# filenames[0] = nom canonique utilisé à la création
+# Structure : {slug: {"type", "filenames", "description", "ext", "multi_file"}}
+# multi_file=True  → l'utilisateur choisit quel fichier créer parmi `filenames`
+# multi_file=False → toujours filenames[0]
 FORCED_CONFIGS: dict[str, dict] = {
     "windows": {
         "type":        "unattend",
         "filenames":   ["autounattend.xml", "unattend.xml"],
-        "description": "autounattend.xml (boot) ou unattend.xml (post-boot)",
+        "description": "autounattend.xml (boot automatique) ou unattend.xml (post-boot)",
         "ext":         "xml",
+        "multi_file":  True,
     },
     "winpe": {
         "type":        "unattend",
         "filenames":   ["autounattend.xml", "unattend.xml"],
         "description": "autounattend.xml ou unattend.xml",
         "ext":         "xml",
+        "multi_file":  True,
     },
     "debian": {
         "type":        "preseed",
         "filenames":   ["preseed.cfg"],
         "description": "preseed.cfg",
         "ext":         "cfg",
+        "multi_file":  False,
     },
     "ubuntu": {
         "type":        "cloud-init",
         "filenames":   ["user-data", "meta-data"],
-        "description": "user-data + meta-data (autoinstall)",
-        "ext":         "",          # pas d'extension
+        "description": "user-data (config autoinstall) ou meta-data (identité instance)",
+        "ext":         "",
+        "multi_file":  True,
     },
     "centos": {
         "type":        "kickstart",
         "filenames":   ["ks.cfg"],
         "description": "ks.cfg",
         "ext":         "cfg",
+        "multi_file":  False,
     },
     "rocky": {
         "type":        "kickstart",
         "filenames":   ["ks.cfg"],
         "description": "ks.cfg",
         "ext":         "cfg",
+        "multi_file":  False,
     },
     "alma": {
         "type":        "kickstart",
         "filenames":   ["ks.cfg"],
         "description": "ks.cfg",
         "ext":         "cfg",
+        "multi_file":  False,
     },
     "fedora": {
         "type":        "kickstart",
         "filenames":   ["ks.cfg"],
         "description": "ks.cfg",
         "ext":         "cfg",
+        "multi_file":  False,
     },
     "proxmox": {
-        "type":        "custom",
+        "type":        "proxmox-answer",
         "filenames":   ["answer.toml"],
         "description": "answer.toml (Proxmox automated install)",
         "ext":         "toml",
+        "multi_file":  False,
     },
     "esxi": {
         "type":        "kickstart",
         "filenames":   ["ks.cfg"],
         "description": "ks.cfg (ESXi kickstart)",
         "ext":         "cfg",
+        "multi_file":  False,
     },
     "alpine": {
-        "type":        "custom",
+        "type":        "alpine-answer",
         "filenames":   ["answers", "alpine.apkovl.tar.gz"],
-        "description": "answers (setup-alpine) ou alpine.apkovl.tar.gz",
+        "description": "answers (réponses setup-alpine) ou alpine.apkovl.tar.gz (overlay)",
         "ext":         "",
+        "multi_file":  True,
     },
 }
 
@@ -107,28 +119,29 @@ EXT_TYPE: dict[str, str] = {
     ".xml":   "unattend",
     ".yaml":  "cloud-init",
     ".yml":   "cloud-init",
+    ".toml":  "proxmox-answer",
     ".txt":   "custom",
 }
 
 # Nom de fichier → type de config (priorité sur l'extension)
 NAME_TYPE: dict[str, str] = {
     # Windows / WinPE
-    "autounattend.xml":  "unattend",
-    "unattend.xml":      "unattend",
+    "autounattend.xml":       "unattend",
+    "unattend.xml":           "unattend",
     # Debian
-    "preseed.cfg":       "preseed",
+    "preseed.cfg":            "preseed",
     # Ubuntu (cloud-init / autoinstall)
-    "user-data":         "cloud-init",
-    "meta-data":         "cloud-init",
-    "cloud-config":      "cloud-init",
+    "user-data":              "cloud-init",
+    "meta-data":              "cloud-init",
+    "cloud-config":           "cloud-init",
     # RHEL family (CentOS, Rocky, Alma, Fedora, ESXi)
-    "ks.cfg":            "kickstart",
-    "kickstart.cfg":     "kickstart",
+    "ks.cfg":                 "kickstart",
+    "kickstart.cfg":          "kickstart",
     # Proxmox VE
-    "answer.toml":       "custom",
+    "answer.toml":            "proxmox-answer",
     # Alpine Linux
-    "answers":           "custom",
-    "alpine.apkovl.tar.gz": "custom",
+    "answers":                "alpine-answer",
+    "alpine.apkovl.tar.gz":  "alpine-answer",
 }
 
 
@@ -156,13 +169,11 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         return f"autoinstall ds=nocloud-net;s={base_url}"
     elif config_type == "unattend":
         return ""   # injecté comme initrd dans wimboot (Windows)
+    elif config_type == "proxmox-answer":
+        return f"proxmox-installer.answer-file={url}"
+    elif config_type == "alpine-answer":
+        return f"ANSWERSFILE={url}"
     elif config_type == "custom":
-        # Proxmox answer.toml : passé via le paramètre proxmox-installer
-        if os_slug == "proxmox":
-            return f"proxmox-installer.answer-file={url}"
-        # Alpine answers : passé à alpine-conf
-        if os_slug == "alpine":
-            return f"ANSWERSFILE={url}"
         return f"url={url}"
     else:
         return f"url={url}"
