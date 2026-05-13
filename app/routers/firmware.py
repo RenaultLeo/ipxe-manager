@@ -162,25 +162,29 @@ async def firmware_task_status(task_id: str, request: Request):
         meta   = r.info or {}
         step   = meta.get("step", "") if isinstance(meta, dict) else ""
         logs   = meta.get("logs", []) if isinstance(meta, dict) else []
+        completed_steps = meta.get("completed_steps", []) if isinstance(meta, dict) else []
         done   = r.ready()
         success = r.successful() if done else False
         result  = r.result if (done and success) else None
         error   = str(r.result) if (done and not success) else None
     except Exception as exc:
-        state, step, logs, done, success, result, error = "UNKNOWN", "", [], False, False, None, str(exc)
+        state, step, logs, completed_steps, done, success, result, error = (
+            "UNKNOWN", "", [], [], False, False, None, str(exc),
+        )
 
     return templates.TemplateResponse(
         "firmware_status.html",
         {
-            "request":  request,
-            "task_id":  task_id,
-            "state":    state,
-            "step":     step,
-            "logs":     logs,
-            "done":     done,
-            "success":  success,
-            "result":   result,
-            "error":    error,
-            "tftp_root": settings.tftp_root,
+            "request":          request,
+            "task_id":          task_id,
+            "state":            state,
+            "step":             step,
+            "logs":             logs,
+            "completed_steps":  completed_steps,
+            "done":             done,
+            "success":          success,
+            "result":           result,
+            "error":            error,
+            "tftp_root":        settings.tftp_root,
         },
     )

@@ -131,6 +131,7 @@ def compile_ipxe_task(self, menu_url: str):
     from app.config import settings
 
     logs: list[str] = []
+    completed_steps: list[str] = []
     tftp_dir = Path(settings.tftp_root)
     src_dir  = settings.ipxe_src_dir
     build_dir = Path(settings.build_dir)
@@ -155,7 +156,10 @@ def compile_ipxe_task(self, menu_url: str):
             raise RuntimeError(f"Timeout dépassé pour : {' '.join(cmd)}")
 
     try:
-        self.update_state(state="PROGRESS", meta={"step": "init", "logs": logs})
+        self.update_state(
+            state="PROGRESS",
+            meta={"step": "init", "completed_steps": list(completed_steps), "logs": logs},
+        )
 
         # ── 1. Créer les répertoires nécessaires ────────────────────────────
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -164,16 +168,24 @@ def compile_ipxe_task(self, menu_url: str):
         # ── 2. Cloner ou mettre à jour les sources iPXE ─────────────────────
         if (src_dir / ".git").exists():
             logs.append("Sources iPXE déjà présentes — git pull")
-            self.update_state(state="PROGRESS", meta={"step": "git_pull", "logs": logs})
+            self.update_state(
+                state="PROGRESS",
+                meta={"step": "git_pull", "completed_steps": list(completed_steps), "logs": logs},
+            )
             run(["git", "pull", "--ff-only"], cwd=src_dir)
+            completed_steps.append("git_pull")
         else:
             logs.append("Clonage du dépôt iPXE (peut prendre quelques minutes)…")
-            self.update_state(state="PROGRESS", meta={"step": "git_clone", "logs": logs})
+            self.update_state(
+                state="PROGRESS",
+                meta={"step": "git_clone", "completed_steps": list(completed_steps), "logs": logs},
+            )
             run([
                 "git", "clone", "--depth=1",
                 "https://github.com/ipxe/ipxe.git",
                 str(src_dir),
             ])
+            completed_steps.append("git_clone")
 
         # ── 3. Générer embed.ipxe ────────────────────────────────────────────
         embed_path = src_dir / "src" / "embed.ipxe"
@@ -192,31 +204,45 @@ def compile_ipxe_task(self, menu_url: str):
             "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
             f"chain --autofree {menu_url}\n"
         )
+        self.update_state(
+            state="PROGRESS",
+            meta={"step": "embed", "completed_steps": list(completed_steps), "logs": logs},
+        )
         embed_path.write_text(embed_content, encoding="utf-8")
         logs.append(f"embed.ipxe généré :\n{embed_content}")
-        self.update_state(state="PROGRESS", meta={"step": "embed", "logs": logs})
-
+        completed_steps.append("embed")
         make_dir = src_dir / "src"
 
         # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
         logs.append("Compilation undionly.kpxe (BIOS)…")
-        self.update_state(state="PROGRESS", meta={"step": "compile_bios", "logs": logs})
+        self.update_state(
+            state="PROGRESS",
+            meta={"step": "compile_bios", "completed_steps": list(completed_steps), "logs": logs},
+        )
         run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe"], cwd=make_dir)
+        completed_steps.append("compile_bios")
 
         # ── 5a. Compiler snponly.efi (UEFI — utilise drivers réseau EFI de la VM) ─
         # snponly.efi délègue au SNP (Simple Network Protocol) de l'EFI :
         # compatible virtio-net, e1000, vmxnet3, etc. sans driver intégré.
         logs.append("Compilation snponly.efi (UEFI SNP — VMs / matériel avec driver EFI)…")
-        self.update_state(state="PROGRESS", meta={"step": "compile_efi", "logs": logs})
+        self.update_state(
+            state="PROGRESS",
+            meta={"step": "compile_efi", "completed_steps": list(completed_steps), "logs": logs},
+        )
         run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe"], cwd=make_dir)
 
         # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
         logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
         run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe"], cwd=make_dir)
+        completed_steps.append("compile_efi")
 
         # ── 6. Copier les binaires en TFTP ───────────────────────────────────
         logs.append(f"Copie des binaires vers {tftp_dir}")
-        self.update_state(state="PROGRESS", meta={"step": "copy", "logs": logs})
+        self.update_state(
+            state="PROGRESS",
+            meta={"step": "copy", "completed_steps": list(completed_steps), "logs": logs},
+        )
 
         kpxe_src     = make_dir / "bin" / "undionly.kpxe"
         efi_src      = make_dir / "bin-x86_64-efi" / "ipxe.efi"
@@ -229,15 +255,17 @@ def compile_ipxe_task(self, menu_url: str):
         for fname in ("undionly.kpxe", "ipxe.efi", "snponly.efi"):
             (tftp_dir / fname).chmod(0o644)
 
+        completed_steps.append("copy")
         logs.append("Compilation terminée avec succès.")
         return {
-            "status":       "success",
-            "menu_url":     menu_url,
-            "embed":        embed_content,
-            "undionly":     str(tftp_dir / "undionly.kpxe"),
-            "efi":          str(tftp_dir / "ipxe.efi"),
-            "snponly":      str(tftp_dir / "snponly.efi"),
-            "logs":         "\n".join(logs),
+            "status":          "success",
+            "menu_url":        menu_url,
+            "embed":           embed_content,
+            "undionly":        str(tftp_dir / "undionly.kpxe"),
+            "efi":             str(tftp_dir / "ipxe.efi"),
+            "snponly":         str(tftp_dir / "snponly.efi"),
+            "logs":            "\n".join(logs),
+            "completed_steps": completed_steps,
         }
 
     except SoftTimeLimitExceeded:

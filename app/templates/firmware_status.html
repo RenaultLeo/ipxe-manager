@@ -6,6 +6,29 @@
     Les firmwares sont disponibles dans <code>{{ tftp_root if tftp_root is defined else '/srv/ipxe/tftpboot' }}</code>.
     <a href="/firmware" class="alert-link ms-2">Rafraîchir la page</a>
   </div>
+  <div class="p-3 border-top border-success border-opacity-25 bg-dark">
+    {% set step_labels_ok = [
+      ("git_clone",    "Clonage iPXE"),
+      ("git_pull",     "Mise à jour sources"),
+      ("embed",        "embed.ipxe"),
+      ("compile_bios", "undionly.kpxe (BIOS)"),
+      ("compile_efi",  "snponly / ipxe.efi"),
+      ("copy",         "Copie TFTP"),
+    ] %}
+    <div class="d-flex gap-2 flex-wrap">
+      {% for key, label in step_labels_ok %}
+        {% if completed_steps is defined and key in completed_steps %}
+        <span class="badge bg-success">
+          <i class="bi bi-check2 me-1"></i>{{ label }}
+        </span>
+        {% elif key in ('git_clone', 'git_pull') %}
+        <span class="badge bg-secondary bg-opacity-50" title="Branche Git non utilisée sur ce déploiement">{{ label }}</span>
+        {% else %}
+        <span class="badge bg-secondary" title="Étape non listée — consulter les logs">{{ label }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
   {% else %}
   <div class="alert alert-danger rounded-0 mb-0">
     <i class="bi bi-x-circle me-2"></i>
@@ -19,19 +42,24 @@
     ("git_pull",     "Mise à jour sources"),
     ("embed",        "embed.ipxe"),
     ("compile_bios", "undionly.kpxe (BIOS)"),
-    ("compile_efi",  "ipxe.efi (UEFI)"),
+    ("compile_efi",  "snponly / ipxe.efi"),
     ("copy",         "Copie TFTP"),
   ] %}
 
   <div class="d-flex gap-2 flex-wrap mb-3">
     {% for key, label in step_labels %}
-    <span class="badge {% if step is defined and step == key %}bg-warning text-dark
-                       {% else %}bg-secondary{% endif %}">
-      {% if step is defined and step == key %}
-      <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
+      {% if completed_steps is defined and key in completed_steps %}
+      <span class="badge bg-success">
+        <i class="bi bi-check2 me-1"></i>{{ label }}
+      </span>
+      {% elif step is defined and step == key %}
+      <span class="badge bg-warning text-dark">
+        <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
+        {{ label }}
+      </span>
+      {% else %}
+      <span class="badge bg-secondary">{{ label }}</span>
       {% endif %}
-      {{ label }}
-    </span>
     {% endfor %}
   </div>
 
