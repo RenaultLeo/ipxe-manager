@@ -139,15 +139,15 @@ function onVersionChange(sel) {
     typeSelect.options[i].textContent = TYPE_LABELS[v] || v;
   }
 
-  // Sélectionner le type suggéré (non verrouillé)
+  // Sélectionner le type suggéré — verrouillé pour les OS built-in (FORCED_CONFIGS)
   for (let i = 0; i < typeSelect.options.length; i++) {
     if (typeSelect.options[i].value === suggestedType) {
       typeSelect.selectedIndex = i;
       break;
     }
   }
-  typeSelect.disabled = false;
-  hint.textContent = osSlug ? `Type recommandé pour ${osSlug} : ${suggestedType}` : '';
+  typeSelect.disabled = !!forced;
+  hint.textContent = (!forced && osSlug) ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
 
   // Sélecteur de fichier pour les distros multi-file
   if (forced && forced.multi_file) {
@@ -298,5 +298,11 @@ DISKOPTS="-m sys /dev/sda"
 function insertTemplate(type) {
   document.getElementById('config-editor').value = TEMPLATES[type] || '';
 }
+
+// Les champs disabled ne sont pas envoyés au POST — réactiver au submit pour garder config_type.
+document.querySelector('#config-type')?.closest('form')?.addEventListener('submit', () => {
+  const s = document.getElementById('config-type');
+  if (s) s.disabled = false;
+});
 </script>
 {% endblock %}
