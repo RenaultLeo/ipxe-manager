@@ -7,6 +7,8 @@
     <a href="/firmware" class="alert-link ms-2">Rafraîchir la page</a>
   </div>
   <div class="p-3 border-top border-success border-opacity-25 bg-dark">
+    {% set cs = completed_steps if completed_steps is defined else [] %}
+    {% set git_ok = ('git_clone' in cs) or ('git_pull' in cs) %}
     {% set step_labels_ok = [
       ("git_clone",    "Clonage iPXE"),
       ("git_pull",     "Mise à jour sources"),
@@ -17,14 +19,16 @@
     ] %}
     <div class="d-flex gap-2 flex-wrap">
       {% for key, label in step_labels_ok %}
-        {% if completed_steps is defined and key in completed_steps %}
+        {% if key in ('git_clone', 'git_pull') and git_ok %}
         <span class="badge bg-success">
           <i class="bi bi-check2 me-1"></i>{{ label }}
         </span>
-        {% elif key in ('git_clone', 'git_pull') %}
-        <span class="badge bg-secondary bg-opacity-50" title="Branche Git non utilisée sur ce déploiement">{{ label }}</span>
+        {% elif key in cs %}
+        <span class="badge bg-success">
+          <i class="bi bi-check2 me-1"></i>{{ label }}
+        </span>
         {% else %}
-        <span class="badge bg-secondary" title="Étape non listée — consulter les logs">{{ label }}</span>
+        <span class="badge bg-secondary" title="Étape non atteinte — consulter les logs">{{ label }}</span>
         {% endif %}
       {% endfor %}
     </div>
@@ -37,6 +41,8 @@
   {% endif %}
 {% else %}
 <div class="p-3">
+  {% set cs = completed_steps if completed_steps is defined else [] %}
+  {% set git_ok = ('git_clone' in cs) or ('git_pull' in cs) %}
   {% set step_labels = [
     ("git_clone",    "Clonage iPXE"),
     ("git_pull",     "Mise à jour sources"),
@@ -48,11 +54,20 @@
 
   <div class="d-flex gap-2 flex-wrap mb-3">
     {% for key, label in step_labels %}
-      {% if completed_steps is defined and key in completed_steps %}
+      {% if key in ('git_clone', 'git_pull') and git_ok %}
+      <span class="badge bg-success">
+        <i class="bi bi-check2 me-1"></i>{{ label }}
+      </span>
+      {% elif key in cs %}
       <span class="badge bg-success">
         <i class="bi bi-check2 me-1"></i>{{ label }}
       </span>
       {% elif step is defined and step == key %}
+      <span class="badge bg-warning text-dark">
+        <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
+        {{ label }}
+      </span>
+      {% elif key == 'git_clone' and step is defined and step == 'git_pull' %}
       <span class="badge bg-warning text-dark">
         <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
         {{ label }}
