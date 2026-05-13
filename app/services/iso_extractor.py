@@ -195,21 +195,20 @@ def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str, rule: di
     # ── Kernel ──
     kernel = _find_by_priority(src, kernel_names, mode="kernel")
     if kernel:
-        out_name = "vmlinuz"
+        out_name = kernel.name  # conserver le nom d'origine (vmlinuz-lts, linux26…)
         shutil.copy2(kernel, dest / out_name)
         result["kernel_path"] = f"{base}/{out_name}"
-        logger.info("Kernel : %s → %s", kernel.name, out_name)
+        logger.info("Kernel : %s", out_name)
     else:
         logger.warning("Kernel non trouvé pour %s", os_slug)
 
     # ── Initrd ──
     initrd = _find_by_priority(src, initrd_names, mode="initrd")
     if initrd:
-        suffix = initrd.suffix or ""
-        fname = f"initrd{suffix}"
-        shutil.copy2(initrd, dest / fname)
-        result["initrd_path"] = f"{base}/{fname}"
-        logger.info("Initrd : %s → %s", initrd.name, fname)
+        out_name = initrd.name  # conserver le nom d'origine (initramfs-lts, initrd.img…)
+        shutil.copy2(initrd, dest / out_name)
+        result["initrd_path"] = f"{base}/{out_name}"
+        logger.info("Initrd : %s", out_name)
     else:
         logger.warning("Initrd non trouvé pour %s", os_slug)
 

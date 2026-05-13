@@ -157,11 +157,10 @@ async def upload_iso(
             has_boot_files = True
     else:
         if file_kernel and file_kernel.filename:
-            be.kernel_path = await save_boot_file(file_kernel, "vmlinuz")
+            be.kernel_path = await save_boot_file(file_kernel, Path(file_kernel.filename).name)
             has_boot_files = True
         if file_initrd and file_initrd.filename:
-            fname = Path(file_initrd.filename).name
-            be.initrd_path = await save_boot_file(file_initrd, fname)
+            be.initrd_path = await save_boot_file(file_initrd, Path(file_initrd.filename).name)
             has_boot_files = True
 
     # ── Script iPXE custom (optionnel, tous OS) ───────────────

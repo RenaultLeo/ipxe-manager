@@ -71,12 +71,16 @@
         {% set be = version.boot_entry %}
         <dl class="row mb-0">
           {% if be.kernel_path %}
-          <dt class="col-4 text-muted">vmlinuz</dt>
+          <dt class="col-4 text-muted">{{ be.kernel_path.split('/')[-1] }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
           {% endif %}
           {% if be.initrd_path %}
-          <dt class="col-4 text-muted">initrd</dt>
+          <dt class="col-4 text-muted">{{ be.initrd_path.split('/')[-1] }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.initrd_path }}</dd>
+          {% endif %}
+          {% if be.modloop_path %}
+          <dt class="col-4 text-muted">{{ be.modloop_path.split('/')[-1] }}</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.modloop_path }}</dd>
           {% endif %}
           {% if be.boot_wim_path %}
           <dt class="col-4 text-muted">boot.wim</dt>
