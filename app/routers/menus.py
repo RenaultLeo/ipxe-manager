@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
-from app.models.models import OsType, IsoVersion, BootEntry
+from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,7 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
 
+    remote_chains = db.query(RemoteChain).order_by(RemoteChain.id).all()
     return templates.TemplateResponse(
         "menus.html",
         {
@@ -86,6 +87,7 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
             "custom_scripts": _collect_custom_scripts(db),
             "os_types":       db.query(OsType).all(),
             "server_url":     settings.server_base_url,
+            "remote_chains":  remote_chains,
         },
     )
 
@@ -200,6 +202,73 @@ async def custom_script_delete(
         logger.exception("Erreur régénération menus après delete script")
 
     return RedirectResponse("/ipxe-menus?tab=custom", status_code=302)
+
+
+# ── Chainloads distants ───────────────────────────────────────────────────────
+
+@router.post("/chains/add")
+async def chain_add(
+    request: Request,
+    name: str = Form(...),
+    url:  str = Form(...),
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    chain = RemoteChain(name=name.strip(), url=url.strip())
+    db.add(chain)
+    db.commit()
+    try:
+        from app.services.menu_generator import regenerate_all
+        regenerate_all(db)
+    except Exception:
+        logger.exception("Erreur régénération menus après ajout chain")
+    return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
+
+
+@router.post("/chains/{chain_id}/delete")
+async def chain_delete(
+    chain_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    chain = db.query(RemoteChain).get(chain_id)
+    if not chain:
+        raise HTTPException(404)
+    db.delete(chain)
+    db.commit()
+    try:
+        from app.services.menu_generator import regenerate_all
+        regenerate_all(db)
+    except Exception:
+        logger.exception("Erreur régénération menus après suppression chain")
+    return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
+
+
+@router.post("/chains/{chain_id}/toggle")
+async def chain_toggle(
+    chain_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    chain = db.query(RemoteChain).get(chain_id)
+    if not chain:
+        raise HTTPException(404)
+    chain.enabled = not chain.enabled
+    db.commit()
+    try:
+        from app.services.menu_generator import regenerate_all
+        regenerate_all(db)
+    except Exception:
+        logger.exception("Erreur régénération menus après toggle chain")
+    return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
 @router.get("/{filename}/raw", response_class=PlainTextResponse)

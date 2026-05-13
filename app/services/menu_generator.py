@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.models import OsType, IsoVersion, BootEntry
+from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 
 logger = logging.getLogger(__name__)
@@ -126,10 +126,12 @@ def regenerate_all(db: Session) -> list[str]:
             logger.exception("Erreur génération menu pour OS type '%s'", os_type.slug)
 
     # Central menu
+    remote_chains = db.query(RemoteChain).filter(RemoteChain.enabled == True).order_by(RemoteChain.id).all()  # noqa: E712
     tmpl = env.get_template("menu.ipxe.j2")
     content = tmpl.render(
         os_types=os_types,
         server_url=settings.server_base_url,
+        remote_chains=remote_chains,
     )
     out = settings.menus_dir / "menu.ipxe"
     out.write_text(content, encoding="utf-8")

@@ -102,3 +102,14 @@ class AppSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(128), unique=True, nullable=False)
     value = Column(Text, default="")
+
+
+class RemoteChain(Base):
+    """Chainload vers un menu iPXE distant (autre serveur)."""
+    __tablename__ = "remote_chains"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    name       = Column(String(128), nullable=False)   # Nom affiché dans le menu
+    url        = Column(String(512), nullable=False)   # URL exacte du menu distant
+    enabled    = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

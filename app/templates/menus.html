@@ -28,7 +28,7 @@
 <!-- ═══ Onglets ═══ -->
 <ul class="nav nav-tabs mb-3" id="mainTab" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link {% if active_tab != 'custom' %}active{% endif %}"
+    <button class="nav-link {% if active_tab not in ('custom','chains') %}active{% endif %}"
             id="tab-generated"
             data-bs-toggle="tab" data-bs-target="#pane-generated"
             type="button" role="tab">
@@ -44,6 +44,17 @@
       <i class="bi bi-file-earmark-play me-1"></i>Scripts personnalisés
       {% if custom_scripts %}
       <span class="badge bg-primary ms-1">{{ custom_scripts | length }}</span>
+      {% endif %}
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'chains' %}active{% endif %}"
+            id="tab-chains"
+            data-bs-toggle="tab" data-bs-target="#pane-chains"
+            type="button" role="tab">
+      <i class="bi bi-diagram-3 me-1"></i>Serveurs distants
+      {% if remote_chains %}
+      <span class="badge bg-info text-dark ms-1">{{ remote_chains | length }}</span>
       {% endif %}
     </button>
   </li>
@@ -247,6 +258,94 @@
     {% endif %}
   </div><!-- /pane-custom -->
 
+  <!-- ══ Onglet : Serveurs distants ══ -->
+  <div class="tab-pane fade {% if active_tab == 'chains' %}show active{% endif %}"
+       id="pane-chains" role="tabpanel">
+
+    <p class="text-secondary small mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Ces entrées apparaissent dans la section <strong>Serveurs distants</strong> de
+      <code>menu.ipxe</code> et chainloadent vers le menu iPXE de l'adresse indiquée.
+      L'URL est utilisée telle quelle — pas de modification.
+    </p>
+
+    <!-- Formulaire ajout -->
+    <div class="card border-info mb-4">
+      <div class="card-header text-info small">
+        <i class="bi bi-plus-circle me-1"></i>Ajouter un serveur distant
+      </div>
+      <div class="card-body">
+        <form method="post" action="/ipxe-menus/chains/add" class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label small">Nom affiché dans le menu</label>
+            <input type="text" name="name" class="form-control form-control-sm"
+                   placeholder="ex: Serveur prod, Lab PXE…" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">URL du menu iPXE distant</label>
+            <input type="text" name="url" class="form-control form-control-sm font-monospace"
+                   placeholder="ex: 192.168.1.10/menus/menu.ipxe ou http://srv2/boot.ipxe" required>
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-info btn-sm w-100">
+              <i class="bi bi-plus-circle me-1"></i>Ajouter
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Liste des chainloads -->
+    {% if remote_chains %}
+    <div class="table-responsive">
+      <table class="table table-dark table-hover table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>URL</th>
+            <th class="text-center" style="width:100px">Actif</th>
+            <th class="text-center" style="width:80px">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rc in remote_chains %}
+          <tr class="{% if not rc.enabled %}opacity-50{% endif %}">
+            <td>
+              <i class="bi bi-diagram-3 me-2 text-info"></i>
+              <strong>{{ rc.name }}</strong>
+            </td>
+            <td>
+              <code class="small text-break">{{ rc.url }}</code>
+            </td>
+            <td class="text-center">
+              <form method="post" action="/ipxe-menus/chains/{{ rc.id }}/toggle" class="d-inline">
+                <button class="btn btn-sm {% if rc.enabled %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                        title="{% if rc.enabled %}Désactiver{% else %}Activer{% endif %}">
+                  <i class="bi {% if rc.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                </button>
+              </form>
+            </td>
+            <td class="text-center">
+              <button class="btn btn-outline-danger btn-sm"
+                      onclick="confirmDeleteChain({{ rc.id }}, '{{ rc.name | replace("'", "\\'") }}')">
+                <i class="bi bi-trash"></i>
+              </button>
+              <form id="del-chain-{{ rc.id }}" method="post"
+                    action="/ipxe-menus/chains/{{ rc.id }}/delete" class="d-none"></form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-secondary">
+      <i class="bi bi-info-circle me-2"></i>Aucun serveur distant configuré.
+    </div>
+    {% endif %}
+
+  </div><!-- /pane-chains -->
+
 </div><!-- /tab-content -->
 {% endblock %}
 
@@ -298,12 +397,21 @@ function confirmDelete(id, filename) {
   }
 }
 
-// Ré-ouvrir directement l'onglet custom si ?tab=custom dans l'URL
+function confirmDeleteChain(id, name) {
+  if (confirm('Supprimer le serveur « ' + name + ' » ?\nIl sera retiré du menu iPXE.')) {
+    document.getElementById('del-chain-' + id).submit();
+  }
+}
+
+// Ré-ouvrir le bon onglet selon ?tab= dans l'URL
 (function() {
-  const p = new URLSearchParams(window.location.search);
-  if (p.get('tab') === 'custom') {
+  const tab = new URLSearchParams(window.location.search).get('tab');
+  if (tab === 'custom') {
     const btn = document.getElementById('tab-custom');
-    if (btn) { btn.click(); }
+    if (btn) btn.click();
+  } else if (tab === 'chains') {
+    const btn = document.getElementById('tab-chains');
+    if (btn) btn.click();
   }
 })();
 </script>
