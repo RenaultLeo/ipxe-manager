@@ -120,7 +120,7 @@ async def upload_iso(
                     raise HTTPException(413, "Fichier trop volumineux")
         version.iso_path = str(dest)
         version.iso_size = size
-        db.add(Upload(filename=safe_name, file_type="iso", size=size, status="pending"))
+        db.add(Upload(filename=safe_name, file_type="iso", size=size, status="done"))
 
     # ── Fichiers boot manuels ──────────────────────────────
     from app.services.slugify import slugify

@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, SessionLocal
+from app.models.models import Upload, IsoVersion
 from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware
 from app.routers import settings as settings_router
 
@@ -71,6 +72,27 @@ app.include_router(firmware.router)
 app.include_router(settings_router.router)
 
 
+def _cleanup_stale_uploads():
+    """Au démarrage, marque comme 'error' les uploads restés bloqués en pending/processing.
+    Ces zombies apparaissent quand le worker Celery est redémarré pendant une tâche."""
+    try:
+        db = SessionLocal()
+        stale = db.query(Upload).filter(Upload.status.in_(["pending", "processing"])).all()
+        for u in stale:
+            u.status = "error"
+            u.error_msg = "Interrompu (redémarrage du serveur)"
+        # Pareil pour les versions restées en extracting
+        stuck = db.query(IsoVersion).filter(IsoVersion.status == "extracting").all()
+        for v in stuck:
+            v.status = "error"
+        if stale or stuck:
+            db.commit()
+        db.close()
+    except Exception:
+        pass
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
+    _cleanup_stale_uploads()
