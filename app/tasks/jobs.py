@@ -5,7 +5,7 @@ Celery background jobs:
   - compile_ipxe_task     : compile les firmwares iPXE (undionly.kpxe + ipxe.efi)
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.tasks.celery_app import celery

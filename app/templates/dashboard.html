@@ -39,9 +39,11 @@
           <td class="font-monospace small">{{ j.filename }}</td>
           <td><span class="badge bg-secondary">{{ j.file_type }}</span></td>
           <td>{{ fmt_size(j.size) }}</td>
-          <td class="text-muted small">{{ j.created_at.strftime('%H:%M:%S') }}</td>
+          <td class="text-muted small"
+              data-utc="{{ j.created_at.isoformat() }}Z"
+              id="start-{{ j.id }}">—</td>
           <td class="small" id="dur-{{ j.id }}"
-              data-start="{{ j.created_at.isoformat() }}">—</td>
+              data-start="{{ j.created_at.isoformat() }}Z">—</td>
           <td class="text-end">
             <form method="post" action="/jobs/{{ j.id }}/kill" class="d-inline"
                   onsubmit="return confirm('Forcer l\'arrêt de ce job ?')">
@@ -183,6 +185,14 @@
 
 {% block scripts %}
 <script>
+// Affiche l'heure de démarrage en heure locale du navigateur
+function updateStartTimes() {
+  document.querySelectorAll('[data-utc]').forEach(el => {
+    const d = new Date(el.dataset.utc);
+    el.textContent = d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  });
+}
+
 // Calcul durée en temps réel pour les jobs actifs
 function updateDurations() {
   document.querySelectorAll('[data-start]').forEach(el => {
@@ -197,8 +207,9 @@ function updateDurations() {
   });
 }
 if (document.querySelector('[data-start]')) {
+  updateStartTimes();
   updateDurations();
-  setInterval(updateDurations, 1000);
+  setInterval(() => { updateStartTimes(); updateDurations(); }, 1000);
   setTimeout(() => location.reload(), 30000);
 }
 </script>
