@@ -68,8 +68,9 @@
           {% endfor %}
         {% else %}
           {% for label, path in [
-            ('vmlinuz', be.kernel_path),
-            ('initrd',  be.initrd_path),
+            (be.kernel_path.split('/')[-1] if be.kernel_path else 'vmlinuz', be.kernel_path),
+            (be.initrd_path.split('/')[-1] if be.initrd_path else 'initrd',  be.initrd_path),
+            (be.modloop_path.split('/')[-1] if be.modloop_path else 'modloop', be.modloop_path),
           ] %}
             {% if path %}
             <div class="col-md-6">

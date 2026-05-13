@@ -42,9 +42,10 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd":  ["initrd.gz", "initrd"],
         "extra":   {},
     },
-    # Ubuntu Server — vmlinuz + initrd (ou initrd.lz / initrd.gz)
+    # Ubuntu Server — extraction complète (cloud-init a besoin des fichiers de l'ISO)
+    # vmlinuz et initrd sont dans casper/ ; user-data/meta-data créés par l'utilisateur
     "ubuntu": {
-        "type":    "linux",
+        "type":    "ubuntu",
         "kernel":  ["vmlinuz"],
         "initrd":  ["initrd", "initrd.gz", "initrd.lz", "initrd.lz4"],
         "extra":   {},
@@ -143,10 +144,11 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
             "Uploader les fichiers manuellement."
         )
 
-    if rule["type"] == "windows":
-        # Windows : extraction COMPLÈTE de l'ISO directement dans dest
-        # (tous les fichiers de l'ISO sont nécessaires pour setup.exe via Samba)
-        logger.info("Extraction complète Windows → %s", dest)
+    if rule["type"] in ("windows", "ubuntu"):
+        # Extraction COMPLÈTE de l'ISO directement dans dest
+        # Windows : tous les fichiers nécessaires pour setup.exe via Samba/HTTP
+        # Ubuntu  : contenu ISO nécessaire pour cloud-init autoinstall via HTTP
+        logger.info("Extraction complète %s → %s", os_slug, dest)
         proc = subprocess.run(
             [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
             capture_output=True, text=True,
@@ -156,9 +158,11 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
             raise ExtractionError(
                 f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
             )
-        # Corriger les permissions pour que Nginx (www-data) puisse servir les fichiers
         _fix_permissions(dest)
-        paths = _find_windows_in_dest(dest, os_slug, version_slug)
+        if rule["type"] == "windows":
+            paths = _find_windows_in_dest(dest, os_slug, version_slug)
+        else:
+            paths = _find_ubuntu_in_dest(dest, os_slug, version_slug, rule)
     else:
         # Linux : extraction dans un dossier temp, copie des fichiers de boot seulement
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,6 +269,88 @@ def _find_windows_in_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
         )
     logger.info("Extraction Windows complète — %d fichiers de boot détectés", len(result))
     return result
+
+
+# ── Ubuntu ─────────────────────────────────────────────────────────────────────
+
+def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
+    """
+    Après extraction complète de l'ISO Ubuntu dans `dest`,
+    localise vmlinuz et initrd dans l'arborescence (typiquement casper/).
+    Les fichiers restent en place — le contenu ISO complet est servi via HTTP
+    pour que cloud-init autoinstall puisse accéder aux paquets.
+    """
+    result: dict = {}
+    base = f"boot/{os_slug}/{version_slug}"
+
+    kernel_names: list[str] = rule.get("kernel") or ["vmlinuz"]
+    initrd_names: list[str] = rule.get("initrd") or ["initrd"]
+
+    # Kernel : chercher vmlinuz, priorité à casper/vmlinuz
+    kernel = _find_in_dest(dest, kernel_names, mode="kernel")
+    if kernel:
+        rel = kernel.relative_to(dest)
+        result["kernel_path"] = f"{base}/{rel.as_posix()}"
+        logger.info("Ubuntu kernel : %s", rel)
+    else:
+        logger.warning("Ubuntu kernel non trouvé dans l'ISO")
+
+    # Initrd : chercher initrd / initrd.gz / initrd.lz, priorité à casper/
+    initrd = _find_in_dest(dest, initrd_names, mode="initrd")
+    if initrd:
+        rel = initrd.relative_to(dest)
+        result["initrd_path"] = f"{base}/{rel.as_posix()}"
+        logger.info("Ubuntu initrd : %s", rel)
+    else:
+        logger.warning("Ubuntu initrd non trouvé dans l'ISO")
+
+    if not result:
+        raise ExtractionError(
+            "Aucun fichier de boot Ubuntu (vmlinuz / initrd) trouvé dans l'ISO."
+        )
+    logger.info("Extraction Ubuntu complète — kernel=%s initrd=%s",
+                result.get("kernel_path"), result.get("initrd_path"))
+    return result
+
+
+def _find_in_dest(dest: Path, names: list[str], mode: str = "extra") -> Path | None:
+    """
+    Comme _find_by_priority mais opère dans un dossier déjà extrait (dest).
+    Favorise les fichiers dans casper/ ou isolinux/ (chemins Ubuntu typiques).
+    """
+    PREFERRED_DIRS = {"casper", "isolinux", "install", "boot"}
+    for name in names:
+        n_lower = name.lower()
+        if mode == "kernel":
+            candidates = [
+                f for f in dest.rglob("*")
+                if f.is_file() and (
+                    f.name.lower() == n_lower
+                    or f.name.lower().startswith(n_lower + "-")
+                )
+            ]
+        elif mode == "initrd":
+            candidates = [
+                f for f in dest.rglob("*")
+                if f.is_file()
+                and (
+                    f.name.lower() == n_lower
+                    or f.name.lower().startswith(n_lower.split(".")[0] + "-")
+                )
+                and f.suffix.lower() in INITRD_EXTENSIONS
+            ]
+        else:
+            candidates = [
+                f for f in dest.rglob("*")
+                if f.is_file() and f.name.lower() == n_lower
+            ]
+
+        if candidates:
+            # Priorité aux répertoires connus d'Ubuntu
+            preferred = [f for f in candidates if f.parent.name.lower() in PREFERRED_DIRS]
+            pool = preferred if preferred else candidates
+            return max(pool, key=lambda f: f.stat().st_size)
+    return None
 
 
 # ── Recherche par priorité ─────────────────────────────────────────────────────
