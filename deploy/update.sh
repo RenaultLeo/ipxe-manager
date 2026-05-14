@@ -14,6 +14,12 @@ git -C "$APP_DIR" pull origin main
 echo "==> Mise à jour des dépendances Python…"
 "$VENV/bin/pip" install -q --upgrade -r "$APP_DIR/requirements.txt"
 
+if command -v node >/dev/null 2>&1; then
+  echo "==> Fichiers i18n (liste DE/ES/IT/PT)…"
+  (cd "$APP_DIR" && node tools/extract_en_list.mjs && node tools/build_locale_lists.mjs) \
+    || echo "  ! Rebuild i18n échoué (fichiers du dépôt conservés)."
+fi
+
 echo "==> Migrations base de données…"
 cd "$APP_DIR"
 "$VENV/bin/python" deploy/seed_db.py

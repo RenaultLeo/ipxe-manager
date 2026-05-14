@@ -26,7 +26,7 @@ apt-get install -y -qq \
     sudo git curl wget unzip rsync ca-certificates \
     iproute2 procps \
     nginx tftpd-hpa redis-server \
-    python3 python3-venv python3-pip \
+    python3 python3-venv python3-pip nodejs \
     p7zip-full wimtools genisoimage xorriso \
     samba samba-common-bin \
     build-essential gcc binutils make liblzma-dev mtools \
@@ -83,6 +83,15 @@ python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip wheel
 "$VENV/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 echo "  Dépendances Python installées."
+
+# Bundles i18n (DE / ES / IT / PT) : alignés sur app/i18n.py + tools/build_locale_lists.mjs
+if command -v node >/dev/null 2>&1; then
+  echo "  Régénération des fichiers app/locale_values/*.list.json (Node)…"
+  (cd "$APP_DIR" && node tools/extract_en_list.mjs && node tools/build_locale_lists.mjs) \
+    || echo "  ! Rebuild i18n échoué — utilisation des fichiers déjà présents dans le dépôt."
+else
+  echo "  ! Node.js indisponible — les listes i18n du clone Git doivent être complètes."
+fi
 
 # ── 6. Fichier .env ───────────────────────────────────────────────────────────
 echo "[6/14] Configuration de l'environnement (.env)…"

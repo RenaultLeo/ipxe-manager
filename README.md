@@ -84,6 +84,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 - Configure **Nginx** avec des alias pour `/menus/`, `/boot/`, etc., et des limites d’upload pour les grosses ISO.
 - Écrit **`/etc/default/tftpd-hpa`** et **redémarre `tftpd-hpa` à la fin** : pendant le script, le service peut démarrer avec une config encore incomplète ; le redémarrage final évite un TFTP qui ne lit qu’une partie des paramètres ou des répertoires.
 - Initialise la base avec **`deploy/seed_db.py`** (types d’OS par défaut : Windows, Ubuntu, Debian, Rocky, Alma, Fedora, Proxmox, ESXi, Alpine, etc.).
+- Après **`pip install`**, régénère sous **`app/locale_values/`** les fichiers **`_en.list.json`**, **`de|es|it|pt.list.json`** (traductions alignées sur `app/i18n.py` via Node : `extract_en_list.mjs` + `build_locale_lists.mjs`). **Node.js** est installé avec les paquets système pour que ce soit reproductible sur toute machine ; en cas d’échec, les fichiers déjà présents dans le dépôt Git sont utilisés.
 - Télécharge **`wimboot`** et, si besoin, des binaires iPXE **génériques** en secours dans TFTP (en attendant ta propre compilation depuis l’UI **Firmware**).
 
 ### Première connexion
@@ -206,7 +207,7 @@ Depuis la machine de production :
 sudo bash /srv/ipxe/app/deploy/update.sh
 ```
 
-Le script enchaîne : **`git pull`**, mise à jour **`pip`**, exécution de **`deploy/seed_db.py`** (nouvelles colonnes / graines idempotentes), puis **redémarrage** de **`ipxe-manager`**, **`ipxe-celery`** et **`tftpd-hpa`**.
+Le script enchaîne : **`git pull`**, mise à jour **`pip`**, régénération des **listes i18n** si **Node.js** est installé sur le serveur, exécution de **`deploy/seed_db.py`** (nouvelles colonnes / graines idempotentes), puis **redémarrage** de **`ipxe-manager`**, **`ipxe-celery`** et **`tftpd-hpa`**.
 
 Si tu ajoutes des champs en base et que le service ne les voit pas tout de suite, tu peux aussi lancer manuellement (en utilisateur adapté, selon ton déploiement) :
 
