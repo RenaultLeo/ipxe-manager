@@ -6,12 +6,15 @@ from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPExc
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from urllib.parse import quote
+
 from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import IsoVersion, BootEntry, Upload
 from app.services.disk_info import fmt_size
 from app.templating import templates, template_context
 from app.config import settings
+from app.i18n import translate
 
 router = APIRouter(prefix="/boot-files")
 
@@ -61,10 +64,16 @@ async def scan_boot_files(request: Request, db: Session = Depends(get_db)):
     except Exception:
         pass
 
-    msg = f"Scan terminé — {res['updated']} version(s) mise(s) à jour, {res['skipped']} ignorée(s)"
+    lang = getattr(request.state, "locale", "fr")
+    msg = translate(
+        lang,
+        "boot.scan_done",
+        updated=res["updated"],
+        skipped=res["skipped"],
+    )
     if res.get("errors"):
-        msg += f", {len(res['errors'])} erreur(s)"
-    return RedirectResponse(f"/boot-files?scan_result={msg}", status_code=302)
+        msg += translate(lang, "boot.scan_errors_suffix", n=len(res["errors"]))
+    return RedirectResponse(f"/boot-files?scan_result={quote(msg)}", status_code=302)
 
 
 @router.post("/{version_id}/upload")

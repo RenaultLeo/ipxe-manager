@@ -6,6 +6,8 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from urllib.parse import quote
+
 from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import IsoVersion, AutoConfig
@@ -13,6 +15,7 @@ from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
 from app.services.slugify import slugify
 from app.templating import templates, template_context
 from app.config import settings
+from app.i18n import translate
 
 router = APIRouter(prefix="/ipxe-configs")
 
@@ -91,10 +94,16 @@ async def config_scan(request: Request, db: Session = Depends(get_db)):
         return redir
     from app.services.config_scanner import scan_and_import
     res = scan_and_import(db)
-    msg = f"Scan terminé — {res['imported']} importé(s), {res['skipped']} ignoré(s)"
-    if res["errors"]:
-        msg += f", {len(res['errors'])} erreur(s)"
-    return RedirectResponse(f"/ipxe-configs?scan_result={msg}", status_code=302)
+    lang = getattr(request.state, "locale", "fr")
+    msg = translate(
+        lang,
+        "cfg.scan_done",
+        imported=res["imported"],
+        skipped=res["skipped"],
+    )
+    if res.get("errors"):
+        msg += translate(lang, "cfg.scan_errors_suffix", n=len(res["errors"]))
+    return RedirectResponse(f"/ipxe-configs?scan_result={quote(msg)}", status_code=302)
 
 
 @router.get("/new", response_class=HTMLResponse)

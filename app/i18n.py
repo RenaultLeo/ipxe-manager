@@ -1,9 +1,9 @@
-"""Traductions FR / EN — clés utilisées dans les templates avec {{ t('clé') }}."""
+"""Traductions (FR, EN, DE, ES, IT, PT) — clés utilisées dans les templates avec {{ t('clé') }}."""
 from __future__ import annotations
 
 LOCALE_COOKIE = "lang"
 DEFAULT_LOCALE = "fr"
-SUPPORTED_LOCALES = frozenset({"fr", "en"})
+SUPPORTED_LOCALES = frozenset({"fr", "en", "de", "es", "it", "pt"})
 
 
 def resolve_lang(value: str | None) -> str:
@@ -38,6 +38,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "lang.label": "Langue",
         "lang.fr": "Français",
         "lang.en": "English",
+        "lang.de": "Deutsch",
+        "lang.es": "Español",
+        "lang.it": "Italiano",
+        "lang.pt": "Português",
         "dash.title": "Tableau de bord",
         "dash.jobs_running": "{n} job(s) en cours",
         "dash.kill_all_confirm": "Forcer l'arrêt de tous les jobs en cours ?",
@@ -139,6 +143,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "boot.heading": "Gestionnaire de fichiers Boot",
         "boot.scan": "Scanner les fichiers boot",
         "boot.scan_title": "Scanne boot/ et enregistre les fichiers déjà présents sur le disque",
+        "boot.scan_done": "Scan terminé — {updated} version(s) mise(s) à jour, {skipped} ignorée(s)",
+        "boot.scan_errors_suffix": ", {n} erreur(s)",
         "boot.role": "Rôle",
         "boot.file": "Fichier",
         "boot.upload": "Uploader",
@@ -161,6 +167,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cfg.heading": "Configurations automatiques",
         "cfg.scan": "Scanner les fichiers",
         "cfg.scan_title": "Scanne configs/ et importe les fichiers non enregistrés",
+        "cfg.scan_done": "Scan terminé — {imported} importé(s), {skipped} ignoré(s)",
+        "cfg.scan_errors_suffix": ", {n} erreur(s)",
         "cfg.new": "Nouvelle config",
         "cfg.col_os": "OS / Version",
         "cfg.col_type": "Type",
@@ -298,6 +306,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "lang.label": "Language",
         "lang.fr": "Français",
         "lang.en": "English",
+        "lang.de": "Deutsch",
+        "lang.es": "Español",
+        "lang.it": "Italiano",
+        "lang.pt": "Português",
         "dash.title": "Dashboard",
         "dash.jobs_running": "{n} job(s) running",
         "dash.kill_all_confirm": "Force stop all running jobs?",
@@ -399,6 +411,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "boot.heading": "Boot file manager",
         "boot.scan": "Scan boot files",
         "boot.scan_title": "Scan boot/ and register files already on disk",
+        "boot.scan_done": "Scan finished — {updated} release(s) updated, {skipped} skipped",
+        "boot.scan_errors_suffix": ", {n} error(s)",
         "boot.role": "Role",
         "boot.file": "File",
         "boot.upload": "Upload",
@@ -421,6 +435,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cfg.heading": "Automatic configurations",
         "cfg.scan": "Scan files",
         "cfg.scan_title": "Scan configs/ and import unregistered files",
+        "cfg.scan_done": "Scan finished — {imported} imported, {skipped} skipped",
+        "cfg.scan_errors_suffix": ", {n} error(s)",
         "cfg.new": "New config",
         "cfg.col_os": "OS / release",
         "cfg.col_type": "Type",
@@ -547,3 +563,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "common.save": "Save",
     },
 }
+
+from app.i18n_extra_locales import merge_extra_locales
+
+merge_extra_locales(MESSAGES)
