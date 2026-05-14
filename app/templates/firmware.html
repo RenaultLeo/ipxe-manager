@@ -1,38 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Firmware iPXE — iPXE Manager{% endblock %}
+{% block title %}{{ t('fw.page_title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0">
-    <i class="bi bi-cpu me-2 text-primary"></i>Firmware iPXE
+    <i class="bi bi-cpu me-2 text-primary"></i>{{ t('fw.heading') }}
   </h2>
   <form method="post" action="/firmware/build" id="build-form">
     <input type="hidden" name="menu_url" id="build-menu-url" value="{{ menu_url }}">
     <button class="btn btn-primary" {% if building %}disabled{% endif %}>
       <i class="bi bi-hammer me-1"></i>
-      {% if building %}Compilation en cours…{% else %}Compiler le firmware{% endif %}
+      {% if building %}{{ t('fw.building') }}{% else %}{{ t('fw.build') }}{% endif %}
     </button>
   </form>
 </div>
 
-<!-- ═══ Statut fichiers TFTP ═══ -->
 <div class="row g-3 mb-4">
 
   <div class="col-md-4">
     <div class="card h-100 {% if status.undionly %}border-success{% else %}border-secondary{% endif %}">
       <div class="card-body">
         <h6 class="card-title text-secondary small text-uppercase mb-2">
-          <i class="bi bi-file-binary me-1"></i>undionly.kpxe <span class="text-muted">(BIOS)</span>
+          <i class="bi bi-file-binary me-1"></i>undionly.kpxe <span class="text-muted">{{ t('fw.card_bios') }}</span>
         </h6>
         {% if status.undionly %}
-        <p class="mb-1"><span class="badge bg-success">Présent</span></p>
+        <p class="mb-1"><span class="badge bg-success">{{ t('status.present') }}</span></p>
         <p class="text-secondary small mb-1">
-          {{ (status.undionly.size / 1024) | round(1) }} Ko
+          {{ (status.undionly.size / 1024) | round(1) }} {{ t('fw.kb_unit') }}
         </p>
         <code class="small text-muted">{{ status.undionly.path }}</code>
         {% else %}
-        <span class="badge bg-danger">Absent</span>
-        <p class="text-secondary small mt-1 mb-0">Pas encore compilé</p>
+        <span class="badge bg-danger">{{ t('status.absent') }}</span>
+        <p class="text-secondary small mt-1 mb-0">{{ t('fw.not_built') }}</p>
         {% endif %}
       </div>
     </div>
@@ -43,16 +42,16 @@
       <div class="card-body">
         <h6 class="card-title text-secondary small text-uppercase mb-2">
           <i class="bi bi-file-binary me-1"></i>snponly.efi
-          <span class="badge bg-primary ms-1" style="font-size:0.65rem">VMs</span>
+          <span class="badge bg-primary ms-1" style="font-size:0.65rem">{{ t('fw.badge_vms') }}</span>
         </h6>
-        <p class="text-secondary small mb-1">UEFI via drivers EFI (virtio, e1000…)</p>
+        <p class="text-secondary small mb-1">{{ t('fw.snponly_sub') }}</p>
         {% if status.snponly %}
-        <p class="mb-1"><span class="badge bg-success">Présent</span></p>
-        <p class="text-secondary small mb-1">{{ (status.snponly.size / 1024) | round(1) }} Ko</p>
+        <p class="mb-1"><span class="badge bg-success">{{ t('status.present') }}</span></p>
+        <p class="text-secondary small mb-1">{{ (status.snponly.size / 1024) | round(1) }} {{ t('fw.kb_unit') }}</p>
         <code class="small text-muted">{{ status.snponly.path }}</code>
         {% else %}
-        <span class="badge bg-danger">Absent</span>
-        <p class="text-secondary small mt-1 mb-0">Pas encore compilé</p>
+        <span class="badge bg-danger">{{ t('status.absent') }}</span>
+        <p class="text-secondary small mt-1 mb-0">{{ t('fw.not_built') }}</p>
         {% endif %}
       </div>
     </div>
@@ -63,16 +62,16 @@
       <div class="card-body">
         <h6 class="card-title text-secondary small text-uppercase mb-2">
           <i class="bi bi-file-binary me-1"></i>ipxe.efi
-          <span class="badge bg-secondary ms-1" style="font-size:0.65rem">bare-metal</span>
+          <span class="badge bg-secondary ms-1" style="font-size:0.65rem">{{ t('fw.badge_bare') }}</span>
         </h6>
-        <p class="text-secondary small mb-1">UEFI drivers intégrés (physique)</p>
+        <p class="text-secondary small mb-1">{{ t('fw.ipxe_sub') }}</p>
         {% if status.efi %}
-        <p class="mb-1"><span class="badge bg-success">Présent</span></p>
-        <p class="text-secondary small mb-1">{{ (status.efi.size / 1024) | round(1) }} Ko</p>
+        <p class="mb-1"><span class="badge bg-success">{{ t('status.present') }}</span></p>
+        <p class="text-secondary small mb-1">{{ (status.efi.size / 1024) | round(1) }} {{ t('fw.kb_unit') }}</p>
         <code class="small text-muted">{{ status.efi.path }}</code>
         {% else %}
-        <span class="badge bg-danger">Absent</span>
-        <p class="text-secondary small mt-1 mb-0">Pas encore compilé</p>
+        <span class="badge bg-danger">{{ t('status.absent') }}</span>
+        <p class="text-secondary small mt-1 mb-0">{{ t('fw.not_built') }}</p>
         {% endif %}
       </div>
     </div>
@@ -85,19 +84,19 @@
     <div class="card h-100 border-secondary">
       <div class="card-body">
         <h6 class="card-title text-secondary small text-uppercase mb-2">
-          <i class="bi bi-folder2 me-1"></i>Répertoires
+          <i class="bi bi-folder2 me-1"></i>{{ t('fw.dirs') }}
         </h6>
         <p class="small mb-1">
-          <span class="text-secondary">TFTP :</span><br>
+          <span class="text-secondary">{{ t('fw.tftp_label') }}</span><br>
           <code class="text-info small">{{ tftp_root }}</code>
         </p>
         <p class="small mb-0">
-          <span class="text-secondary">Sources :</span><br>
+          <span class="text-secondary">{{ t('fw.sources_label') }}</span><br>
           <code class="text-info small">{{ status.build_dir }}</code>
           {% if status.src_cloned %}
-          <span class="badge bg-success ms-1 small">cloné</span>
+          <span class="badge bg-success ms-1 small">{{ t('fw.cloned') }}</span>
           {% else %}
-          <span class="badge bg-secondary ms-1 small">non cloné</span>
+          <span class="badge bg-secondary ms-1 small">{{ t('fw.not_cloned') }}</span>
           {% endif %}
         </p>
       </div>
@@ -106,14 +105,13 @@
 
 </div>
 
-<!-- ═══ embed.ipxe actuel ═══ -->
 <div class="card border-secondary mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span><i class="bi bi-file-code me-2"></i><code>embed.ipxe</code>
-      — script intégré dans les firmwares compilés</span>
+      — {{ t('fw.embed_title') }}</span>
     <button class="btn btn-sm btn-outline-secondary"
             onclick="document.getElementById('embed-editor').classList.toggle('d-none')">
-      <i class="bi bi-pencil me-1"></i>Personnaliser
+      <i class="bi bi-pencil me-1"></i>{{ t('fw.customize') }}
     </button>
   </div>
   <div class="card-body p-0">
@@ -122,42 +120,40 @@
          style="white-space:pre-wrap">{{ status.embed }}</pre>
     {% else %}
     <div class="p-3 text-secondary small">
-      L'embed sera généré automatiquement lors de la compilation avec l'URL ci-dessous.
+      {{ t('fw.embed_auto') }}
     </div>
     {% endif %}
   </div>
-  <!-- Éditeur embed personnalisé (optionnel) -->
   <div id="embed-editor" class="card-body border-top border-secondary d-none">
     <form method="post" action="/firmware/build">
       <div class="mb-2">
-        <label class="form-label small text-secondary">URL chainload (menu.ipxe)</label>
+        <label class="form-label small text-secondary">{{ t('fw.chainload_url') }}</label>
         <input type="text" name="menu_url" class="form-control form-control-sm font-monospace"
                value="{{ menu_url }}" id="custom-url">
       </div>
       <p class="text-secondary small mb-2">
-        L'embed généré sera : <code>#!ipxe<br>dhcp<br>chain &lt;url&gt;</code>
+        {{ t('fw.embed_generated') }} <code>#!ipxe<br>dhcp<br>chain &lt;url&gt;</code>
       </p>
       <button class="btn btn-warning btn-sm">
-        <i class="bi bi-hammer me-1"></i>Compiler avec cette URL
+        <i class="bi bi-hammer me-1"></i>{{ t('fw.compile_url') }}
       </button>
     </form>
   </div>
 </div>
 
-<!-- ═══ Statut de compilation ═══ -->
 {% if task_id %}
 <div class="card border-warning mb-4" id="build-card">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>
       <span class="spinner-border spinner-border-sm text-warning me-2" id="build-spinner"></span>
       <i class="bi bi-gear-wide-connected me-1 text-warning"></i>
-      Compilation en cours
+      {{ t('fw.build_running_short') }}
       <span class="badge bg-secondary ms-2 small font-monospace">{{ task_id[:16] }}…</span>
     </span>
     <form method="post" action="/firmware/cancel/{{ task_id }}"
-          onsubmit="return confirm('Annuler la compilation en cours ?\n\nLes sources resteront sur disque, la prochaine compilation reprendra plus vite.')">
+          onsubmit="return confirm({{ t('fw.cancel_build_confirm')|tojson }})">
       <button class="btn btn-outline-danger btn-sm">
-        <i class="bi bi-stop-circle me-1"></i>Annuler
+        <i class="bi bi-stop-circle me-1"></i>{{ t('common.cancel') }}
       </button>
     </form>
   </div>
@@ -169,7 +165,7 @@
        id="build-status">
     <div class="p-3 text-secondary small">
       <span class="spinner-border spinner-border-sm me-2"></span>
-      Connexion au worker Celery…
+      {{ t('fw.worker_connect') }}
     </div>
   </div>
 </div>
@@ -178,8 +174,8 @@
 {% if request.query_params.get('cancelled') %}
 <div class="alert alert-warning">
   <i class="bi bi-stop-circle me-2"></i>
-  <strong>Compilation annulée.</strong>
-  Les sources sont conservées — la prochaine compilation reprendra avec <code>git pull</code> sans tout recloner.
+  <strong>{{ t('fw.cancelled_msg') }}</strong>
+  {{ t('fw.cancelled_detail') }}
 </div>
 {% endif %}
 
@@ -187,32 +183,28 @@
   {% if result.state == "SUCCESS" %}
   <div class="alert alert-success">
     <i class="bi bi-check-circle me-2"></i>
-    <strong>Compilation réussie !</strong>
-    Les firmwares ont été copiés dans <code>{{ tftp_root }}</code>.
+    <strong>{{ t('fw.success_title') }}</strong>
+    {{ t('fw.success_copied', path=tftp_root) }}
   </div>
   {% else %}
   <div class="alert alert-danger">
     <i class="bi bi-x-circle me-2"></i>
-    <strong>Échec :</strong> {{ result.result }}
+    <strong>{{ t('fw.failure_title') }}</strong> {{ result.result }}
   </div>
   {% endif %}
 {% endif %}
 
-<!-- ═══ Guide configuration DHCP ═══ -->
 <div class="card border-secondary">
   <div class="card-header">
-    <i class="bi bi-info-circle me-2 text-info"></i>Configuration serveur DHCP
+    <i class="bi bi-info-circle me-2 text-info"></i>{{ t('fw.dhcp_card_title') }}
   </div>
   <div class="card-body">
     <p class="text-secondary small mb-2">
-      Pointez votre serveur DHCP vers les fichiers compilés dans
-      <code>{{ tftp_root }}</code> :
+      {{ t('fw.dhcp_point', path=tftp_root) }}
     </p>
     <div class="alert alert-info py-2 small mb-2">
       <i class="bi bi-info-circle me-1"></i>
-      Pour les <strong>VMs Proxmox/QEMU/VMware</strong>, utiliser <code>snponly.efi</code> —
-      il délègue aux drivers réseau de l'EFI (virtio-net, e1000…) contrairement à
-      <code>ipxe.efi</code> qui embarque ses propres drivers (plutôt pour le bare-metal).
+      {{ t('fw.dhcp_vm_note') }}
     </div>
     <pre class="bg-dark text-light p-3 rounded small mb-2"><code># pfSense → Services > DHCP Server > [interface]
 # Coller dans "Additional BOOTP/DHCP Options" tout en bas :
@@ -235,8 +227,7 @@ if exists user-class and ( option user-class = "iPXE" ) {
 # de la section Network Booting → {{ tftp_root.split('/')[-1] | default('192.168.2.6') }}
 </code></pre>
     <p class="text-secondary small mb-0">
-      Flux de boot : DHCP → TFTP (<code>snponly.efi</code>) → iPXE refait DHCP
-      → reçoit directement <code>{{ menu_url }}</code> grâce à la condition <code>user-class = "iPXE"</code>.
+      {{ t('fw.dhcp_flow', url=menu_url) }}
     </p>
   </div>
 </div>

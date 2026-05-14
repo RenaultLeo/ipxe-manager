@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Ajouter une version — iPXE Manager{% endblock %}
+{% block title %}{{ t('iso.upload.card_title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -7,24 +7,25 @@
 
     <div class="alert alert-info mb-3">
       <i class="bi bi-info-circle me-2"></i>
-      <strong>Deux méthodes :</strong>
-      uploader l'ISO complète (extraction automatique des fichiers boot),
-      <strong>ou</strong> fournir directement les fichiers de boot (boot.wim, vmlinuz…) sans ISO.
+      {{ t('iso.upload.intro') }}
     </div>
 
     <div class="card border-secondary">
       <div class="card-header">
-        <i class="bi bi-plus-circle me-2 text-primary"></i>Ajouter une version bootable
+        <i class="bi bi-plus-circle me-2 text-primary"></i>{{ t('iso.upload.card_title') }}
       </div>
       <div class="card-body">
-        <form method="post" action="/isos/upload" enctype="multipart/form-data" id="upload-form">
+        <form method="post" action="/isos/upload" enctype="multipart/form-data" id="upload-form"
+              data-msg-progress="{{ t('iso.upload.progress') }}"
+              data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
+              data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
 
           <!-- OS Type + Version label -->
           <div class="row g-3 mb-4">
             <div class="col-md-6">
-              <label class="form-label">Type d'OS <span class="text-danger">*</span></label>
+              <label class="form-label">{{ t('iso.upload.os_type') }} <span class="text-danger">*</span></label>
               <select name="os_type_id" class="form-select" id="os-select" required>
-                <option value="">— Choisir —</option>
+                <option value="">{{ t('common.choose') }}</option>
                 {% for ot in os_types %}
                 <option value="{{ ot.id }}" data-boot="{{ ot.boot_type }}" data-slug="{{ ot.slug }}">
                   {{ ot.label }}
@@ -33,20 +34,20 @@
               </select>
             </div>
             <div class="col-md-6">
-              <label class="form-label">Label de version <span class="text-danger">*</span></label>
+              <label class="form-label">{{ t('iso.upload.version_label') }} <span class="text-danger">*</span></label>
               <input type="text" name="version_label" class="form-control"
-                     placeholder="ex: 22.04 LTS, 11 Bullseye, 2022…" required>
+                     placeholder="{{ t('iso.upload.version_ph') }}" required>
             </div>
           </div>
 
           <!-- ISO file (optionnel) -->
           <div class="card border-secondary mb-4">
             <div class="card-header small text-muted">
-              <i class="bi bi-disc me-1"></i>Image ISO (optionnel — pour extraction automatique)
+              <i class="bi bi-disc me-1"></i>{{ t('iso.upload.iso_section') }}
             </div>
             <div class="card-body">
               <input type="file" name="file" class="form-control" accept=".iso,.img" id="iso-file">
-              <div class="form-text">Si vous fournissez l'ISO, les fichiers boot seront extraits automatiquement.</div>
+              <div class="form-text">{{ t('iso.upload.iso_hint') }}</div>
             </div>
           </div>
 
@@ -57,22 +58,20 @@
             <div id="fields-windows" class="d-none">
               <div class="card border-warning mb-3">
                 <div class="card-header text-warning small">
-                  <i class="bi bi-windows me-1"></i>Windows — boot.wim personnalisé
+                  <i class="bi bi-windows me-1"></i>{{ t('iso.upload.win_title') }}
                 </div>
                 <div class="card-body">
                   <p class="text-secondary small mb-2">
                     <i class="bi bi-info-circle me-1"></i>
-                    BCD et boot.sdi sont extraits automatiquement depuis l'ISO.
-                    Vous pouvez fournir un <strong>boot.wim custom</strong> (WinPE personnalisé)
-                    — sinon celui de l'ISO sera utilisé.
+                    {{ t('iso.upload.win_help') }}
                   </p>
                   <div class="col-md-6">
                     <label class="form-label">
-                      boot.wim
-                      <span class="text-muted fw-normal small">— optionnel</span>
+                      {{ t('iso.upload.boot_wim') }}
+                      <span class="text-muted fw-normal small">— {{ t('iso.upload.optional') }}</span>
                     </label>
                     <input type="file" name="file_boot_wim" class="form-control" accept=".wim">
-                    <div class="form-text">Remplace le boot.wim extrait de l'ISO</div>
+                    <div class="form-text">{{ t('iso.upload.boot_wim_replace_hint') }}</div>
                   </div>
                 </div>
               </div>
@@ -80,27 +79,22 @@
 
             <!-- LINUX -->
             <div id="fields-linux" class="d-none">
-              <!-- Bandeau Ubuntu : extraction complète -->
               <div id="ubuntu-notice" class="alert alert-info py-2 small d-none">
                 <i class="bi bi-info-circle me-1"></i>
-                <strong>Ubuntu :</strong> l'ISO sera extraite entièrement (comme Windows) pour que
-                cloud-init autoinstall puisse accéder aux paquets via HTTP.
-                <code>vmlinuz</code> et <code>initrd</code> sont détectés automatiquement dans <code>casper/</code>.
-                Les fichiers <code>user-data</code> / <code>meta-data</code> se créent depuis
-                <strong>Configs Auto</strong>.
+                {{ t('iso.upload.ubuntu_notice') }}
               </div>
 
               <div class="card border-info mb-3">
                 <div class="card-header text-info small">
-                  <i class="bi bi-terminal me-1"></i>Fichiers Linux
-                  <span class="text-muted ms-2">— noms attendus par distro :</span>
+                  <i class="bi bi-terminal me-1"></i>{{ t('iso.upload.linux_card_title') }}
+                  <span class="text-muted ms-2">— {{ t('iso.upload.linux_expected') }}</span>
                   <span id="distro-hint" class="badge bg-secondary ms-1 small"></span>
                 </div>
                 <div class="card-body">
                   <div class="row g-3" id="linux-manual-fields">
                     <div class="col-md-6">
                       <label class="form-label">
-                        <span id="lbl-kernel">vmlinuz</span> / kernel
+                        <span id="lbl-kernel">vmlinuz</span>{{ t('iso.upload.kernel_slash') }}
                       </label>
                       <input type="file" name="file_kernel" class="form-control">
                     </div>
@@ -110,18 +104,17 @@
                       </label>
                       <input type="file" name="file_initrd" class="form-control">
                     </div>
-                    <!-- modloop (Alpine uniquement) -->
                     <div class="col-md-6" id="field-modloop" style="display:none">
-                      <label class="form-label">modloop-lts <span class="text-muted small">(Alpine)</span></label>
+                      <label class="form-label">{{ t('iso.upload.modloop_label') }} <span class="text-muted small">(Alpine)</span></label>
                       <input type="file" name="file_modloop" class="form-control">
-                      <div class="form-text text-muted">Module loop filesystem Alpine</div>
+                      <div class="form-text text-muted">{{ t('iso.upload.modloop_help') }}</div>
                     </div>
                     <div class="col-12">
-                      <label class="form-label">Arguments kernel</label>
+                      <label class="form-label">{{ t('iso.upload.kernel_args') }}</label>
                       <input type="text" name="kernel_args" class="form-control font-monospace"
                              id="kernel-args-input"
-                             placeholder="ex: quiet splash console=ttyS0 net.ifnames=0">
-                      <div class="form-text text-muted">Paramètres passés au kernel au boot</div>
+                             placeholder="{{ t('iso.upload.kernel_args_ph') }}">
+                      <div class="form-text text-muted">{{ t('iso.upload.kernel_args_help') }}</div>
                     </div>
                   </div>
                 </div>
@@ -135,29 +128,28 @@
             <div class="card-header d-flex justify-content-between align-items-center">
               <span class="small">
                 <i class="bi bi-file-code me-1 text-warning"></i>
-                Script iPXE personnalisé <span class="text-muted">(optionnel)</span>
+                {{ t('iso.upload.custom_script') }}
               </span>
-              <span class="badge bg-warning text-dark small">Sous-menu "Autres"</span>
+              <span class="badge bg-warning text-dark small">{{ t('iso.upload.custom_badge') }}</span>
             </div>
             <div class="card-body">
               <input type="file" name="file_custom_ipxe" class="form-control"
                      accept=".ipxe,.txt">
               <div class="form-text text-muted">
-                Si fourni, cette version apparaîtra dans le sous-menu
-                <strong>Autres</strong> de l'OS et chaînera vers ce script au lieu du boot standard.
+                {{ t('iso.upload.custom_help') }}
               </div>
             </div>
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Notes</label>
-            <textarea name="notes" class="form-control" rows="2" placeholder="Notes optionnelles…"></textarea>
+            <label class="form-label">{{ t('iso.upload.notes') }}</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="{{ t('iso.upload.notes_ph') }}"></textarea>
           </div>
 
           <!-- Progress bar -->
           <div id="progress-wrap" class="mb-3 d-none">
             <div class="d-flex justify-content-between small mb-1">
-              <span>Upload en cours…</span>
+              <span id="progress-label">{{ t('iso.upload.progress') }}</span>
               <span id="progress-pct">0%</span>
             </div>
             <div class="progress" style="height:16px">
@@ -168,9 +160,9 @@
 
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary" id="submit-btn">
-              <i class="bi bi-plus-circle me-1"></i>Créer la version
+              <i class="bi bi-plus-circle me-1"></i>{{ t('iso.upload.submit') }}
             </button>
-            <a href="/isos" class="btn btn-outline-secondary">Annuler</a>
+            <a href="/isos" class="btn btn-outline-secondary">{{ t('common.cancel') }}</a>
           </div>
         </form>
       </div>
@@ -181,13 +173,12 @@
 
 {% block scripts %}
 <script>
-// Distros avec extraction ISO complète (pas de fichiers boot manuels nécessaires)
+const UBUNTU_HINT = {{ t('iso.upload.hint_ubuntu_full')|tojson }};
 const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows']);
 
-// Mapping slug → labels + hint
 const DISTRO_HINTS = {
   debian:  { kernel: 'vmlinuz',    initrd: 'initrd.gz',      hint: 'vmlinuz + initrd.gz' },
-  ubuntu:  { kernel: 'vmlinuz',    initrd: 'initrd',         hint: 'Extraction ISO complète — vmlinuz + initrd détectés auto dans casper/', fullExtract: true },
+  ubuntu:  { kernel: 'vmlinuz',    initrd: 'initrd',         hint: UBUNTU_HINT, fullExtract: true },
   centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
   rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
   alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
@@ -203,9 +194,7 @@ function updateLinuxFields() {
   const info  = DISTRO_HINTS[slug] || {};
   const isFull = !!info.fullExtract;
 
-  // Bandeau Ubuntu
   document.getElementById('ubuntu-notice').classList.toggle('d-none', !isFull);
-  // Champs manuels : masqués si extraction complète ET une ISO est sélectionnée
   const hasIso = !!document.getElementById('iso-file').value;
   document.getElementById('linux-manual-fields').style.opacity = (isFull && hasIso) ? '0.4' : '1';
 
@@ -229,7 +218,6 @@ document.getElementById('iso-file').addEventListener('change', function() {
   if ((opt.dataset.boot || '') === 'linux') updateLinuxFields();
 });
 
-// XHR upload with progress bar
 document.getElementById('upload-form').addEventListener('submit', function(e) {
   e.preventDefault();
   const form = this;
@@ -239,7 +227,13 @@ document.getElementById('upload-form').addEventListener('submit', function(e) {
   const pct  = document.getElementById('progress-pct');
   const wrap = document.getElementById('progress-wrap');
   const btn  = document.getElementById('submit-btn');
+  const plab = document.getElementById('progress-label');
 
+  const msgProgress = form.dataset.msgProgress || '…';
+  const msgXhr = form.dataset.msgXhr || 'Error';
+  const msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
+
+  if (plab) plab.textContent = msgProgress;
   wrap.classList.remove('d-none');
   btn.disabled = true;
 
@@ -257,7 +251,8 @@ document.getElementById('upload-form').addEventListener('submit', function(e) {
     } else {
       btn.disabled = false;
       wrap.classList.add('d-none');
-      alert('Erreur : ' + xhr.statusText);
+      const detail = msgXhrStatus.replace('{status}', xhr.statusText || String(xhr.status));
+      alert(detail || msgXhr);
     }
   });
 

@@ -2,20 +2,20 @@
   {% if success %}
   <div class="alert alert-success rounded-0 mb-0">
     <i class="bi bi-check-circle me-2"></i>
-    <strong>Compilation terminée avec succès !</strong>
-    Les firmwares sont disponibles dans <code>{{ tftp_root if tftp_root is defined else '/srv/ipxe/tftpboot' }}</code>.
-    <a href="/firmware" class="alert-link ms-2">Rafraîchir la page</a>
+    <strong>{{ t('fw.status_poll_success') }}</strong>
+    {{ t('fw.status_poll_paths') }} <code>{{ tftp_root if tftp_root is defined else '/srv/ipxe/tftpboot' }}</code>.
+    <a href="/firmware" class="alert-link ms-2">{{ t('fw.refresh_page') }}</a>
   </div>
   <div class="p-3 border-top border-success border-opacity-25 bg-dark">
     {% set cs = completed_steps if completed_steps is defined else [] %}
     {% set git_ok = ('git_clone' in cs) or ('git_pull' in cs) %}
     {% set step_labels_ok = [
-      ("git_clone",    "Clonage iPXE"),
-      ("git_pull",     "Mise à jour sources"),
-      ("embed",        "embed.ipxe"),
-      ("compile_bios", "undionly.kpxe (BIOS)"),
-      ("compile_efi",  "snponly / ipxe.efi"),
-      ("copy",         "Copie TFTP"),
+      ("git_clone",    t('fw.status_step_clone')),
+      ("git_pull",     t('fw.status_step_pull')),
+      ("embed",        t('fw.status_step_embed')),
+      ("compile_bios", t('fw.status_step_bios')),
+      ("compile_efi",  t('fw.status_step_efi')),
+      ("copy",         t('fw.status_step_copy')),
     ] %}
     <div class="d-flex gap-2 flex-wrap">
       {% for key, label in step_labels_ok %}
@@ -28,7 +28,7 @@
           <i class="bi bi-check2 me-1"></i>{{ label }}
         </span>
         {% else %}
-        <span class="badge bg-secondary" title="Étape non atteinte — consulter les logs">{{ label }}</span>
+        <span class="badge bg-secondary" title="{{ t('fw.status_step_unreached') }}">{{ label }}</span>
         {% endif %}
       {% endfor %}
     </div>
@@ -36,7 +36,7 @@
   {% else %}
   <div class="alert alert-danger rounded-0 mb-0">
     <i class="bi bi-x-circle me-2"></i>
-    <strong>Erreur :</strong> {{ error }}
+    <strong>{{ t('fw.failure_title') }}</strong> {{ error }}
   </div>
   {% endif %}
 {% else %}
@@ -44,12 +44,12 @@
   {% set cs = completed_steps if completed_steps is defined else [] %}
   {% set git_ok = ('git_clone' in cs) or ('git_pull' in cs) %}
   {% set step_labels = [
-    ("git_clone",    "Clonage iPXE"),
-    ("git_pull",     "Mise à jour sources"),
-    ("embed",        "embed.ipxe"),
-    ("compile_bios", "undionly.kpxe (BIOS)"),
-    ("compile_efi",  "snponly / ipxe.efi"),
-    ("copy",         "Copie TFTP"),
+    ("git_clone",    t('fw.status_step_clone')),
+    ("git_pull",     t('fw.status_step_pull')),
+    ("embed",        t('fw.status_step_embed')),
+    ("compile_bios", t('fw.status_step_bios')),
+    ("compile_efi",  t('fw.status_step_efi')),
+    ("copy",         t('fw.status_step_copy')),
   ] %}
 
   <div class="d-flex gap-2 flex-wrap mb-3">
@@ -85,7 +85,7 @@
   {% else %}
   <div class="text-secondary small">
     <span class="spinner-border spinner-border-sm me-2" style="width:.75rem;height:.75rem"></span>
-    En attente du worker Celery…
+    {{ t('fw.wait_celery_short') }}
   </div>
   {% endif %}
 </div>

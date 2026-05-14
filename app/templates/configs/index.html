@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Configs Auto — iPXE Manager{% endblock %}
+{% block title %}{{ t('cfg.page_title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-file-code me-2 text-primary"></i>Configurations automatiques</h2>
+  <h2 class="mb-0"><i class="bi bi-file-code me-2 text-primary"></i>{{ t('cfg.heading') }}</h2>
   <div class="d-flex gap-2">
     <form method="post" action="/ipxe-configs/scan">
-      <button class="btn btn-outline-info" title="Scanne configs/ et importe les fichiers non enregistrés">
-        <i class="bi bi-search me-1"></i>Scanner les fichiers
+      <button class="btn btn-outline-info" title="{{ t('cfg.scan_title') }}">
+        <i class="bi bi-search me-1"></i>{{ t('cfg.scan') }}
       </button>
     </form>
     <a href="/ipxe-configs/new" class="btn btn-primary">
-      <i class="bi bi-plus me-1"></i>Nouvelle config
+      <i class="bi bi-plus me-1"></i>{{ t('cfg.new') }}
     </a>
   </div>
 </div>
@@ -28,8 +28,12 @@
     <table class="table table-dark table-hover mb-0 align-middle">
       <thead class="table-secondary">
         <tr>
-          <th>OS / Version</th><th>Type</th><th>Label</th>
-          <th>Fichier</th><th>Modifié</th><th class="text-end">Actions</th>
+          <th>{{ t('cfg.col_os') }}</th>
+          <th>{{ t('cfg.col_type') }}</th>
+          <th>{{ t('cfg.col_label') }}</th>
+          <th>{{ t('cfg.col_file') }}</th>
+          <th>{{ t('cfg.col_modified') }}</th>
+          <th class="text-end">{{ t('cfg.col_actions') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -40,9 +44,9 @@
             {{ c.iso_version.os_type.label }} {{ c.iso_version.version_label }}
           </td>
           <td>{% if c.ubuntu_cloud_slug %}
-            <span class="badge bg-info text-dark" title="Dossier nocloud avec user-data + meta-data">user-data</span>
+            <span class="badge bg-info text-dark" title="{{ t('cfg.type_bundle_title') }}">{{ t('cfg.type_bundle') }}</span>
             {% elif c.iso_version.os_type.slug == 'ubuntu' and c.config_type == 'cloud-init' %}
-            <span class="badge bg-secondary">user-data (fichier seul)</span>
+            <span class="badge bg-secondary">{{ t('cfg.type_legacy') }}</span>
             {% else %}
             <span class="badge bg-info text-dark">{{ c.config_type }}</span>
             {% endif %}</td>
@@ -54,13 +58,13 @@
               <i class="bi bi-pencil"></i>
             </a>
             <form method="post" action="/ipxe-configs/{{ c.id }}/delete" class="d-inline"
-                  onsubmit="return confirm('Supprimer cette configuration ?')">
+                  onsubmit="return confirm({{ t('cfg.delete_confirm')|tojson }})">
               <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Aucune configuration</td></tr>
+        <tr><td colspan="6" class="text-center text-muted py-4">{{ t('cfg.empty') }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

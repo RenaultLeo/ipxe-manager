@@ -2,12 +2,12 @@
   <table class="table table-dark table-hover align-middle">
     <thead class="table-secondary">
       <tr>
-        <th>OS</th>
-        <th>Version</th>
-        <th>Taille ISO</th>
-        <th>Statut</th>
-        <th>Date</th>
-        <th class="text-end">Actions</th>
+        <th>{{ t('iso.col_os') }}</th>
+        <th>{{ t('iso.col_version') }}</th>
+        <th>{{ t('iso.col_iso_size') }}</th>
+        <th>{{ t('iso.col_status') }}</th>
+        <th>{{ t('iso.col_date') }}</th>
+        <th class="text-end">{{ t('iso.col_actions') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -22,43 +22,43 @@
         <td>{{ fmt_size(v.iso_size) }}</td>
         <td>
           {% if v.status == 'ready' %}
-            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Prêt</span>
+            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{{ t('status.ready') }}</span>
           {% elif v.status == 'extracting' %}
             <span class="badge bg-warning text-dark"
                   hx-get="/isos/{{ v.id }}/status"
                   hx-trigger="every 3s"
                   hx-swap="outerHTML"
                   hx-target="#row-{{ v.id }}">
-              <i class="bi bi-arrow-repeat spin me-1"></i>Extraction…
+              <i class="bi bi-arrow-repeat spin me-1"></i>{{ t('iso.status_extracting') }}
             </span>
           {% elif v.status == 'error' %}
-            <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Erreur</span>
+            <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>{{ t('iso.status_error') }}</span>
           {% else %}
-            <span class="badge bg-secondary"><i class="bi bi-upload me-1"></i>Uploadé</span>
+            <span class="badge bg-secondary"><i class="bi bi-upload me-1"></i>{{ t('iso.status_uploaded') }}</span>
           {% endif %}
         </td>
         <td class="text-muted small">{{ v.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
         <td class="text-end">
-          <a href="/isos/{{ v.id }}" class="btn btn-sm btn-outline-info me-1">
+          <a href="/isos/{{ v.id }}" class="btn btn-sm btn-outline-info me-1" title="{{ t('iso.view_detail') }}">
             <i class="bi bi-eye"></i>
           </a>
           {% if v.iso_path and v.status != 'extracting' %}
           <form method="post" action="/isos/{{ v.id }}/extract" class="d-inline">
-            <button class="btn btn-sm btn-outline-warning me-1" title="Extraire les fichiers boot">
+            <button class="btn btn-sm btn-outline-warning me-1" title="{{ t('iso.extract_title') }}">
               <i class="bi bi-box-arrow-in-down"></i>
             </button>
           </form>
           {% endif %}
           <form method="post" action="/isos/{{ v.id }}/delete" class="d-inline"
-                onsubmit="return confirm('Supprimer cette ISO et ses fichiers ?')">
-            <button class="btn btn-sm btn-outline-danger" title="Supprimer">
+                onsubmit="return confirm({{ t('iso.delete_confirm')|tojson }})">
+            <button class="btn btn-sm btn-outline-danger" title="{{ t('iso.delete_title') }}">
               <i class="bi bi-trash"></i>
             </button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="text-center text-muted py-4">Aucune ISO</td></tr>
+      <tr><td colspan="6" class="text-center text-muted py-4">{{ t('iso.empty') }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

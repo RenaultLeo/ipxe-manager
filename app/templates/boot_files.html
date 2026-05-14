@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Fichiers Boot — iPXE Manager{% endblock %}
+{% block title %}{{ t('boot.page_title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-files me-2 text-primary"></i>Gestionnaire de fichiers Boot</h2>
+  <h2 class="mb-0"><i class="bi bi-files me-2 text-primary"></i>{{ t('boot.heading') }}</h2>
   <form method="post" action="/boot-files/scan">
     <button class="btn btn-outline-warning"
-            title="Scanne boot/ et enregistre les fichiers déjà présents sur le disque">
-      <i class="bi bi-search me-1"></i>Scanner les fichiers boot
+            title="{{ t('boot.scan_title') }}">
+      <i class="bi bi-search me-1"></i>{{ t('boot.scan') }}
     </button>
   </form>
 </div>
@@ -26,7 +26,13 @@
       <i class="{{ v.os_type.icon }} me-2 text-primary"></i>
       <strong>{{ v.os_type.label }} {{ v.version_label }}</strong>
       {% if v.status == 'ready' %}
-        <span class="badge bg-success ms-2">Prêt</span>
+        <span class="badge bg-success ms-2">{{ t('status.ready') }}</span>
+      {% elif v.status == 'extracting' %}
+        <span class="badge bg-secondary ms-2">{{ t('iso.status_extracting') }}</span>
+      {% elif v.status == 'error' %}
+        <span class="badge bg-secondary ms-2">{{ t('iso.status_error') }}</span>
+      {% elif v.status == 'uploaded' %}
+        <span class="badge bg-secondary ms-2">{{ t('iso.status_uploaded') }}</span>
       {% else %}
         <span class="badge bg-secondary ms-2">{{ v.status }}</span>
       {% endif %}
@@ -43,7 +49,6 @@
       {% if v.boot_entry %}
       {% set be = v.boot_entry %}
 
-      <!-- Fichiers actuels -->
       <div class="row g-2 mb-3">
         {% if v.os_type.boot_type == 'windows' %}
           {% for label, path in [
@@ -81,17 +86,16 @@
             </div>
             {% endif %}
           {% endfor %}
-          <!-- Args kernel -->
           <div class="col-12">
             <form method="post" action="/boot-files/{{ v.id }}/args" class="row g-2">
               <div class="col-10">
                 <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
                        value="{{ be.kernel_args or '' }}"
-                       placeholder="ex: quiet splash console=ttyS0 net.ifnames=0">
+                       placeholder="{{ t('iso.upload.kernel_args_ph') }}">
               </div>
               <div class="col-2">
                 <button class="btn btn-outline-secondary btn-sm w-100">
-                  <i class="bi bi-floppy me-1"></i>Args
+                  <i class="bi bi-floppy me-1"></i>{{ t('boot.args') }}
                 </button>
               </div>
             </form>
@@ -100,37 +104,36 @@
       </div>
       {% endif %}
 
-      <!-- Upload fichier boot -->
       <form method="post" action="/boot-files/{{ v.id }}/upload" enctype="multipart/form-data"
             class="row g-2 align-items-end border-top border-secondary pt-3">
 
         <div class="col-md-3">
-          <label class="form-label small">Rôle</label>
+          <label class="form-label small">{{ t('boot.role') }}</label>
           <select name="file_role" class="form-select form-select-sm">
             {% if v.os_type.boot_type == 'windows' %}
-            <option value="bcd">BCD</option>
-            <option value="boot_sdi">boot.sdi</option>
-            <option value="boot_wim">boot.wim</option>
-            <option value="bootmgr">bootmgr.efi</option>
+            <option value="bcd">{{ t('boot.role_bcd') }}</option>
+            <option value="boot_sdi">{{ t('boot.role_boot_sdi') }}</option>
+            <option value="boot_wim">{{ t('boot.role_boot_wim') }}</option>
+            <option value="bootmgr">{{ t('boot.role_bootmgr') }}</option>
             {% else %}
-            <option value="kernel">vmlinuz / kernel</option>
-            <option value="initrd">initrd</option>
-            <option value="efi">EFI</option>
+            <option value="kernel">{{ t('boot.role_kernel') }}</option>
+            <option value="initrd">{{ t('boot.role_initrd') }}</option>
+            <option value="efi">{{ t('boot.role_efi') }}</option>
             {% endif %}
-            <option value="modloop">modloop (Alpine)</option>
-            <option value="custom_ipxe">Script iPXE custom</option>
-            <option value="other">Autre</option>
+            <option value="modloop">{{ t('boot.role_modloop') }}</option>
+            <option value="custom_ipxe">{{ t('boot.role_custom_ipxe') }}</option>
+            <option value="other">{{ t('boot.role_other') }}</option>
           </select>
         </div>
 
         <div class="col-md-6">
-          <label class="form-label small">Fichier</label>
+          <label class="form-label small">{{ t('boot.file') }}</label>
           <input type="file" name="file" class="form-control form-control-sm" required>
         </div>
 
         <div class="col-md-3">
           <button class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-upload me-1"></i>Uploader
+            <i class="bi bi-upload me-1"></i>{{ t('boot.upload') }}
           </button>
         </div>
 
@@ -141,8 +144,8 @@
 </div>
 {% else %}
 <div class="alert alert-info">
-  <i class="bi bi-info-circle me-2"></i>Aucune version disponible.
-  <a href="/isos/upload">Ajouter une version</a> d'abord.
+  <i class="bi bi-info-circle me-2"></i>{{ t('boot.no_versions') }}
+  <a href="/isos/upload">{{ t('boot.add_first') }}</a> {{ t('boot.add_first_suffix') }}
 </div>
 {% endfor %}
 {% endblock %}

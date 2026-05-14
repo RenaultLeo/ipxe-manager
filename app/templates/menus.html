@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Menus iPXE — iPXE Manager{% endblock %}
+{% block title %}{{ t('menu.page_title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-list-ul me-2 text-primary"></i>Menus iPXE</h2>
+  <h2 class="mb-0"><i class="bi bi-list-ul me-2 text-primary"></i>{{ t('menu.heading') }}</h2>
   <form method="post" action="/ipxe-menus/regenerate">
     <button class="btn btn-success">
-      <i class="bi bi-arrow-clockwise me-1"></i>Régénérer tous les menus
+      <i class="bi bi-arrow-clockwise me-1"></i>{{ t('menu.regen_all') }}
     </button>
   </form>
 </div>
 
 {% if error %}
 <div class="alert alert-danger mb-4">
-  <strong><i class="bi bi-x-circle me-2"></i>Erreur lors de la régénération :</strong>
+  <strong><i class="bi bi-x-circle me-2"></i>{{ t('menu.error_regen') }}</strong>
   <pre class="mt-2 mb-0 small" style="white-space:pre-wrap">{{ error }}</pre>
 </div>
 {% endif %}
 
 <div class="alert alert-info mb-4">
   <i class="bi bi-info-circle me-2"></i>
-  Menu principal iPXE (servi par <strong>Nginx</strong>) :
+  {{ t('menu.info_intro') }} <strong>Nginx</strong> {{ t('menu.info_after_nginx') }}
   <strong><code>{{ server_url }}/menus/menu.ipxe</code></strong>
-  — À utiliser dans <code>/srv/ipxe/tftpboot/boot.ipxe</code>.
+  {{ t('menu.info_boot') }} <code>/srv/ipxe/tftpboot/boot.ipxe</code>.
 </div>
 
 <!-- ═══ Onglets ═══ -->
@@ -32,7 +32,7 @@
             id="tab-generated"
             data-bs-toggle="tab" data-bs-target="#pane-generated"
             type="button" role="tab">
-      <i class="bi bi-file-earmark-code me-1"></i>Menus générés
+      <i class="bi bi-file-earmark-code me-1"></i>{{ t('menu.tab_generated') }}
       <span class="badge bg-secondary ms-1">{{ menu_files | length }}</span>
     </button>
   </li>
@@ -41,7 +41,7 @@
             id="tab-custom"
             data-bs-toggle="tab" data-bs-target="#pane-custom"
             type="button" role="tab">
-      <i class="bi bi-file-earmark-play me-1"></i>Scripts personnalisés
+      <i class="bi bi-file-earmark-play me-1"></i>{{ t('menu.tab_custom') }}
       {% if custom_scripts %}
       <span class="badge bg-primary ms-1">{{ custom_scripts | length }}</span>
       {% endif %}
@@ -52,7 +52,7 @@
             id="tab-chains"
             data-bs-toggle="tab" data-bs-target="#pane-chains"
             type="button" role="tab">
-      <i class="bi bi-diagram-3 me-1"></i>Serveurs distants
+      <i class="bi bi-diagram-3 me-1"></i>{{ t('menu.tab_remote') }}
       {% if remote_chains %}
       <span class="badge bg-info text-dark ms-1">{{ remote_chains | length }}</span>
       {% endif %}
@@ -87,15 +87,15 @@
             <span>
               <i class="bi bi-file-text me-2"></i>
               <code>{{ mf.name }}</code>
-              <span class="badge bg-secondary ms-2 small">{{ mf.size }} octets</span>
+              <span class="badge bg-secondary ms-2 small">{{ mf.size }} {{ t('common.bytes_unit') }}</span>
             </span>
             <div class="d-flex gap-2">
               <a href="{{ mf.url }}" class="btn btn-outline-info btn-sm" target="_blank">
-                <i class="bi bi-box-arrow-up-right me-1"></i>URL
+                <i class="bi bi-box-arrow-up-right me-1"></i>{{ t('menu.url_btn') }}
               </a>
               <button type="button" class="btn btn-outline-warning btn-sm"
                       onclick="toggleEdit('gedit-{{ loop.index }}', 'gview-{{ loop.index }}')">
-                <i class="bi bi-pencil me-1"></i>Modifier
+                <i class="bi bi-pencil me-1"></i>{{ t('menu.edit') }}
               </button>
             </div>
           </div>
@@ -109,11 +109,11 @@
                         rows="20" style="font-size:0.82rem">{{ mf.content }}</textarea>
               <div class="d-flex gap-2">
                 <button class="btn btn-warning">
-                  <i class="bi bi-floppy me-1"></i>Sauvegarder
+                  <i class="bi bi-floppy me-1"></i>{{ t('menu.save') }}
                 </button>
                 <button type="button" class="btn btn-outline-secondary"
                         onclick="toggleEdit('gedit-{{ loop.index }}', 'gview-{{ loop.index }}')">
-                  Annuler
+                  {{ t('common.cancel') }}
                 </button>
               </div>
             </form>
@@ -126,8 +126,7 @@
     {% else %}
     <div class="alert alert-warning">
       <i class="bi bi-exclamation-triangle me-2"></i>
-      Aucun menu généré. Ajoutez des ISOs puis cliquez sur
-      <strong>Régénérer tous les menus</strong>.
+      {{ t('menu.empty_generated') }}
     </div>
     {% endif %}
   </div>
@@ -138,9 +137,7 @@
 
     <p class="text-secondary small mb-3">
       <i class="bi bi-info-circle me-1"></i>
-      Ces scripts sont uploadés manuellement sur une version d'OS et apparaissent dans le sous-menu
-      <code>_autres.ipxe</code> correspondant.
-      Supprimer un script retire le fichier disque et regénère le menu automatiquement.
+      {{ t('menu.custom_intro') }}
     </p>
 
     {% if custom_scripts %}
@@ -148,12 +145,12 @@
       <table class="table table-dark table-hover table-bordered align-middle">
         <thead>
           <tr>
-            <th>OS</th>
-            <th>Version</th>
-            <th>Fichier</th>
-            <th class="text-end">Taille</th>
-            <th>URL</th>
-            <th class="text-center">Actions</th>
+            <th>{{ t('menu.col_os_short') }}</th>
+            <th>{{ t('menu.col_version') }}</th>
+            <th>{{ t('menu.col_file') }}</th>
+            <th class="text-end">{{ t('menu.col_size') }}</th>
+            <th>{{ t('menu.col_url') }}</th>
+            <th class="text-center">{{ t('menu.col_actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -162,7 +159,7 @@
             <td><span class="badge bg-secondary">{{ s.os_label }}</span></td>
             <td>{{ s.version_label }}</td>
             <td><code>{{ s.filename }}</code></td>
-            <td class="text-end text-secondary small">{{ s.size }} o</td>
+            <td class="text-end text-secondary small">{{ s.size }} {{ t('common.bytes_unit') }}</td>
             <td>
               <a href="{{ s.url }}" target="_blank" class="text-info small font-monospace text-truncate d-block"
                  style="max-width:260px">{{ s.rel_path }}</a>
@@ -171,15 +168,15 @@
               <div class="d-flex gap-1 justify-content-center">
                 <button class="btn btn-outline-info btn-sm"
                         onclick="openScriptPanel({{ s.boot_entry_id }})">
-                  <i class="bi bi-eye me-1"></i>Voir
+                  <i class="bi bi-eye me-1"></i>{{ t('menu.btn_view') }}
                 </button>
                 <button class="btn btn-outline-warning btn-sm"
                         onclick="openScriptEditor({{ s.boot_entry_id }})">
-                  <i class="bi bi-pencil me-1"></i>Modifier
+                  <i class="bi bi-pencil me-1"></i>{{ t('menu.btn_edit') }}
                 </button>
                 <button class="btn btn-outline-danger btn-sm"
-                        onclick="confirmDelete({{ s.boot_entry_id }}, '{{ s.filename }}')">
-                  <i class="bi bi-trash me-1"></i>Supprimer
+                        onclick="confirmDelete({{ s.boot_entry_id }}, {{ s.filename|tojson }})">
+                  <i class="bi bi-trash me-1"></i>{{ t('menu.btn_delete') }}
                 </button>
               </div>
             </td>
@@ -200,12 +197,12 @@
                     <button class="btn btn-sm btn-outline-secondary active"
                             id="btn-view-{{ s.boot_entry_id }}"
                             onclick="switchPanelMode({{ s.boot_entry_id }}, 'view')">
-                      Aperçu
+                      {{ t('menu.preview') }}
                     </button>
                     <button class="btn btn-sm btn-outline-secondary"
                             id="btn-edit-{{ s.boot_entry_id }}"
                             onclick="switchPanelMode({{ s.boot_entry_id }}, 'edit')">
-                      Éditeur
+                      {{ t('menu.editor') }}
                     </button>
                     <button class="btn btn-sm btn-outline-secondary"
                             onclick="closePanel({{ s.boot_entry_id }})">
@@ -227,11 +224,11 @@
                               rows="18" style="font-size:0.82rem">{{ s.content }}</textarea>
                     <div class="d-flex gap-2">
                       <button class="btn btn-warning btn-sm">
-                        <i class="bi bi-floppy me-1"></i>Sauvegarder
+                        <i class="bi bi-floppy me-1"></i>{{ t('menu.save') }}
                       </button>
                       <button type="button" class="btn btn-outline-secondary btn-sm"
                               onclick="closePanel({{ s.boot_entry_id }})">
-                        Annuler
+                        {{ t('common.cancel') }}
                       </button>
                     </div>
                   </form>
@@ -252,8 +249,7 @@
     {% else %}
     <div class="alert alert-secondary">
       <i class="bi bi-info-circle me-2"></i>
-      Aucun script personnalisé. Uploadez un fichier <code>.ipxe</code> lors de la création
-      d'une version d'OS.
+      {{ t('menu.custom_empty') }}
     </div>
     {% endif %}
   </div><!-- /pane-custom -->
@@ -264,31 +260,29 @@
 
     <p class="text-secondary small mb-3">
       <i class="bi bi-info-circle me-1"></i>
-      Ces entrées apparaissent dans la section <strong>Serveurs distants</strong> de
-      <code>menu.ipxe</code> et chainloadent vers le menu iPXE de l'adresse indiquée.
-      L'URL est utilisée telle quelle — pas de modification.
+      {{ t('menu.chains_intro') }}
     </p>
 
     <!-- Formulaire ajout -->
     <div class="card border-info mb-4">
       <div class="card-header text-info small">
-        <i class="bi bi-plus-circle me-1"></i>Ajouter un serveur distant
+        <i class="bi bi-plus-circle me-1"></i>{{ t('menu.chain_add') }}
       </div>
       <div class="card-body">
         <form method="post" action="/ipxe-menus/chains/add" class="row g-2 align-items-end">
           <div class="col-md-4">
-            <label class="form-label small">Nom affiché dans le menu</label>
+            <label class="form-label small">{{ t('menu.chain_menu_label') }}</label>
             <input type="text" name="name" class="form-control form-control-sm"
-                   placeholder="ex: Serveur prod, Lab PXE…" required>
+                   placeholder="{{ t('menu.chain_menu_ph') }}" required>
           </div>
           <div class="col-md-6">
-            <label class="form-label small">URL du menu iPXE distant</label>
+            <label class="form-label small">{{ t('menu.chain_url_label') }}</label>
             <input type="text" name="url" class="form-control form-control-sm font-monospace"
-                   placeholder="ex: 192.168.1.10/menus/menu.ipxe ou http://srv2/boot.ipxe" required>
+                   placeholder="{{ t('menu.chain_url_ph') }}" required>
           </div>
           <div class="col-md-2">
             <button class="btn btn-info btn-sm w-100">
-              <i class="bi bi-plus-circle me-1"></i>Ajouter
+              <i class="bi bi-plus-circle me-1"></i>{{ t('sett.add') }}
             </button>
           </div>
         </form>
@@ -301,10 +295,10 @@
       <table class="table table-dark table-hover table-bordered align-middle">
         <thead>
           <tr>
-            <th>Nom</th>
-            <th>URL</th>
-            <th class="text-center" style="width:100px">Actif</th>
-            <th class="text-center" style="width:80px">Action</th>
+            <th>{{ t('menu.chain_col_name') }}</th>
+            <th>{{ t('menu.chain_col_url') }}</th>
+            <th class="text-center" style="width:100px">{{ t('menu.chain_col_active') }}</th>
+            <th class="text-center" style="width:80px">{{ t('menu.chain_col_action') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -320,14 +314,14 @@
             <td class="text-center">
               <form method="post" action="/ipxe-menus/chains/{{ rc.id }}/toggle" class="d-inline">
                 <button class="btn btn-sm {% if rc.enabled %}btn-success{% else %}btn-outline-secondary{% endif %}"
-                        title="{% if rc.enabled %}Désactiver{% else %}Activer{% endif %}">
+                        title="{% if rc.enabled %}{{ t('menu.toggle_disable') }}{% else %}{{ t('menu.toggle_enable') }}{% endif %}">
                   <i class="bi {% if rc.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
                 </button>
               </form>
             </td>
             <td class="text-center">
               <button class="btn btn-outline-danger btn-sm"
-                      onclick="confirmDeleteChain({{ rc.id }}, '{{ rc.name | replace("'", "\\'") }}')">
+                      onclick="confirmDeleteChain({{ rc.id }}, {{ rc.name|tojson }})">
                 <i class="bi bi-trash"></i>
               </button>
               <form id="del-chain-{{ rc.id }}" method="post"
@@ -340,7 +334,7 @@
     </div>
     {% else %}
     <div class="alert alert-secondary">
-      <i class="bi bi-info-circle me-2"></i>Aucun serveur distant configuré.
+      <i class="bi bi-info-circle me-2"></i>{{ t('menu.chains_none') }}
     </div>
     {% endif %}
 
@@ -351,6 +345,9 @@
 
 {% block scripts %}
 <script>
+const MSG_DEL_SCRIPT = {{ t('menu.confirm_delete_script')|tojson }};
+const MSG_DEL_CHAIN = {{ t('menu.confirm_delete_chain')|tojson }};
+
 function toggleEdit(editId, viewId) {
   document.getElementById(editId).classList.toggle('d-none');
   document.getElementById(viewId).classList.toggle('d-none');
@@ -392,13 +389,15 @@ function switchPanelMode(id, mode) {
 }
 
 function confirmDelete(id, filename) {
-  if (confirm('Supprimer le script « ' + filename + ' » ?\nLe fichier disque sera supprimé et le menu regénéré.')) {
+  const msg = MSG_DEL_SCRIPT.replace('{filename}', filename);
+  if (confirm(msg)) {
     document.getElementById('delete-form-' + id).submit();
   }
 }
 
 function confirmDeleteChain(id, name) {
-  if (confirm('Supprimer le serveur « ' + name + ' » ?\nIl sera retiré du menu iPXE.')) {
+  const msg = MSG_DEL_CHAIN.replace('{name}', name);
+  if (confirm(msg)) {
     document.getElementById('del-chain-' + id).submit();
   }
 }
