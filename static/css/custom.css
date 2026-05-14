@@ -72,3 +72,10 @@ pre {
   color: var(--ipxe-primary) !important;
   font-weight: 600;
 }
+
+/* Keep primary nav labels on one line (long ES/PT strings) */
+@media (min-width: 992px) {
+  .navbar .navbar-nav .nav-link {
+    white-space: nowrap;
+  }
+}
