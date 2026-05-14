@@ -1,31 +1,39 @@
 <!DOCTYPE html>
-<html lang="fr" data-bs-theme="dark">
+<html lang="{{ lang }}" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Connexion — iPXE Manager</title>
+  <title>{{ t('auth.subtitle') }} — iPXE Manager</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/custom.css">
 </head>
 <body class="d-flex align-items-center justify-content-center min-vh-100 bg-dark">
-<div class="card shadow-lg" style="width:360px">
+<div class="card shadow-lg" style="width:380px">
   <div class="card-body p-4">
-    <div class="text-center mb-4">
+    <div class="text-center mb-3">
       <i class="bi bi-hdd-network-fill text-primary" style="font-size:3rem"></i>
       <h4 class="mt-2 fw-bold">iPXE Manager</h4>
-      <p class="text-muted small">Connexion administrateur</p>
+      <p class="text-muted small">{{ t('auth.subtitle') }}</p>
+      <div class="dropdown d-inline-block">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                data-bs-toggle="dropdown">{{ lang|upper }}</button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="/set-language?lang=fr&amp;next={{ i18n_next }}">{{ t('lang.fr') }}</a></li>
+          <li><a class="dropdown-item" href="/set-language?lang=en&amp;next={{ i18n_next }}">{{ t('lang.en') }}</a></li>
+        </ul>
+      </div>
     </div>
     {% if error %}
     <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
     {% endif %}
     <form method="post" action="/login">
       <div class="mb-3">
-        <label class="form-label">Mot de passe</label>
+        <label class="form-label">{{ t('auth.password') }}</label>
         <input type="password" name="password" class="form-control form-control-lg" autofocus required>
       </div>
-      <button class="btn btn-primary w-100 btn-lg">
-        <i class="bi bi-unlock me-1"></i>Se connecter
+      <button class="btn btn-primary w-100 btn-lg" type="submit">
+        <i class="bi bi-unlock me-1"></i>{{ t('auth.submit') }}
       </button>
     </form>
   </div>

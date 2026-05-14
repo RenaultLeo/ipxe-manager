@@ -1,18 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — iPXE Manager{% endblock %}
+{% block title %}{{ t('dash.title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h2>
+  <h2 class="mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>{{ t('dash.title') }}</h2>
   {% if active_jobs > 0 %}
   <div class="d-flex align-items-center gap-2">
     <span class="badge bg-warning text-dark fs-6">
-      <i class="bi bi-arrow-repeat spin me-1"></i>{{ active_jobs }} job(s) en cours
+      <i class="bi bi-arrow-repeat spin me-1"></i>{{ t('dash.jobs_running', n=active_jobs) }}
     </span>
     <form method="post" action="/jobs/kill-all"
-          onsubmit="return confirm('Forcer l\'arrêt de tous les jobs en cours ?')">
-      <button class="btn btn-danger btn-sm">
-        <i class="bi bi-stop-circle me-1"></i>Tout arrêter
+          data-confirm-stop-all="{{ t('dash.kill_all_confirm')|e }}"
+          onsubmit="return confirm(this.dataset.confirmStopAll)">
+      <button class="btn btn-danger btn-sm" type="submit">
+        <i class="bi bi-stop-circle me-1"></i>{{ t('dash.stop_all') }}
       </button>
     </form>
   </div>
@@ -22,15 +23,15 @@
 {% if active_jobs_list %}
 <div class="card border-warning mb-4">
   <div class="card-header text-warning d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-hourglass-split me-2"></i>Jobs en cours</span>
-    <span class="text-muted small">Timeout automatique après {{ timeout_h }}h</span>
+    <span><i class="bi bi-hourglass-split me-2"></i>{{ t('dash.jobs_header') }}</span>
+    <span class="text-muted small">{{ t('dash.timeout_hint', h=timeout_h) }}</span>
   </div>
   <div class="table-responsive">
     <table class="table table-dark table-hover mb-0 align-middle">
       <thead class="table-secondary">
         <tr>
-          <th>Fichier</th><th>Type</th><th>Taille</th>
-          <th>Démarré</th><th>Durée</th><th class="text-end">Action</th>
+          <th>{{ t('dash.col_file') }}</th><th>{{ t('dash.col_type') }}</th><th>{{ t('dash.col_size') }}</th>
+          <th>{{ t('dash.col_started') }}</th><th>{{ t('dash.col_duration') }}</th><th class="text-end">{{ t('dash.col_action') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -46,9 +47,10 @@
               data-start="{{ j.created_at.isoformat() }}Z">—</td>
           <td class="text-end">
             <form method="post" action="/jobs/{{ j.id }}/kill" class="d-inline"
-                  onsubmit="return confirm('Forcer l\'arrêt de ce job ?')">
-              <button class="btn btn-outline-danger btn-sm">
-                <i class="bi bi-x-circle me-1"></i>Kill
+                  data-confirm-kill="{{ t('dash.kill_confirm')|e }}"
+                  onsubmit="return confirm(this.dataset.confirmKill)">
+              <button class="btn btn-outline-danger btn-sm" type="submit">
+                <i class="bi bi-x-circle me-1"></i>{{ t('dash.kill') }}
               </button>
             </form>
           </td>
@@ -65,13 +67,13 @@
   <div class="col-12">
     <div class="card border-secondary">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-hdd me-2 text-info"></i>Espace disque du serveur</span>
-        <span class="text-muted small">{{ disk.free_gb }} GB libres</span>
+        <span><i class="bi bi-hdd me-2 text-info"></i>{{ t('dash.disk_title') }}</span>
+        <span class="text-muted small">{{ t('dash.disk_free', n=disk.free_gb) }}</span>
       </div>
       <div class="card-body">
         <div class="d-flex justify-content-between mb-1 small">
-          <span class="text-success">Utilisé : {{ disk.used_gb }} GB</span>
-          <span class="text-muted">Total : {{ disk.total_gb }} GB</span>
+          <span class="text-success">{{ t('dash.disk_used', n=disk.used_gb) }}</span>
+          <span class="text-muted">{{ t('dash.disk_total', n=disk.total_gb) }}</span>
         </div>
         <div class="progress" style="height:20px">
           {% set color = 'bg-danger' if disk.percent > 85 else ('bg-warning' if disk.percent > 65 else 'bg-success') %}
@@ -94,11 +96,11 @@
         <i class="{{ s.os.icon }} text-primary" style="font-size:2.5rem"></i>
         <h5 class="mt-2 mb-0">{{ s.os.label }}</h5>
         <div class="mt-2">
-          <span class="badge bg-success me-1">{{ s.ready }} prêtes</span>
-          <span class="badge bg-secondary">{{ s.total }} total</span>
+          <span class="badge bg-success me-1">{{ t('dash.ready', n=s.ready) }}</span>
+          <span class="badge bg-secondary">{{ t('dash.total', n=s.total) }}</span>
         </div>
         <a href="/isos?os={{ s.os.slug }}" class="btn btn-outline-primary btn-sm mt-3">
-          <i class="bi bi-disc me-1"></i>Gérer
+          <i class="bi bi-disc me-1"></i>{{ t('dash.manage') }}
         </a>
       </div>
     </div>
@@ -106,8 +108,8 @@
   {% else %}
   <div class="col-12">
     <div class="alert alert-info">
-      <i class="bi bi-info-circle me-2"></i>Aucun type d'OS configuré.
-      <a href="/settings">Ajouter un OS</a> dans les paramètres.
+      <i class="bi bi-info-circle me-2"></i>{{ t('dash.no_os') }}
+      <a href="/settings">{{ t('dash.no_os_link') }}</a> {{ t('dash.no_os_settings') }}
     </div>
   </div>
   {% endfor %}
@@ -120,8 +122,8 @@
       <div class="card-body d-flex align-items-center gap-3">
         <i class="bi bi-plus-circle text-primary" style="font-size:2rem"></i>
         <div>
-          <div class="fw-semibold">Ajouter une version</div>
-          <div class="text-muted small">ISO ou fichiers boot manuels</div>
+          <div class="fw-semibold">{{ t('dash.quick_upload_title') }}</div>
+          <div class="text-muted small">{{ t('dash.quick_upload_sub') }}</div>
         </div>
       </div>
     </a>
@@ -131,8 +133,8 @@
       <div class="card-body d-flex align-items-center gap-3">
         <i class="bi bi-list-ul text-success" style="font-size:2rem"></i>
         <div>
-          <div class="fw-semibold">Menus iPXE</div>
-          <div class="text-muted small">Voir et régénérer les menus</div>
+          <div class="fw-semibold">{{ t('dash.quick_menus_title') }}</div>
+          <div class="text-muted small">{{ t('dash.quick_menus_sub') }}</div>
         </div>
       </div>
     </a>
@@ -142,8 +144,8 @@
       <div class="card-body d-flex align-items-center gap-3">
         <i class="bi bi-file-earmark-code text-warning" style="font-size:2rem"></i>
         <div>
-          <div class="fw-semibold">Nouvelle config auto</div>
-          <div class="text-muted small">Preseed / Kickstart / Unattend</div>
+          <div class="fw-semibold">{{ t('dash.quick_config_title') }}</div>
+          <div class="text-muted small">{{ t('dash.quick_config_sub') }}</div>
         </div>
       </div>
     </a>
@@ -153,12 +155,13 @@
 <!-- Recent Uploads -->
 {% if recent_uploads %}
 <div class="card border-secondary">
-  <div class="card-header"><i class="bi bi-clock-history me-2"></i>Uploads récents</div>
+  <div class="card-header"><i class="bi bi-clock-history me-2"></i>{{ t('dash.uploads_recent') }}</div>
   <div class="table-responsive">
     <table class="table table-dark table-hover mb-0">
       <thead>
         <tr>
-          <th>Fichier</th><th>Type</th><th>Taille</th><th>Statut</th><th>Date</th>
+          <th>{{ t('dash.col_file') }}</th><th>{{ t('dash.col_type') }}</th><th>{{ t('dash.col_size') }}</th>
+          <th>{{ t('dash.col_status') }}</th><th>{{ t('dash.col_date') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -168,10 +171,10 @@
           <td><span class="badge bg-secondary">{{ u.file_type }}</span></td>
           <td>{{ fmt_size(u.size) }}</td>
           <td>
-            {% if u.status == 'done' %}<span class="badge bg-success">Terminé</span>
-            {% elif u.status == 'processing' %}<span class="badge bg-warning text-dark">En cours</span>
-            {% elif u.status == 'error' %}<span class="badge bg-danger">Erreur</span>
-            {% else %}<span class="badge bg-secondary">En attente</span>{% endif %}
+            {% if u.status == 'done' %}<span class="badge bg-success">{{ t('dash.status_done') }}</span>
+            {% elif u.status == 'processing' %}<span class="badge bg-warning text-dark">{{ t('dash.status_processing') }}</span>
+            {% elif u.status == 'error' %}<span class="badge bg-danger">{{ t('dash.status_error') }}</span>
+            {% else %}<span class="badge bg-secondary">{{ t('dash.status_pending') }}</span>{% endif %}
           </td>
           <td class="text-muted small">{{ u.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
         </tr>
@@ -185,11 +188,14 @@
 
 {% block scripts %}
 <script>
+const DASHBOARD_LOCALE = {{ lang|tojson }};
+
 // Affiche l'heure de démarrage en heure locale du navigateur
 function updateStartTimes() {
+  const loc = DASHBOARD_LOCALE === 'en' ? 'en-GB' : 'fr-FR';
   document.querySelectorAll('[data-utc]').forEach(el => {
     const d = new Date(el.dataset.utc);
-    el.textContent = d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+    el.textContent = d.toLocaleTimeString(loc, {hour: '2-digit', minute: '2-digit', second: '2-digit'});
   });
 }
 
@@ -214,3 +220,4 @@ if (document.querySelector('[data-start]')) {
 }
 </script>
 {% endblock %}
+

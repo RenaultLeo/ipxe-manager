@@ -4,19 +4,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.os_type_order import sort_os_types_for_ui
+from app.templating import templates, template_context
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ipxe-menus")
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 def _auth(request: Request):
@@ -82,14 +81,14 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
     remote_chains = db.query(RemoteChain).order_by(RemoteChain.id).all()
     return templates.TemplateResponse(
         "menus.html",
-        {
-            "request":        request,
-            "menu_files":     _collect_menu_files(),
-            "custom_scripts": _collect_custom_scripts(db),
-            "os_types":       sort_os_types_for_ui(db.query(OsType).all()),
-            "server_url":     settings.server_base_url,
-            "remote_chains":  remote_chains,
-        },
+        template_context(
+            request,
+            menu_files=_collect_menu_files(),
+            custom_scripts=_collect_custom_scripts(db),
+            os_types=sort_os_types_for_ui(db.query(OsType).all()),
+            server_url=settings.server_base_url,
+            remote_chains=remote_chains,
+        ),
     )
 
 
@@ -118,13 +117,15 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
                 })
         return templates.TemplateResponse(
             "menus.html",
-            {
-                "request": request,
-                "menu_files": menu_files,
-                "os_types": os_types,
-                "server_url": settings.server_base_url,
-                "error": err,
-            },
+            template_context(
+                request,
+                menu_files=menu_files,
+                os_types=os_types,
+                server_url=settings.server_base_url,
+                error=err,
+                custom_scripts=[],
+                remote_chains=[],
+            ),
             status_code=500,
         )
 

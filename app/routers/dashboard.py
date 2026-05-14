@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from pathlib import Path
 
 from app.database import get_db
 from app.auth import is_authenticated
@@ -10,9 +8,9 @@ from app.services.disk_info import get_disk_usage, fmt_size
 from app.models.models import OsType, IsoVersion, Upload
 from app.services.os_type_order import sort_os_types_for_ui
 from app.config import settings
+from app.templating import templates, template_context
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 def _auth_redirect(request: Request):
@@ -58,14 +56,14 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
     return templates.TemplateResponse(
         "dashboard.html",
-        {
-            "request": request,
-            "disk": disk,
-            "fmt_size": fmt_size,
-            "stats": stats,
-            "recent_uploads": recent_uploads,
-            "active_jobs": active_jobs,
-            "active_jobs_list": active_jobs_list,
-            "timeout_h": round(settings.extract_timeout / 3600, 1),
-        },
+        template_context(
+            request,
+            disk=disk,
+            fmt_size=fmt_size,
+            stats=stats,
+            recent_uploads=recent_uploads,
+            active_jobs=active_jobs,
+            active_jobs_list=active_jobs_list,
+            timeout_h=round(settings.extract_timeout / 3600, 1),
+        ),
     )

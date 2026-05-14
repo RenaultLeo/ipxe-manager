@@ -4,18 +4,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-
-from app.database import get_db
-from app.auth import is_authenticated
-from app.models.models import IsoVersion, AutoConfig
+from app.templating import templates, template_context
 from app.config import settings
-from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
-from app.services.slugify import slugify
-
-router = APIRouter(prefix="/ipxe-configs")
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 CONFIG_TYPES = [
     "preseed",
@@ -75,8 +65,13 @@ async def config_list(request: Request, db: Session = Depends(get_db),
     versions = db.query(IsoVersion).all()
     return templates.TemplateResponse(
         "configs/index.html",
-        {"request": request, "configs": configs, "versions": versions,
-         "config_types": CONFIG_TYPES, "scan_result": scan_result},
+        template_context(
+            request,
+            configs=configs,
+            versions=versions,
+            config_types=CONFIG_TYPES,
+            scan_result=scan_result,
+        ),
     )
 
 
@@ -101,9 +96,15 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
     versions = db.query(IsoVersion).all()
     return templates.TemplateResponse(
         "configs/edit.html",
-        {"request": request, "config": None, "versions": versions,
-         "config_types": CONFIG_TYPES, "server_url": settings.server_base_url,
-         "os_config_type": OS_CONFIG_TYPE, "forced_configs": FORCED_CONFIGS},
+        template_context(
+            request,
+            config=None,
+            versions=versions,
+            config_types=CONFIG_TYPES,
+            server_url=settings.server_base_url,
+            os_config_type=OS_CONFIG_TYPE,
+            forced_configs=FORCED_CONFIGS,
+        ),
     )
 
 
@@ -189,9 +190,15 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
     versions = db.query(IsoVersion).all()
     return templates.TemplateResponse(
         "configs/edit.html",
-        {"request": request, "config": cfg, "versions": versions,
-         "config_types": CONFIG_TYPES, "server_url": settings.server_base_url,
-         "os_config_type": OS_CONFIG_TYPE, "forced_configs": FORCED_CONFIGS},
+        template_context(
+            request,
+            config=cfg,
+            versions=versions,
+            config_types=CONFIG_TYPES,
+            server_url=settings.server_base_url,
+            os_config_type=OS_CONFIG_TYPE,
+            forced_configs=FORCED_CONFIGS,
+        ),
     )
 
 

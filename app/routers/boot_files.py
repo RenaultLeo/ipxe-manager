@@ -4,17 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-
-from app.database import get_db
-from app.auth import is_authenticated
-from app.models.models import IsoVersion, BootEntry, Upload
-from app.services.disk_info import fmt_size
-from app.config import settings
-
-router = APIRouter(prefix="/boot-files")
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+from app.templating import templates, template_context
 
 
 def _auth(request: Request):
@@ -36,8 +26,13 @@ async def boot_list(request: Request, db: Session = Depends(get_db),
     )
     return templates.TemplateResponse(
         "boot_files.html",
-        {"request": request, "versions": versions, "fmt_size": fmt_size,
-         "server_url": settings.server_base_url, "scan_result": scan_result},
+        template_context(
+            request,
+            versions=versions,
+            fmt_size=fmt_size,
+            server_url=settings.server_base_url,
+            scan_result=scan_result,
+        ),
     )
 
 

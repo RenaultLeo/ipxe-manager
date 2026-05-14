@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.database import init_db, SessionLocal
 from app.models.models import Upload, IsoVersion
-from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware
+from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware, locale
 from app.routers import settings as settings_router
 
 BASE_DIR = Path(__file__).parent
@@ -61,6 +61,16 @@ for _path, _subdir, _name in [
         pass
 
 # ── Routers ───────────────────────────────────────────────────────────────────
+@app.middleware("http")
+async def locale_middleware(request: Request, call_next):
+    from app.i18n import LOCALE_COOKIE, resolve_lang
+
+    raw = request.cookies.get(LOCALE_COOKIE, "fr")
+    request.state.locale = resolve_lang(raw)
+    return await call_next(request)
+
+
+app.include_router(locale.router)
 app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(isos.router)

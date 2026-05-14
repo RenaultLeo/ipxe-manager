@@ -4,7 +4,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -12,10 +11,10 @@ from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, Upload
 from app.services.disk_info import fmt_size
 from app.services.os_type_order import sort_os_types_for_ui
+from app.templating import templates, template_context
 from app.config import settings
 
 router = APIRouter(prefix="/isos")
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 TEMPLATES = templates
 
 
@@ -37,12 +36,12 @@ async def iso_list(request: Request, db: Session = Depends(get_db)):
     versions = db.query(IsoVersion).order_by(IsoVersion.created_at.desc()).all()
     return templates.TemplateResponse(
         "isos/index.html",
-        {
-            "request": request,
-            "os_types": os_types,
-            "versions": versions,
-            "fmt_size": fmt_size,
-        },
+        template_context(
+            request,
+            os_types=os_types,
+            versions=versions,
+            fmt_size=fmt_size,
+        ),
     )
 
 
@@ -56,7 +55,7 @@ async def upload_form(request: Request, db: Session = Depends(get_db)):
     os_types = sort_os_types_for_ui(db.query(OsType).all())
     return templates.TemplateResponse(
         "isos/upload.html",
-        {"request": request, "os_types": os_types},
+        template_context(request, os_types=os_types),
     )
 
 
@@ -198,7 +197,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(404, "Version introuvable")
     return templates.TemplateResponse(
         "isos/detail.html",
-        {"request": request, "version": version, "fmt_size": fmt_size},
+        template_context(request, version=version, fmt_size=fmt_size),
     )
 
 
@@ -246,7 +245,9 @@ async def iso_status_fragment(version_id: int, request: Request, db: Session = D
         raise HTTPException(404)
     return templates.TemplateResponse(
         "isos/status_badge.html",
-        {"request": request, "status": version.status, "version_id": version_id},
+        template_context(
+            request, status=version.status, version_id=version_id
+        ),
     )
 
 

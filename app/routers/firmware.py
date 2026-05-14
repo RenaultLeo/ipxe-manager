@@ -6,17 +6,16 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
+from app.templating import templates, template_context
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/firmware")
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 def _auth(request: Request):
@@ -96,15 +95,15 @@ async def firmware_index(request: Request, task_id: str = "", db: Session = Depe
 
     return templates.TemplateResponse(
         "firmware.html",
-        {
-            "request":   request,
-            "status":    status,
-            "building":  building,
-            "result":    result,
-            "task_id":   task_id,
-            "menu_url":  menu_url,
-            "tftp_root": settings.tftp_root,
-        },
+        template_context(
+            request,
+            status=status,
+            building=building,
+            result=result,
+            task_id=task_id,
+            menu_url=menu_url,
+            tftp_root=settings.tftp_root,
+        ),
     )
 
 
@@ -174,17 +173,17 @@ async def firmware_task_status(task_id: str, request: Request):
 
     return templates.TemplateResponse(
         "firmware_status.html",
-        {
-            "request":          request,
-            "task_id":          task_id,
-            "state":            state,
-            "step":             step,
-            "logs":             logs,
-            "completed_steps":  completed_steps,
-            "done":             done,
-            "success":          success,
-            "result":           result,
-            "error":            error,
-            "tftp_root":        settings.tftp_root,
-        },
+        template_context(
+            request,
+            task_id=task_id,
+            state=state,
+            step=step,
+            logs=logs,
+            completed_steps=completed_steps,
+            done=done,
+            success=success,
+            result=result,
+            error=error,
+            tftp_root=settings.tftp_root,
+        ),
     )

@@ -1,8 +1,5 @@
-from pathlib import Path
-
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -10,9 +7,9 @@ from app.auth import is_authenticated, hash_password
 from app.models.models import AppSetting, OsType
 from app.services.os_type_order import sort_os_types_for_ui
 from app.config import settings as app_settings
+from app.templating import templates, template_context
 
 router = APIRouter(prefix="/settings")
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 EDITABLE_KEYS = ["server_base_url", "admin_password_hash"]
 
@@ -52,7 +49,7 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     os_types = sort_os_types_for_ui(db.query(OsType).all())
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request, "current": current, "os_types": os_types},
+        template_context(request, current=current, os_types=os_types),
     )
 
 

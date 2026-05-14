@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-bs-theme="dark">
+<html lang="{{ lang }}" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,43 +24,61 @@
       <ul class="navbar-nav me-auto">
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
-            <i class="bi bi-speedometer2 me-1"></i>Dashboard
+            <i class="bi bi-speedometer2 me-1"></i>{{ t('nav.dashboard') }}
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if '/isos' in request.url.path %}active{% endif %}" href="/isos">
-            <i class="bi bi-disc me-1"></i>ISOs
+            <i class="bi bi-disc me-1"></i>{{ t('nav.isos') }}
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if '/boot-files' in request.url.path %}active{% endif %}" href="/boot-files">
-            <i class="bi bi-files me-1"></i>Fichiers Boot
+            <i class="bi bi-files me-1"></i>{{ t('nav.boot_files') }}
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if '/ipxe-configs' in request.url.path %}active{% endif %}" href="/ipxe-configs">
-            <i class="bi bi-file-code me-1"></i>Configs Auto
+            <i class="bi bi-file-code me-1"></i>{{ t('nav.configs') }}
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if '/ipxe-menus' in request.url.path %}active{% endif %}" href="/ipxe-menus">
-            <i class="bi bi-list-ul me-1"></i>Menus iPXE
+            <i class="bi bi-list-ul me-1"></i>{{ t('nav.menus') }}
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if '/firmware' in request.url.path %}active{% endif %}" href="/firmware">
-            <i class="bi bi-cpu me-1"></i>Firmware
+            <i class="bi bi-cpu me-1"></i>{{ t('nav.firmware') }}
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if '/settings' in request.url.path %}active{% endif %}" href="/settings">
-            <i class="bi bi-gear me-1"></i>Paramètres
+            <i class="bi bi-gear me-1"></i>{{ t('nav.settings') }}
           </a>
         </li>
       </ul>
-      <a href="/logout" class="btn btn-outline-secondary btn-sm">
-        <i class="bi bi-box-arrow-right me-1"></i>Déconnexion
-      </a>
+      <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+        <div class="dropdown">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                  id="langMenu" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-translate me-1"></i>{{ lang|upper }}
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="langMenu">
+            <li>
+              <a class="dropdown-item {% if lang == 'fr' %}active{% endif %}"
+                 href="/set-language?lang=fr&amp;next={{ i18n_next }}">{{ t('lang.fr') }}</a>
+            </li>
+            <li>
+              <a class="dropdown-item {% if lang == 'en' %}active{% endif %}"
+                 href="/set-language?lang=en&amp;next={{ i18n_next }}">{{ t('lang.en') }}</a>
+            </li>
+          </ul>
+        </div>
+        <a href="/logout" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-box-arrow-right me-1"></i>{{ t('nav.logout') }}
+        </a>
+      </div>
     </div>
   </div>
 </nav>
