@@ -4,7 +4,16 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.auth import is_authenticated
+from app.models.models import IsoVersion, BootEntry, Upload
+from app.services.disk_info import fmt_size
 from app.templating import templates, template_context
+from app.config import settings
+
+router = APIRouter(prefix="/boot-files")
 
 
 def _auth(request: Request):

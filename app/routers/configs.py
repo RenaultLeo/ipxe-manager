@@ -4,8 +4,17 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.auth import is_authenticated
+from app.models.models import IsoVersion, AutoConfig
+from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
+from app.services.slugify import slugify
 from app.templating import templates, template_context
 from app.config import settings
+
+router = APIRouter(prefix="/ipxe-configs")
 
 CONFIG_TYPES = [
     "preseed",
