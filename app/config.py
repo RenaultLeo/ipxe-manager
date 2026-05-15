@@ -31,10 +31,6 @@ class Settings(BaseSettings):
     ubuntu_nfs_host: str = ""  # Vide = hôte tiré de SERVER_BASE_URL ; sinon IP/hostname NFS atteignable par les clients
     ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Suffix après host:chemin dans nfsroot=
 
-    # URLs HTTP dans les menus (kernel/init/wim…) : si Nginx expose sans préfixe /boot/
-    # (ex. location /ubuntu/ → alias HTTP_ROOT/boot/ubuntu/), mettre HTTP_URLS_SKIP_BOOT_PATH=true
-    http_urls_skip_boot_path: bool = False
-
     @property
     def ipxe_src_dir(self) -> Path:
         return Path(self.build_dir) / "ipxe-src"

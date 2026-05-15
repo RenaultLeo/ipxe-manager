@@ -129,7 +129,7 @@ def regenerate_all(db: Session) -> list[str]:
                 tmpl_name = "linux.ipxe.j2"
 
             tmpl = env.get_template(tmpl_name)
-            base = _public_server_base(cfg)
+            base = cfg.server_base_url.rstrip("/")
             content = tmpl.render(
                 os_type=os_type,
                 entries=standard_entries,
@@ -166,10 +166,9 @@ def regenerate_all(db: Session) -> list[str]:
     # Central menu
     remote_chains = db.query(RemoteChain).filter(RemoteChain.enabled == True).order_by(RemoteChain.id).all()  # noqa: E712
     tmpl = env.get_template("menu.ipxe.j2")
-    menu_base = _public_server_base(cfg)
     content = tmpl.render(
         os_types=os_types,
-        server_url=menu_base,
+        server_url=cfg.server_base_url.rstrip("/"),
         remote_chains=remote_chains,
     )
     out = cfg.menus_dir / "menu.ipxe"
@@ -227,16 +226,9 @@ def _find_unattend_url(v: IsoVersion, os_type: OsType, cfg: Settings) -> str:
     return ""
 
 
-def _public_server_base(cfg: Settings) -> str:
-    """Même base que pour les URLs kernel/initrd (pas de slash final)."""
-    return cfg.server_base_url.rstrip("/")
-
-
 def _http(relative_path: str | None, cfg: Settings) -> str:
     if not relative_path:
         return ""
     clean = relative_path.replace("\\", "/").lstrip("/")
-    # Nginx peut servir depuis HTTP_ROOT sans « /boot/ » dans l’URL (ex. /ubuntu/ vers boot/ubuntu/)
-    if cfg.http_urls_skip_boot_path and clean.startswith("boot/"):
-        clean = clean[5:]
-    return f"{_public_server_base(cfg)}/{clean}"
+    base = cfg.server_base_url.rstrip("/")
+    return f"{base}/{clean}"
