@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     ubuntu_nfs_enabled: bool = False
     ubuntu_nfs_host: str = ""  # Vide = hôte tiré de SERVER_BASE_URL ; sinon IP/hostname NFS atteignable par les clients
     ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Suffix après host:chemin dans nfsroot=
+    # Chemin absolu *sur le serveur NFS* jusqu’au dossier parent des versions (/boot/ubuntu/… sous HTTP).
+    # Vide = dérivé de HTTP_ROOT (ex. /srv/ipxe/http/boot/ubuntu). Sinon ex. UBUNTU_NFS_ROOT_PATH=/boot/ubuntu
+    # si ce répertoire existe (ou lien) côté serveur — nfsroot=IP:/boot/ubuntu/<slug>.
+    ubuntu_nfs_root_path: str = ""
 
     @property
     def ipxe_src_dir(self) -> Path:
@@ -68,8 +72,12 @@ class Settings(BaseSettings):
         host = self.ubuntu_nfs_server_hostname()
         if not host:
             return None
-        root = self.boot_dir / "ubuntu" / version_slug
-        path = root.resolve().as_posix()
+        manual_parent = self.ubuntu_nfs_root_path.strip().rstrip("/")
+        if manual_parent:
+            path = f"{manual_parent}/{version_slug}".replace("//", "/")
+        else:
+            root = self.boot_dir / "ubuntu" / version_slug
+            path = root.resolve().as_posix()
         opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
         base = f"{host}:{path}"
         return f"{base},{opts}" if opts else base

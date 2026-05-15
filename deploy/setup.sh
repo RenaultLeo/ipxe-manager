@@ -114,6 +114,8 @@ EXTRACT_TIMEOUT=3600
 UBUNTU_NFS_ENABLED=false
 UBUNTU_NFS_HOST=
 UBUNTU_NFS_MOUNT_OPTS=vers=4,tcp
+# Vide = chemin résolu sous HTTP_ROOT ; ex. UBUNTU_NFS_ROOT_PATH=/boot/ubuntu pour nfsroot=IP:/boot/ubuntu/<slug>
+UBUNTU_NFS_ROOT_PATH=
 EOF
     echo "  .env créé — mot de passe par défaut : admin (à changer !)"
 else
@@ -121,8 +123,9 @@ else
     # S'assurer que BUILD_DIR est présent dans le .env existant
     grep -q "BUILD_DIR" "$APP_DIR/.env" || echo "BUILD_DIR=/srv/ipxe/build" >> "$APP_DIR/.env"
     grep -q "^UBUNTU_NFS_ENABLED" "$APP_DIR/.env" || {
-        printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
+        printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\nUBUNTU_NFS_ROOT_PATH=\n' >> "$APP_DIR/.env"
     }
+    grep -q "^UBUNTU_NFS_ROOT_PATH" "$APP_DIR/.env" || echo "UBUNTU_NFS_ROOT_PATH=" >> "$APP_DIR/.env"
 fi
 
 # ── 7. Base de données ────────────────────────────────────────────────────────
