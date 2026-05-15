@@ -357,6 +357,20 @@ systemctl reload-or-restart nginx
 systemctl enable --now smbd nmbd
 # NFS : déjà activé ci-dessus si présent ; s'assurer qu'il tourne après permissions
 systemctl reload-or-restart nfs-server 2>/dev/null || systemctl reload-or-restart nfs-kernel-server 2>/dev/null || true
+
+# NFS opérationnel → activer les menus Ubuntu/netboot NFS dans .env sans intervention manuelle
+if [ -f "$APP_DIR/.env" ] && { systemctl is-active --quiet nfs-server 2>/dev/null || systemctl is-active --quiet nfs-kernel-server 2>/dev/null; }; then
+    if grep -q '^UBUNTU_NFS_ENABLED=' "$APP_DIR/.env"; then
+        sed -i 's/^UBUNTU_NFS_ENABLED=.*/UBUNTU_NFS_ENABLED=true/' "$APP_DIR/.env"
+    else
+        printf '\nUBUNTU_NFS_ENABLED=true\n' >> "$APP_DIR/.env"
+    fi
+    chmod 640 "$APP_DIR/.env" 2>/dev/null || true
+    echo "  .env : UBUNTU_NFS_ENABLED=true (service NFS actif)."
+else
+    echo "  .env : UBUNTU_NFS_ENABLED non forcé — NFS indisponible ou .env absent (ajustez à la main si besoin)."
+fi
+
 systemctl enable --now ipxe-manager
 systemctl enable --now ipxe-celery
 
@@ -374,7 +388,7 @@ echo "  Login          : admin  /  Mot de passe : admin"
 echo "  Menu iPXE HTTP : http://$SERVER_IP/menus/menu.ipxe"
 echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
 echo "  Samba share    : \\\\$SERVER_IP\\boot"
-echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (activer UBUNTU_NFS_ENABLED dans .env + menus)"
+echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (menus : UBUNTU_NFS_ENABLED mis à true si NFS actif)"
 echo ""
 echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
 echo "  FIRMWARE  : Compiler un firmware custom avec embed depuis /firmware"
