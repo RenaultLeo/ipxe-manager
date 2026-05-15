@@ -2,9 +2,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 from urllib.parse import urlparse
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=str(_PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+    )
 
     server_base_url: str = "http://192.168.2.6"
     secret_key: str = "changeme_generate_with_openssl_rand_hex_32"
@@ -58,12 +63,12 @@ class Settings(BaseSettings):
         Valeur après nfsroot= : host:/chemin/absolu(,opts).
         Chaque version a son dossier d’extraction sous boot/<slug>/<version_slug>.
         """
-        if os_slug != "ubuntu" or not self.ubuntu_nfs_enabled:
+        if os_slug.lower() != "ubuntu" or not self.ubuntu_nfs_enabled:
             return None
         host = self.ubuntu_nfs_server_hostname()
         if not host:
             return None
-        root = self.boot_dir / os_slug / version_slug
+        root = self.boot_dir / "ubuntu" / version_slug
         path = root.resolve().as_posix()
         opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
         base = f"{host}:{path}"

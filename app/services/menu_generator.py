@@ -37,7 +37,7 @@ def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:
         if not rel:
             continue
         parts = rel.replace("\\", "/").lstrip("/").split("/")
-        if len(parts) >= 3 and parts[0] == "boot" and parts[1] == os_slug:
+        if len(parts) >= 3 and parts[0] == "boot" and parts[1].lower() == os_slug.lower():
             return parts[2]
     return None
 
@@ -47,7 +47,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     be = v.boot_entry
     version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
     nfs_pair = cfg.ubuntu_nfsroot_pair(os_type.slug, version_slug)
-    if os_type.slug == "ubuntu" and cfg.ubuntu_nfs_enabled and not nfs_pair:
+    if os_type.slug.lower() == "ubuntu" and cfg.ubuntu_nfs_enabled and not nfs_pair:
         logger.warning(
             "Ubuntu NFS: UBUNTU_NFS_ENABLED mais nfsroot vide pour \"%s\". "
             "Corriger SERVER_BASE_URL ou UBUNTU_NFS_HOST dans .env, puis "
@@ -203,7 +203,7 @@ def _build_kernel_args(
             args = f"{args} modloop={modloop_url}".strip()
 
     # Ubuntu ISO extraite : indiquer explicitement NFS pour monter casper depuis la racine exportée.
-    if os_slug != "ubuntu" or not nfsroot_pair or "nfsroot=" in args:
+    if os_slug.lower() != "ubuntu" or not nfsroot_pair or "nfsroot=" in args:
         return args
 
     nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
