@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # NFS minimal pour Ubuntu netboot (extractions sous http/boot/ubuntu).
 # Pas de git pull / pip / seed_db — uniquement le serveur NFS.
 #

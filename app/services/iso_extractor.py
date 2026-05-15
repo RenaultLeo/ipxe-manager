@@ -265,7 +265,14 @@ def _esxi_normalize_path(ref: str) -> str:
     return ref.replace("\\", "/")
 
 
-def _esxi_resolve_file(iso_root: Path, boot_cfg_dir: Path, prefix: str, ref: str) -> Path | None:
+def _esxi_resolve_file(
+    iso_root: Path,
+    boot_cfg_dir: Path,
+    prefix: str,
+    ref: str,
+    *,
+    iso_index_by_lower: dict[str, list[Path]] | None = None,
+) -> Path | None:
     """Résout un chemin mentionné dans boot.cfg vers un fichier sur l'ISO extraite."""
     ref = _esxi_normalize_path(ref)
     if not ref:
@@ -287,14 +294,48 @@ def _esxi_resolve_file(iso_root: Path, boot_cfg_dir: Path, prefix: str, ref: str
         seen.add(key)
         if c.is_file():
             return c
+    # Fallback : même basename, casse différente (Linux + ISO VMware en majuscules)
+    basename = PurePosixPath(rel).name
+    if basename and iso_index_by_lower:
+        pool = iso_index_by_lower.get(basename.lower(), [])
+        if pool:
+            return _esxi_pick_preferred_path(pool, iso_root)
     return None
 
 
-def _pick_esxi_boot_cfg(iso_root: Path) -> Path | None:
-    """Choisit le boot.cfg ESXi pertinent (EFI ou racine OEM)."""
+def _esxi_index_files_casefold(iso_root: Path) -> dict[str, list[Path]]:
+    """
+    Indexe tous les fichiers de l’ISO par nom en minuscul (pour ISO 9660 / UDF en majuscules).
+    Une clé peut pointer vers plusieurs chemins si doublons (rare).
+    """
+    idx: dict[str, list[Path]] = {}
+    try:
+        for p in iso_root.rglob("*"):
+            if p.is_file():
+                idx.setdefault(p.name.lower(), []).append(p)
+    except OSError as exc:
+        logger.warning("ESXi : parcours ISO pour index insensible à la casse — %s", exc)
+    return idx
+
+
+def _esxi_pick_preferred_path(paths: list[Path], iso_root: Path) -> Path:
+    """Choisit un candidat lorsque plusieurs chemins ont le même nom (préfère le plus peu profond sous l’ISO)."""
+    def sort_key(q: Path) -> tuple[int, int, str]:
+        try:
+            rel = q.relative_to(iso_root)
+            depth = len(rel.parts)
+        except ValueError:
+            depth = 999
+        return (depth, len(str(q)), str(q))
+
+    return min(paths, key=sort_key)
+
+
+def _pick_esxi_boot_cfg(iso_root: Path, idx: dict[str, list[Path]]) -> Path | None:
+    """Choisit le boot.cfg ESXi pertinent (EFI ou racine OEM). Insensible à la casse (BOOT.CFG, etc.)."""
     candidates = sorted(
-        (p for p in iso_root.rglob("boot.cfg") if p.is_file()),
-        key=lambda p: (len(str(p.relative_to(iso_root))), str(p)),
+        idx.get("boot.cfg", []),
+        key=lambda p: (len(p.relative_to(iso_root).parts), str(p)),
     )
     best: tuple[int, Path] | None = None
     for p in candidates:
@@ -346,21 +387,23 @@ def _rewrite_esxi_boot_cfg_flat(
 
 
 def _ensure_no_name_collision(paths: list[Path]) -> None:
-    """Empêche deux sources différentes de partager le même basename (aplati sous dest)."""
-    by_name: dict[str, Path] = {}
+    """Empêche deux sources différentes de partager le même nom de fichier aplati (insensible à la casse)."""
+    by_low: dict[str, Path] = {}
     for p in paths:
-        n = p.name
-        if n in by_name and by_name[n].resolve() != p.resolve():
+        k = p.name.lower()
+        if k in by_low and by_low[k].resolve() != p.resolve():
             raise ExtractionError(
-                f"ESXi : collision de nom de fichier (« {n} ») — ISO ou boot.cfg incompatible."
+                f"ESXi : collision de nom de fichier (« {by_low[k].name} » / « {p.name} ») — ISO incompatible."
             )
-        by_name.setdefault(n, p)
+        by_low.setdefault(k, p)
 
 
 def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
     """Copie mboot.c32, boot.cfg réécrite, le kernel ESXi (.b00) et les modules nécessaires au PXE HTTP."""
     base = f"boot/{os_slug}/{version_slug}"
-    boot_cfg = _pick_esxi_boot_cfg(src)
+    iso_lower = _esxi_index_files_casefold(src)
+
+    boot_cfg = _pick_esxi_boot_cfg(src, iso_lower)
     if not boot_cfg:
         raise ExtractionError("ESXi : aucun boot.cfg trouvé dans l'ISO.")
 
@@ -368,8 +411,11 @@ def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dic
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
     cfg_dir = boot_cfg.parent
 
-    mboot_source = _find_by_priority(src, ["mboot.c32"], mode="extra")
-    if not mboot_source or not mboot_source.is_file():
+    mboot_pool = iso_lower.get("mboot.c32", [])
+    if not mboot_pool:
+        raise ExtractionError("ESXi : mboot.c32 introuvable dans l'ISO (cherché sans tenir compte de la casse).")
+    mboot_source = _esxi_pick_preferred_path(mboot_pool, src)
+    if not mboot_source.is_file():
         raise ExtractionError("ESXi : mboot.c32 introuvable dans l'ISO.")
 
     prefix = parsed.get("prefix", "") or ""
@@ -377,7 +423,7 @@ def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dic
     if not kernel_ref:
         raise ExtractionError("ESXi : pas de ligne kernel= dans boot.cfg.")
 
-    k_path = _esxi_resolve_file(src, cfg_dir, prefix, kernel_ref)
+    k_path = _esxi_resolve_file(src, cfg_dir, prefix, kernel_ref, iso_index_by_lower=iso_lower)
     if not k_path:
         raise ExtractionError(
             f"ESXi : impossible de localiser le fichier kernel « {kernel_ref} » sur l'ISO."
@@ -398,7 +444,7 @@ def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dic
 
     mod_paths: list[Path] = []
     for ref in mod_refs:
-        p = _esxi_resolve_file(src, cfg_dir, prefix, ref)
+        p = _esxi_resolve_file(src, cfg_dir, prefix, ref, iso_index_by_lower=iso_lower)
         if not p or not p.is_file():
             raise ExtractionError(
                 f"ESXi : module introuvable sur l'ISO : « {ref} »"
