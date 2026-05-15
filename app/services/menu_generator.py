@@ -7,7 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import Settings
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
@@ -42,36 +42,47 @@ def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:
     return None
 
 
-def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
+def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     """Construit le dict d'une version pour les templates Jinja2."""
     be = v.boot_entry
     version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
-    nfs_pair = settings.ubuntu_nfsroot_pair(os_type.slug, version_slug)
+    nfs_pair = cfg.ubuntu_nfsroot_pair(os_type.slug, version_slug)
+    if os_type.slug == "ubuntu" and cfg.ubuntu_nfs_enabled and not nfs_pair:
+        logger.warning(
+            "Ubuntu NFS: UBUNTU_NFS_ENABLED mais nfsroot vide pour \"%s\". "
+            "Corriger SERVER_BASE_URL ou UBUNTU_NFS_HOST dans .env, puis "
+            "`systemctl restart ipxe-manager` et régénérer les menus.",
+            v.version_label,
+        )
+
+    def h(rel: str | None) -> str:
+        return _http(rel, cfg)
+
     return {
         "id":           v.id,
         "label":        f"{os_type.label} {v.version_label}",
-        "kernel":       _http(be.kernel_path)      if be and be.kernel_path      else "",
-        "initrd":       _http(be.initrd_path)      if be and be.initrd_path      else "",
-        "boot_wim":     _http(be.boot_wim_path)    if be and be.boot_wim_path    else "",
-        "bcd":          _http(be.bcd_path)         if be and be.bcd_path         else "",
-        "boot_sdi":     _http(be.boot_sdi_path)    if be and be.boot_sdi_path    else "",
-        "unattend_url": _find_unattend_url(v, os_type),
-        "bootmgr":      _http(be.bootmgr_path)     if be and be.bootmgr_path     else "",
-        "custom_ipxe":  _http(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
-        "modloop":      _http(be.modloop_path)     if be and be.modloop_path     else "",
-        # Pour Alpine : injecter modloop= dans les kernel args automatiquement
-        "kernel_args":  _build_kernel_args(be, os_type.slug, nfsroot_pair=nfs_pair),
-        "boot_type":    os_type.boot_type or "linux",
+        "kernel":       h(be.kernel_path) if be and be.kernel_path else "",
+        "initrd":       h(be.initrd_path) if be and be.initrd_path else "",
+        "boot_wim":     h(be.boot_wim_path) if be and be.boot_wim_path else "",
+        "bcd":          h(be.bcd_path) if be and be.bcd_path else "",
+        "boot_sdi":     h(be.boot_sdi_path) if be and be.boot_sdi_path else "",
+        "unattend_url": _find_unattend_url(v, os_type, cfg),
+        "bootmgr":      h(be.bootmgr_path) if be and be.bootmgr_path else "",
+        "custom_ipxe":  h(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
+        "modloop":      h(be.modloop_path) if be and be.modloop_path else "",
+        # Pour Alpine / Ubuntu : injections dans kernel_args ci-dessous
+        "kernel_args": _build_kernel_args(be, os_type.slug, cfg, nfsroot_pair=nfs_pair),
+        "boot_type":   os_type.boot_type or "linux",
         "autoconfigs": [
             {
                 "id":       ac.id,
                 "label":    ac.label or ac.config_type,
-                "url":      _http(ac.file_path) if ac.file_path else "",
+                "url":      h(ac.file_path) if ac.file_path else "",
                 "type":     ac.config_type,
                 "boot_arg": config_boot_arg(
                     ac.config_type,
                     os_type.slug,
-                    _http(ac.file_path) if ac.file_path else "",
+                    h(ac.file_path) if ac.file_path else "",
                 ),
             }
             for ac in v.autoconfigs
@@ -81,7 +92,8 @@ def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
 
 def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
-    settings.menus_dir.mkdir(parents=True, exist_ok=True)
+    cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
+    cfg.menus_dir.mkdir(parents=True, exist_ok=True)
     env = _jinja_env()
     written: list[str] = []
 
@@ -103,7 +115,7 @@ def regenerate_all(db: Session) -> list[str]:
             standard_entries = []
             custom_entries   = []
             for v in versions:
-                entry = _build_entry(v, os_type)
+                entry = _build_entry(v, os_type, cfg)
                 if entry["custom_ipxe"]:
                     custom_entries.append(entry)
                 else:
@@ -121,12 +133,12 @@ def regenerate_all(db: Session) -> list[str]:
                 os_type=os_type,
                 entries=standard_entries,
                 has_autres=has_autres,
-                server_url=settings.server_base_url,
-                ubuntu_nfs_enabled=settings.ubuntu_nfs_enabled,
-                ubuntu_nfs_host=settings.ubuntu_nfs_server_hostname() or "",
-                ubuntu_nfs_export_path=(Path(settings.http_root) / "boot" / "ubuntu").as_posix(),
+                server_url=cfg.server_base_url,
+                ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
+                ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
+                ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
             )
-            out = settings.menus_dir / f"{os_type.slug}.ipxe"
+            out = cfg.menus_dir / f"{os_type.slug}.ipxe"
             out.write_text(content, encoding="utf-8")
             written.append(str(out))
 
@@ -136,15 +148,15 @@ def regenerate_all(db: Session) -> list[str]:
                 content_autres = tmpl_autres.render(
                     os_type=os_type,
                     entries=custom_entries,
-                    server_url=settings.server_base_url,
+                    server_url=cfg.server_base_url,
                 )
-                out_autres = settings.menus_dir / f"{os_type.slug}_autres.ipxe"
+                out_autres = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
                 out_autres.write_text(content_autres, encoding="utf-8")
                 written.append(str(out_autres))
                 logger.info("Menu Autres généré : %s (%d entrées)", out_autres, len(custom_entries))
             else:
                 # Supprimer l'ancien _autres.ipxe s'il n'y a plus de versions custom
-                old = settings.menus_dir / f"{os_type.slug}_autres.ipxe"
+                old = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
                 old.unlink(missing_ok=True)
 
         except Exception:
@@ -155,10 +167,10 @@ def regenerate_all(db: Session) -> list[str]:
     tmpl = env.get_template("menu.ipxe.j2")
     content = tmpl.render(
         os_types=os_types,
-        server_url=settings.server_base_url,
+        server_url=cfg.server_base_url,
         remote_chains=remote_chains,
     )
-    out = settings.menus_dir / "menu.ipxe"
+    out = cfg.menus_dir / "menu.ipxe"
     out.write_text(content, encoding="utf-8")
     written.append(str(out))
 
@@ -171,41 +183,50 @@ def _has_ip_kernel_arg(s: str) -> bool:
     return bool(re.search(r"(?:^|\s)ip=", s))
 
 
-def _build_kernel_args(be, os_slug: str, nfsroot_pair: str | None = None) -> str:
-    """Assemble les kernel args, dont modloop Alpine et netboot NFS Ubuntu (caper)."""
+def _build_kernel_args(
+    be,
+    os_slug: str,
+    cfg: Settings,
+    nfsroot_pair: str | None = None,
+) -> str:
+    """
+    Concatène les args DB et ajoute modloop (Alpine). Pour Ubuntu NFS : ajoute après le
+    téléchargement HTTP de vmlinuz/initrd par iPXE les paramètres noyau permettant au
+    live (casper) de lire le squashfs sur NFS : ``ip=dhcp`` si besoin, ``boot=casper``,
+    ``netboot=nfs``, ``nfsroot=<hôte>:<chemin>(,opts)``.
+    """
     args = be.kernel_args if be and be.kernel_args else ""
+
     if os_slug == "alpine" and be and be.modloop_path:
-        modloop_url = _http(be.modloop_path)
+        modloop_url = _http(be.modloop_path, cfg)
         if "modloop=" not in args:
             args = f"{args} modloop={modloop_url}".strip()
 
-    if (
-        os_slug == "ubuntu"
-        and nfsroot_pair
-        and "nfsroot=" not in args
-    ):
-        nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
-        if not _has_ip_kernel_arg(args):
-            nfs_bits.insert(0, "ip=dhcp")
-        args = f"{args} {' '.join(nfs_bits)}".strip()
+    # Ubuntu ISO extraite : indiquer explicitement NFS pour monter casper depuis la racine exportée.
+    if os_slug != "ubuntu" or not nfsroot_pair or "nfsroot=" in args:
+        return args
 
+    nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
+    if not _has_ip_kernel_arg(args):
+        nfs_bits.insert(0, "ip=dhcp")
+    args = f"{args} {' '.join(nfs_bits)}".strip()
     return args
 
 
-def _find_unattend_url(v: IsoVersion, os_type: OsType) -> str:
+def _find_unattend_url(v: IsoVersion, os_type: OsType, cfg: Settings) -> str:
     """Cherche autounattend.xml à la racine du dossier boot de la version."""
     if os_type.boot_type != "windows":
         return ""
     be = v.boot_entry
     version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
-    path = settings.boot_dir / os_type.slug / version_slug / "autounattend.xml"
+    path = cfg.boot_dir / os_type.slug / version_slug / "autounattend.xml"
     if path.exists():
-        return _http(f"boot/{os_type.slug}/{version_slug}/autounattend.xml")
+        return _http(f"boot/{os_type.slug}/{version_slug}/autounattend.xml", cfg)
     return ""
 
 
-def _http(relative_path: str | None) -> str:
+def _http(relative_path: str | None, cfg: Settings) -> str:
     if not relative_path:
         return ""
     clean = relative_path.lstrip("/")
-    return f"{settings.server_base_url}/{clean}"
+    return f"{cfg.server_base_url}/{clean}"
