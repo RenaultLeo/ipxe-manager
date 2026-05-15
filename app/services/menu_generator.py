@@ -202,7 +202,8 @@ def _build_kernel_args(
     Concatène les args DB et ajoute modloop (Alpine). Pour Ubuntu NFS : ajoute après le
     téléchargement HTTP de vmlinuz/initrd par iPXE les paramètres noyau permettant au
     live (casper) de lire le squashfs sur NFS : ``ip=dhcp`` si besoin, ``boot=casper``,
-    ``netboot=nfs``, ``nfsroot=<hôte>:<chemin>(,opts)``.
+    ``netboot=nfs``, ``nfsroot=hôte:chemin``, et si besoin ``nfsopts=…`` (voir casper(7) —
+    ne pas coller ``,vers=`` dans nfsroot).
     """
     args = be.kernel_args if be and be.kernel_args else ""
 
@@ -218,6 +219,9 @@ def _build_kernel_args(
     nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
     if not _has_ip_kernel_arg(args):
         nfs_bits.insert(0, "ip=dhcp")
+    opts = cfg.ubuntu_nfs_mount_opts.strip().strip(",").strip()
+    if opts and "nfsopts=" not in args:
+        nfs_bits.append(f"nfsopts={opts}")
     args = f"{args} {' '.join(nfs_bits)}".strip()
     return args
 

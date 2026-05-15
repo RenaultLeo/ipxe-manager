@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Ubuntu full-ISO sous http/boot/ubuntu/<slug> — live-server lit le contenu via NFS (comme SMB côté Windows)
     ubuntu_nfs_enabled: bool = False
     ubuntu_nfs_host: str = ""  # Vide = 192.168.2.6 dans nfsroot= ; sinon UBUNTU_NFS_HOST
-    ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Suffix après host:chemin dans nfsroot=
+    ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Passé en nfsopts= (casper), pas après une virgule dans nfsroot
 
     @property
     def ipxe_src_dir(self) -> Path:
@@ -65,9 +65,10 @@ class Settings(BaseSettings):
 
     def ubuntu_nfsroot_pair(self, os_slug: str, version_slug: str) -> str | None:
         """
-        Valeur après nfsroot= : host:/chemin/absolu(,opts).
-        Chemin = répertoire version sur le disque du serveur (HTTP_ROOT/boot/ubuntu/<slug>),
-        aligné sur l’export NFS typique : /etc/exports.d → …/http/boot/ubuntu.
+        Partie « serveur:chemin » du paramètre noyau nfsroot= (sans options après une virgule).
+
+        Casper / Ubuntu live attend les options NFS dans un paramètre séparé ``nfsopts=…``
+        (voir casper(7)) ; mettre ``,vers=3`` dans nfsroot peut provoquer un ENOENT côté client.
         """
         if os_slug.lower() != "ubuntu" or not self.ubuntu_nfs_enabled:
             return None
@@ -75,9 +76,7 @@ class Settings(BaseSettings):
         if not host:
             return None
         path = self.ubuntu_boot_version_dir(version_slug).resolve().as_posix()
-        opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
-        base = f"{host}:{path}"
-        return f"{base},{opts}" if opts else base
+        return f"{host}:{path}"
 
 
 settings = Settings()
