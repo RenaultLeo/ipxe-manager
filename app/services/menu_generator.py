@@ -53,6 +53,15 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             "Vérifier HTTP_ROOT et boot/ubuntu/<slug> sur le serveur, puis régénérer les menus.",
             v.version_label,
         )
+    elif os_type.slug.lower() == "ubuntu" and cfg.ubuntu_nfs_enabled and nfs_pair:
+        nfs_dir = cfg.ubuntu_boot_version_dir(version_slug)
+        if not nfs_dir.is_dir():
+            logger.warning(
+                "Ubuntu NFS: répertoire absent sur ce serveur : %s — le client affichera souvent "
+                "« No such file or directory » au montage. Vérifier le nom du dossier (slug) sous "
+                "boot/ubuntu/, qu’il correspond aux chemins kernel/initrd, puis exportfs -ra.",
+                nfs_dir,
+            )
 
     def h(rel: str | None) -> str:
         return _http(rel, cfg)
@@ -136,7 +145,7 @@ def regenerate_all(db: Session) -> list[str]:
                 server_url=base,
                 ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
                 ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
-                ubuntu_nfs_export_path="/boot/ubuntu",
+                ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
             )
             out = cfg.menus_dir / f"{os_type.slug}.ipxe"
             out.write_text(content, encoding="utf-8")

@@ -4,8 +4,8 @@
 # Sous-menu {{ os_type.label }} — généré automatiquement
 ########################################
 {% if os_type.slug == "ubuntu" and ubuntu_nfs_enabled %}
-# Ubuntu : vmlinuz/initrd en HTTP ; casper sur NFS. nfsroot≈ {{ ubuntu_nfs_host }}:{{ ubuntu_nfs_export_path }}/<slug>
-# (chemin /boot/ubuntu/… aligné sur Nginx « location /boot/ » ; export NFS côté serveur à adapter à ce chemin.)
+# Ubuntu : vmlinuz/initrd en HTTP ; casper sur NFS (nfsroot = hôte:chemin absolu du dossier version sur le serveur).
+# Répertoire exporté côté NFS : {{ ubuntu_nfs_export_path }}/ — une entrée menu = un sous-dossier (slug = nom réel du dossier).
 {% endif %}
 
 :start

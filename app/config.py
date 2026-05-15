@@ -56,19 +56,25 @@ class Settings(BaseSettings):
         # IP NFS par défaut (menus ubuntu.ipxe → nfsroot=192.168.2.6:…)
         return "192.168.2.6"
 
+    def ubuntu_boot_version_dir(self, version_slug: str) -> Path:
+        """Répertoire disque HTTP_ROOT/boot/ubuntu/<slug> (sans resolve)."""
+        slug = version_slug.strip().replace("\\", "/").lstrip("/")
+        if "/" in slug:
+            slug = slug.split("/")[0]
+        return self.boot_dir / "ubuntu" / slug
+
     def ubuntu_nfsroot_pair(self, os_slug: str, version_slug: str) -> str | None:
         """
-        Valeur après nfsroot= : host:/chemin(,opts).
-        Chemin logique identique à l’URL HTTP sous Nginx (location /boot/ → http_root/boot/) :
-        /boot/ubuntu/<version_slug>, ex. /boot/ubuntu/ubuntu2404.
+        Valeur après nfsroot= : host:/chemin/absolu(,opts).
+        Chemin = répertoire version sur le disque du serveur (HTTP_ROOT/boot/ubuntu/<slug>),
+        aligné sur l’export NFS typique : /etc/exports.d → …/http/boot/ubuntu.
         """
         if os_slug.lower() != "ubuntu" or not self.ubuntu_nfs_enabled:
             return None
         host = self.ubuntu_nfs_server_hostname()
         if not host:
             return None
-        slug = version_slug.strip().replace("\\", "/").lstrip("/")
-        path = f"/boot/ubuntu/{slug}".replace("//", "/")
+        path = self.ubuntu_boot_version_dir(version_slug).resolve().as_posix()
         opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
         base = f"{host}:{path}"
         return f"{base},{opts}" if opts else base

@@ -326,8 +326,10 @@ EOF
 echo "[13/15] Configuration NFS (Ubuntu netboot depuis $DATA_DIR/http/boot/ubuntu)…"
 install -d -m 755 /etc/exports.d
 cat > /etc/exports.d/ipxe-manager-ubuntu.exports <<EOF
-# Répertoire des ISO Ubuntu extraites (un sous-dossier par version, même slug que l’UI).
-# Clients : NFSv3/v4 ; ouvrir/tcp 2049 (+ rpcbind 111 si pare-feu).
+# ISO Ubuntu extraites : un dossier par version sous ce répertoire (même slug que l’UI).
+# Après ajout d’une nouvelle version : même export, mais vérifier que le dossier existe puis exportfs -ra si besoin.
+# Client nfsroot = IP:/srv/ipxe/http/boot/ubuntu/<slug> ; si « No such file » → dossier absent ou faux slug.
+# Pare-feu : tcp 2049 (+ rpcbind 111 si filtré finement).
 $DATA_DIR/http/boot/ubuntu *(ro,sync,no_subtree_check,insecure,no_root_squash)
 EOF
 exportfs -ra || true

@@ -25,7 +25,8 @@ mkdir -p "$EXPORT_PATH"
 echo "[nfs] /etc/exports.d/ipxe-manager-ubuntu.exports"
 install -d -m 755 /etc/exports.d
 cat > /etc/exports.d/ipxe-manager-ubuntu.exports <<EOF
-# Extractions Ubuntu. Pare-feu : tcp 2049 (et rpcbind 111 si filtré finement).
+# nfsroot côté client typique : IP:$DATA_DIR/http/boot/ubuntu/<slug>
+# « No such file » → le dossier <slug> est absent sur le disque ou ne correspond pas au slug du menu.
 $EXPORT_PATH *(ro,sync,no_subtree_check,insecure,no_root_squash)
 EOF
 
