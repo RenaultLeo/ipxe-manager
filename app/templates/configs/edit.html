@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}{% if config %}Modifier{% else %}Nouvelle{% endif %} config — iPXE Manager{% endblock %}
+{% block title %}{% if config %}{{ t('cfg.meta_title_edit') }}{% else %}{{ t('cfg.meta_title_new') }}{% endif %}{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center gap-3 mb-4">
   <a href="/ipxe-configs" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
   <h2 class="mb-0">
     {% if config %}
-      <i class="bi bi-pencil me-2 text-warning"></i>Modifier la configuration
+      <i class="bi bi-pencil me-2 text-warning"></i>{{ t('cfg.heading_edit') }}
     {% else %}
-      <i class="bi bi-plus-circle me-2 text-success"></i>Nouvelle configuration automatique
+      <i class="bi bi-plus-circle me-2 text-success"></i>{{ t('cfg.heading_new') }}
     {% endif %}
   </h2>
 </div>
@@ -22,10 +22,10 @@
           {% if not config %}
           <div class="row g-3 mb-3">
             <div class="col-md-6">
-              <label class="form-label">Version d'OS <span class="text-danger">*</span></label>
+              <label class="form-label">{{ t('cfg.os_version_label') }} <span class="text-danger">*</span></label>
               <select name="iso_version_id" class="form-select" required id="version-select"
                       onchange="onVersionChange(this)">
-                <option value="">— Choisir —</option>
+                <option value="">{{ t('common.choose') }}</option>
                 {% for v in versions %}
                 <option value="{{ v.id }}"
                         data-os-slug="{{ v.os_type.slug }}"
@@ -37,7 +37,7 @@
               </select>
             </div>
             <div class="col-md-6">
-              <label class="form-label">Type <span class="text-danger">*</span></label>
+              <label class="form-label">{{ t('cfg.col_type') }} <span class="text-danger">*</span></label>
               <select name="config_type" class="form-select" required id="config-type">
                 {% for t in config_types %}
                 <option value="{{ t }}">{{ t }}</option>
@@ -48,7 +48,7 @@
 
             <!-- Choix de fichier pour les distros multi-file (Alpine, Windows, …) -->
             <div class="col-md-6 d-none" id="file-choice-wrap">
-              <label class="form-label">Fichier à créer <span class="text-danger">*</span></label>
+              <label class="form-label">{{ t('cfg.file_to_create') }} <span class="text-danger">*</span></label>
               <select name="forced_filename" class="form-select" id="file-choice">
               </select>
               <div class="form-text text-info" id="file-choice-desc"></div>
@@ -58,7 +58,7 @@
 
           {% if config %}
           <div class="mb-3">
-            <label class="form-label text-muted">Version d'OS</label>
+            <label class="form-label text-muted">{{ t('cfg.os_version_label') }}</label>
             <div class="form-control bg-secondary border-secondary py-2 small">
               <i class="{{ config.iso_version.os_type.icon }} me-1"></i>
               {{ config.iso_version.os_type.label }} {{ config.iso_version.version_label }}
@@ -68,51 +68,51 @@
 
           {# Création Ubuntu autoinstall : nom du dossier conf-cloudInit-… #}
           <div class="mb-3 d-none" id="ubuntu-bundle-name-wrap">
-            <label class="form-label">Nom du dossier de configuration <span class="text-danger">*</span></label>
+            <label class="form-label">{{ t('cfg.folder_bundle_label') }} <span class="text-danger">*</span></label>
             <input type="text" name="cloud_bundle_name" id="cloud-bundle-name-input"
                    class="form-control" maxlength="128" autocomplete="off"
-                   placeholder="Ex. prod-web, classe-a — lettres et chiffres, tirets après normalisation">
-            <div class="form-text">Chemin réel sous la version&nbsp;: <code class="small" id="bundle-path-preview"></code></div>
+                   placeholder="{{ t('cfg.folder_bundle_ph') }}">
+            <div class="form-text">{{ t('cfg.bundle_path_help') }} <code class="small" id="bundle-path-preview"></code></div>
           </div>
 
           {% if config and config.ubuntu_cloud_slug %}
           <div class="mb-3">
-            <label class="form-label text-muted">Dossier (fixe)</label>
+            <label class="form-label text-muted">{{ t('cfg.folder_fixed_label') }}</label>
             <input type="text" class="form-control font-monospace" readonly
                    value="conf-cloudInit-{{ config.ubuntu_cloud_slug }}">
           </div>
           {% endif %}
 
           <div class="mb-3">
-            <label class="form-label">Label</label>
+            <label class="form-label">{{ t('cfg.col_label') }}</label>
             <input type="text" name="label" class="form-control"
                    value="{{ config.label if config else '' }}"
-                   placeholder="Description affichée dans le menu iPXE">
+                   placeholder="{{ t('cfg.label_menu_ph') }}">
           </div>
 
           <div class="mb-3" id="user-data-editor-block">
             <div class="d-flex justify-content-between align-items-center mb-1">
-              <label class="form-label mb-0"><span id="primary-editor-title">Contenu</span> <span class="text-danger" id="primary-required-star">*</span></label>
+              <label class="form-label mb-0"><span id="primary-editor-title">{{ t('cfg.content_label') }}</span> <span class="text-danger" id="primary-required-star">*</span></label>
               <div class="btn-group btn-group-sm" id="templates-btn">
                 <button type="button" class="btn btn-outline-secondary dropdown-toggle"
                         data-bs-toggle="dropdown">
-                  <i class="bi bi-lightning me-1"></i>Template
+                  <i class="bi bi-lightning me-1"></i>{{ t('cfg.template_btn') }}
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" id="template-dropdown-ul">
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('preseed')">Preseed (Debian)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('kickstart')">Kickstart (RHEL/CentOS/ESXi)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('unattend')">Unattend.xml (Windows)</a></li>
-                  <li><a class="dropdown-item ubuntu-template-pair d-none" href="#" onclick="insertUbuntuAutoinstallPair();return false;">Ubuntu autoinstall (user-data + meta-data)</a></li>
-                  <li><a class="dropdown-item tpl-cloud-init-simple" href="#" onclick="insertTemplate('cloud-init')">user-data (Ubuntu, fichier plat — ancien schéma)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('proxmox-answer')">answer.toml (Proxmox)</a></li>
-                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('alpine-answer')">answers (Alpine)</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('preseed')">{{ t('cfg.tpl_item_preseed') }}</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('kickstart')">{{ t('cfg.tpl_item_kickstart') }}</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('unattend')">{{ t('cfg.tpl_item_unattend') }}</a></li>
+                  <li><a class="dropdown-item ubuntu-template-pair d-none" href="#" onclick="insertUbuntuAutoinstallPair();return false;">{{ t('cfg.tpl_item_ubuntu_pair') }}</a></li>
+                  <li><a class="dropdown-item tpl-cloud-init-simple" href="#" onclick="insertTemplate('cloud-init')">{{ t('cfg.tpl_item_cloud_flat') }}</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('proxmox-answer')">{{ t('cfg.tpl_item_proxmox') }}</a></li>
+                  <li><a class="dropdown-item" href="#" onclick="insertTemplate('alpine-answer')">{{ t('cfg.tpl_item_alpine') }}</a></li>
                 </ul>
               </div>
             </div>
             <textarea name="content" id="config-editor" class="form-control font-monospace" required
                       rows="14" style="font-size:0.82rem">{{ config.content if config else '' }}</textarea>
             <div class="form-text">
-              Variables disponibles : <code>{{ '{{ server_url }}' }}</code>,
+              {{ t('cfg.vars_available') }} <code>{{ '{{ server_url }}' }}</code>,
               <code>{{ '{{ hostname }}' }}</code>
             </div>
           </div>
@@ -121,7 +121,7 @@
             <div class="d-flex justify-content-between align-items-center mb-1">
               <label class="form-label mb-0">meta-data <span class="text-danger">*</span></label>
               <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertTemplateIntoMeta('meta-data')">
-                <i class="bi bi-lightning me-1"></i>meta-data vide
+                <i class="bi bi-lightning me-1"></i>{{ t('cfg.meta_empty_btn') }}
               </button>
             </div>
             <textarea name="content_meta" id="config-meta-editor" class="form-control font-monospace"
@@ -130,9 +130,9 @@
 
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary">
-              <i class="bi bi-floppy me-1"></i>Enregistrer
+              <i class="bi bi-floppy me-1"></i>{{ t('common.save') }}
             </button>
-            <a href="/ipxe-configs" class="btn btn-outline-secondary">Annuler</a>
+            <a href="/ipxe-configs" class="btn btn-outline-secondary">{{ t('common.cancel') }}</a>
           </div>
         </form>
       </div>
@@ -146,6 +146,12 @@
 const OS_CONFIG_TYPE  = {{ os_config_type | tojson }};
 const FORCED_CONFIGS  = {{ forced_configs | tojson }};
 const UBUNTU_BUNDLE_PREFIX = "conf-cloudInit-";
+const CFG_I18N = {
+  contentLabel: {{ t('cfg.content_label')|tojson }},
+  typeSuggestedHint: {{ t('cfg.type_suggested_hint')|tojson }},
+  bundlePathPlaceholder: {{ t('cfg.bundle_path_placeholder')|tojson }},
+};
+const TYPE_LABELS = {{ config_type_labels | tojson }};
 /** Contexte serveur édition : bundle Ubuntu avec user-data + meta-data */
 const EDIT_UBUNTU_AUTOSTALL_BUNDLE = {{ (config is not none and config.ubuntu_cloud_slug) | tojson }};
 /** Édition d'une ancienne entrée Ubuntu (un seul fichier user-data plat) */
@@ -157,16 +163,6 @@ const EDIT_LEGACY_UBUNTU_CLOUD =
     and not config.ubuntu_cloud_slug
   ) | tojson }};
 
-// Labels affichés pour chaque type dans la liste
-const TYPE_LABELS = {
-  'preseed':        'preseed — Debian',
-  'kickstart':      'kickstart — CentOS / Rocky / Alma / Fedora / ESXi',
-  'unattend':       'unattend — Windows (autounattend.xml)',
-  'cloud-init':     'Ubuntu autoinstall — user-data / meta-data (dossier conf-cloudInit-…)',
-  'proxmox-answer': 'proxmox-answer — Proxmox (answer.toml)',
-  'alpine-answer':  'alpine-answer — Alpine (answers / apkovl)',
-  'custom':         'custom',
-};
 
 function slugifyJs(s) {
   if (!s) return '';
@@ -192,7 +188,7 @@ function updateBundlePathPreview() {
   const out = document.getElementById('bundle-path-preview');
   if (!out) return;
   const slug = slugifyJs(inp ? inp.value : '');
-  out.textContent = slug ? (UBUNTU_BUNDLE_PREFIX + slug + '/') : '—';
+  out.textContent = slug ? (UBUNTU_BUNDLE_PREFIX + slug + '/') : CFG_I18N.bundlePathPlaceholder;
 }
 
 function onVersionChange(sel) {
@@ -223,7 +219,9 @@ function onVersionChange(sel) {
     }
   }
   typeSelect.disabled = !!forced;
-  hint.textContent = (!forced && osSlug) ? `Type suggéré pour ${osSlug} : ${suggestedType}` : '';
+  hint.textContent = (!forced && osSlug)
+    ? CFG_I18N.typeSuggestedHint.replace('{slug}', osSlug).replace('{type}', suggestedType)
+    : '';
 
   // Sélecteur de fichier pour les distros multi-file (pas Ubuntu bundle)
   if (forced && forced.multi_file && !forced.ubuntu_bundle) {
@@ -271,7 +269,7 @@ function applyUbuntuEditorsLayout() {
     const ta = document.getElementById('config-meta-editor');
     if (ta) ta.required = dual;
   }
-  if (title) title.textContent = showUserDataCaption ? 'user-data' : 'Contenu';
+  if (title) title.textContent = showUserDataCaption ? 'user-data' : CFG_I18N.contentLabel;
   if (pairTpl) pairTpl.parentElement?.classList?.toggle?.('d-none', !dual);
   if (simpleUd) simpleUd.classList.toggle('d-none', dual);
 

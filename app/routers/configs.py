@@ -32,6 +32,15 @@ CONFIG_TYPES = [
 UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
 
 
+def _config_type_labels(lang: str) -> dict[str, str]:
+    """Libellés lisibles du select « type » (traduits)."""
+    out: dict[str, str] = {}
+    for ct in CONFIG_TYPES:
+        key = "cfg.type_dd_" + ct.replace("-", "_")
+        out[ct] = translate(lang, key)
+    return out
+
+
 def _auth(request: Request):
     if not is_authenticated(request):
         return RedirectResponse("/login", status_code=302)
@@ -112,6 +121,7 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
     versions = db.query(IsoVersion).all()
+    lang = getattr(request.state, "locale", "fr")
     return templates.TemplateResponse(
         "configs/edit.html",
         template_context(
@@ -122,6 +132,7 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
             server_url=settings.server_base_url,
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
+            config_type_labels=_config_type_labels(lang),
         ),
     )
 
@@ -206,6 +217,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
     if not cfg:
         raise HTTPException(404)
     versions = db.query(IsoVersion).all()
+    lang = getattr(request.state, "locale", "fr")
     return templates.TemplateResponse(
         "configs/edit.html",
         template_context(
@@ -216,6 +228,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
             server_url=settings.server_base_url,
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
+            config_type_labels=_config_type_labels(lang),
         ),
     )
 
