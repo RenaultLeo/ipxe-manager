@@ -129,11 +129,12 @@ def regenerate_all(db: Session) -> list[str]:
                 tmpl_name = "linux.ipxe.j2"
 
             tmpl = env.get_template(tmpl_name)
+            base = _public_server_base(cfg)
             content = tmpl.render(
                 os_type=os_type,
                 entries=standard_entries,
                 has_autres=has_autres,
-                server_url=cfg.server_base_url,
+                server_url=base,
                 ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
                 ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
                 ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
@@ -148,7 +149,7 @@ def regenerate_all(db: Session) -> list[str]:
                 content_autres = tmpl_autres.render(
                     os_type=os_type,
                     entries=custom_entries,
-                    server_url=cfg.server_base_url,
+                    server_url=base,
                 )
                 out_autres = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
                 out_autres.write_text(content_autres, encoding="utf-8")
@@ -165,9 +166,10 @@ def regenerate_all(db: Session) -> list[str]:
     # Central menu
     remote_chains = db.query(RemoteChain).filter(RemoteChain.enabled == True).order_by(RemoteChain.id).all()  # noqa: E712
     tmpl = env.get_template("menu.ipxe.j2")
+    menu_base = _public_server_base(cfg)
     content = tmpl.render(
         os_types=os_types,
-        server_url=cfg.server_base_url,
+        server_url=menu_base,
         remote_chains=remote_chains,
     )
     out = cfg.menus_dir / "menu.ipxe"
@@ -225,8 +227,16 @@ def _find_unattend_url(v: IsoVersion, os_type: OsType, cfg: Settings) -> str:
     return ""
 
 
+def _public_server_base(cfg: Settings) -> str:
+    """Même base que pour les URLs kernel/initrd (pas de slash final)."""
+    return cfg.server_base_url.rstrip("/")
+
+
 def _http(relative_path: str | None, cfg: Settings) -> str:
     if not relative_path:
         return ""
-    clean = relative_path.lstrip("/")
-    return f"{cfg.server_base_url}/{clean}"
+    clean = relative_path.replace("\\", "/").lstrip("/")
+    # Nginx peut servir depuis HTTP_ROOT sans « /boot/ » dans l’URL (ex. /ubuntu/ vers boot/ubuntu/)
+    if cfg.http_urls_skip_boot_path and clean.startswith("boot/"):
+        clean = clean[5:]
+    return f"{_public_server_base(cfg)}/{clean}"
