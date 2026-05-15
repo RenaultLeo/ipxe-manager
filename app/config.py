@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
@@ -20,6 +21,11 @@ class Settings(BaseSettings):
     max_upload_size: int = 53_687_091_200  # 50 GB
     extract_timeout: int = 3600
 
+    # Ubuntu full-ISO sous http/boot/ubuntu/<slug> — live-server lit le contenu via NFS (comme SMB côté Windows)
+    ubuntu_nfs_enabled: bool = False
+    ubuntu_nfs_host: str = ""  # Vide = hôte tiré de SERVER_BASE_URL ; sinon IP/hostname NFS atteignable par les clients
+    ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Suffix après host:chemin dans nfsroot=
+
     @property
     def ipxe_src_dir(self) -> Path:
         return Path(self.build_dir) / "ipxe-src"
@@ -35,6 +41,33 @@ class Settings(BaseSettings):
     @property
     def configs_dir(self) -> Path:
         return Path(self.http_root) / "configs"
+
+    def ubuntu_nfs_server_hostname(self) -> str | None:
+        """Hostname ou IP utilisé dans nfsroot= (côté client)."""
+        if not self.ubuntu_nfs_enabled:
+            return None
+        manual = self.ubuntu_nfs_host.strip()
+        if manual:
+            return manual.rstrip("/")
+        parsed = urlparse(self.server_base_url)
+        host = parsed.hostname
+        return host.strip() if host else None
+
+    def ubuntu_nfsroot_pair(self, os_slug: str, version_slug: str) -> str | None:
+        """
+        Valeur après nfsroot= : host:/chemin/absolu(,opts).
+        Chaque version a son dossier d’extraction sous boot/<slug>/<version_slug>.
+        """
+        if os_slug != "ubuntu" or not self.ubuntu_nfs_enabled:
+            return None
+        host = self.ubuntu_nfs_server_hostname()
+        if not host:
+            return None
+        root = self.boot_dir / os_slug / version_slug
+        path = root.resolve().as_posix()
+        opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
+        base = f"{host}:{path}"
+        return f"{base},{opts}" if opts else base
 
 
 settings = Settings()

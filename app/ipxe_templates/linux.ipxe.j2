@@ -3,6 +3,10 @@
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
 ########################################
+{% if os_type.slug == "ubuntu" and ubuntu_nfs_enabled %}
+# Ubuntu NFS : export serveur={{ ubuntu_nfs_host }} répertoire={{ ubuntu_nfs_export_path }}/<slug-version>
+# (nfsroot exact est ajouté sur la ligne kernel par entrée.)
+{% endif %}
 
 :start
 menu === {{ os_type.label }} — Choisissez une version ===

@@ -2,6 +2,7 @@
 Generates all .ipxe menu files from the database and Jinja2 templates.
 """
 import logging
+import re
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from app.config import settings
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
+from app.services.slugify import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,8 @@ def _jinja_env() -> Environment:
 def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
     """Construit le dict d'une version pour les templates Jinja2."""
     be = v.boot_entry
+    version_slug = slugify(v.version_label)
+    nfs_pair = settings.ubuntu_nfsroot_pair(os_type.slug, version_slug)
     return {
         "id":           v.id,
         "label":        f"{os_type.label} {v.version_label}",
@@ -39,7 +43,7 @@ def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
         "custom_ipxe":  _http(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      _http(be.modloop_path)     if be and be.modloop_path     else "",
         # Pour Alpine : injecter modloop= dans les kernel args automatiquement
-        "kernel_args":  _build_kernel_args(be, os_type.slug),
+        "kernel_args":  _build_kernel_args(be, os_type.slug, nfsroot_pair=nfs_pair),
         "boot_type":    os_type.boot_type or "linux",
         "autoconfigs": [
             {
@@ -101,6 +105,9 @@ def regenerate_all(db: Session) -> list[str]:
                 entries=standard_entries,
                 has_autres=has_autres,
                 server_url=settings.server_base_url,
+                ubuntu_nfs_enabled=settings.ubuntu_nfs_enabled,
+                ubuntu_nfs_host=settings.ubuntu_nfs_server_hostname() or "",
+                ubuntu_nfs_export_path=(Path(settings.http_root) / "boot" / "ubuntu").as_posix(),
             )
             out = settings.menus_dir / f"{os_type.slug}.ipxe"
             out.write_text(content, encoding="utf-8")
@@ -141,13 +148,30 @@ def regenerate_all(db: Session) -> list[str]:
     return written
 
 
-def _build_kernel_args(be, os_slug: str) -> str:
-    """Assemble les kernel args, en ajoutant modloop= pour Alpine."""
+def _has_ip_kernel_arg(s: str) -> bool:
+    if not s or not s.strip():
+        return False
+    return bool(re.search(r"(?:^|\s)ip=", s))
+
+
+def _build_kernel_args(be, os_slug: str, nfsroot_pair: str | None = None) -> str:
+    """Assemble les kernel args, dont modloop Alpine et netboot NFS Ubuntu (caper)."""
     args = be.kernel_args if be and be.kernel_args else ""
     if os_slug == "alpine" and be and be.modloop_path:
         modloop_url = _http(be.modloop_path)
-        if f"modloop=" not in args:
+        if "modloop=" not in args:
             args = f"{args} modloop={modloop_url}".strip()
+
+    if (
+        os_slug == "ubuntu"
+        and nfsroot_pair
+        and "nfsroot=" not in args
+    ):
+        nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
+        if not _has_ip_kernel_arg(args):
+            nfs_bits.insert(0, "ip=dhcp")
+        args = f"{args} {' '.join(nfs_bits)}".strip()
+
     return args
 
 
