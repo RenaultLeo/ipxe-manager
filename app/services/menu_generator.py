@@ -25,10 +25,27 @@ def _jinja_env() -> Environment:
     )
 
 
+def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:
+    """
+    Nom du dossier version sous http/boot/<os_slug>/, tel qu'enregistré après extraction
+    (kernel_path / initrd_path). Aligne nfsroot= et la structure disque
+    ``http/boot/<os>/<version>`` (ex. ubuntu24.04) sans dépendre du libellé affiché.
+    """
+    if not be:
+        return None
+    for rel in (be.kernel_path, be.initrd_path):
+        if not rel:
+            continue
+        parts = rel.replace("\\", "/").lstrip("/").split("/")
+        if len(parts) >= 3 and parts[0] == "boot" and parts[1] == os_slug:
+            return parts[2]
+    return None
+
+
 def _build_entry(v: IsoVersion, os_type: OsType) -> dict:
     """Construit le dict d'une version pour les templates Jinja2."""
     be = v.boot_entry
-    version_slug = slugify(v.version_label)
+    version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
     nfs_pair = settings.ubuntu_nfsroot_pair(os_type.slug, version_slug)
     return {
         "id":           v.id,
@@ -179,8 +196,8 @@ def _find_unattend_url(v: IsoVersion, os_type: OsType) -> str:
     """Cherche autounattend.xml à la racine du dossier boot de la version."""
     if os_type.boot_type != "windows":
         return ""
-    from app.services.slugify import slugify
-    version_slug = slugify(v.version_label)
+    be = v.boot_entry
+    version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
     path = settings.boot_dir / os_type.slug / version_slug / "autounattend.xml"
     if path.exists():
         return _http(f"boot/{os_type.slug}/{version_slug}/autounattend.xml")
