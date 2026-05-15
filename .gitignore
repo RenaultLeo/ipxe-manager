@@ -6,7 +6,6 @@ venv/
 *.db
 *.db-shm
 *.db-wal
-.env
 *.iso
 *.img
 static/uploads/

@@ -129,8 +129,13 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
             status_code=500,
         )
 
-    # Ne pas enqueue Celery : le worker garderait une vieille copie du code et pourrait réécraser les .ipxe
-    # alors que regenerate_all ci-dessus a déjà la bonne version (voir menus réécritus sans NFS).
+    # Also queue async in Celery if available
+    try:
+        from app.tasks.jobs import regenerate_menus_task
+        regenerate_menus_task.delay()
+    except Exception:
+        pass
+
     return RedirectResponse("/ipxe-menus", status_code=302)
 
 
