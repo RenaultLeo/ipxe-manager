@@ -50,8 +50,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     if os_type.slug.lower() == "ubuntu" and cfg.ubuntu_nfs_enabled and not nfs_pair:
         logger.warning(
             "Ubuntu NFS: UBUNTU_NFS_ENABLED mais nfsroot vide pour \"%s\". "
-            "Corriger SERVER_BASE_URL ou UBUNTU_NFS_HOST dans .env, puis "
-            "`systemctl restart ipxe-manager` et régénérer les menus.",
+            "Vérifier HTTP_ROOT et boot/ubuntu/<slug> sur le serveur, puis régénérer les menus.",
             v.version_label,
         )
 

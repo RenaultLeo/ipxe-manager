@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-from urllib.parse import urlparse
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -28,12 +27,8 @@ class Settings(BaseSettings):
 
     # Ubuntu full-ISO sous http/boot/ubuntu/<slug> — live-server lit le contenu via NFS (comme SMB côté Windows)
     ubuntu_nfs_enabled: bool = False
-    ubuntu_nfs_host: str = ""  # Vide = hôte tiré de SERVER_BASE_URL ; sinon IP/hostname NFS atteignable par les clients
+    ubuntu_nfs_host: str = ""  # Vide = 192.168.2.6 dans nfsroot= ; sinon UBUNTU_NFS_HOST
     ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Suffix après host:chemin dans nfsroot=
-    # Chemin absolu *sur le serveur NFS* jusqu’au dossier parent des versions (/boot/ubuntu/… sous HTTP).
-    # Vide = dérivé de HTTP_ROOT (ex. /srv/ipxe/http/boot/ubuntu). Sinon ex. UBUNTU_NFS_ROOT_PATH=/boot/ubuntu
-    # si ce répertoire existe (ou lien) côté serveur — nfsroot=IP:/boot/ubuntu/<slug>.
-    ubuntu_nfs_root_path: str = ""
 
     @property
     def ipxe_src_dir(self) -> Path:
@@ -58,9 +53,8 @@ class Settings(BaseSettings):
         manual = self.ubuntu_nfs_host.strip()
         if manual:
             return manual.rstrip("/")
-        parsed = urlparse(self.server_base_url)
-        host = parsed.hostname
-        return host.strip() if host else None
+        # IP NFS par défaut (menus ubuntu.ipxe → nfsroot=192.168.2.6:…)
+        return "192.168.2.6"
 
     def ubuntu_nfsroot_pair(self, os_slug: str, version_slug: str) -> str | None:
         """
@@ -72,12 +66,8 @@ class Settings(BaseSettings):
         host = self.ubuntu_nfs_server_hostname()
         if not host:
             return None
-        manual_parent = self.ubuntu_nfs_root_path.strip().rstrip("/")
-        if manual_parent:
-            path = f"{manual_parent}/{version_slug}".replace("//", "/")
-        else:
-            root = self.boot_dir / "ubuntu" / version_slug
-            path = root.resolve().as_posix()
+        root = self.boot_dir / "ubuntu" / version_slug
+        path = root.resolve().as_posix()
         opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
         base = f"{host}:{path}"
         return f"{base},{opts}" if opts else base
