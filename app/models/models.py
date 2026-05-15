@@ -64,6 +64,11 @@ class BootEntry(Base):
     # Script iPXE personnalisé (optionnel — chainload custom)
     custom_ipxe_path = Column(String(512))
 
+    # VMware ESXi — mboot.c32 / boot.cfg + liste de modules (.b00 / .vgz / .tgz…)
+    # esxi_modules : liste JSON ["b.b00", "jumpstrt.gz", ...] (chemins relatifs sous boot/esxi/<ver>/)
+    esxi_boot_cfg_path = Column(String(512))
+    esxi_modules = Column(Text, default="")
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     iso_version = relationship("IsoVersion", back_populates="boot_entry")

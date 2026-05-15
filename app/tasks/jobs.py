@@ -52,6 +52,8 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.boot_sdi_path = paths.get("boot_sdi_path")
         be.bootmgr_path  = paths.get("bootmgr_path")
         be.modloop_path  = paths.get("modloop_path")
+        be.esxi_boot_cfg_path = paths.get("esxi_boot_cfg_path")
+        be.esxi_modules       = paths.get("esxi_modules") or ""
         be.updated_at    = datetime.utcnow()
 
         version.status = "ready"

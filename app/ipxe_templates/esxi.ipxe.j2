@@ -1,0 +1,64 @@
+#!ipxe
+
+########################################
+# Sous-menu {{ os_type.label }} (mboot.c32 + boot.cfg) — généré automatiquement
+# Doc VMware : fichier boot.cfg liste kernel= et modules (---) ; PXE/iPXE sert ces fichiers via HTTP.
+########################################
+
+:start
+menu === {{ os_type.label }} — Choisissez une version ===
+{% for e in entries %}
+item v{{ e.id }} {{ e.label }}{% if e.autoconfigs %} [+kickstart/conf]{% endif %}
+
+{% endfor %}
+item --gap
+{% if has_autres %}
+item autres Autres variantes {{ os_type.label }}…
+{% endif %}
+item back Retour au menu principal
+choose selected || goto back
+goto ${selected}
+
+{% for e in entries %}
+:v{{ e.id }}
+{% if e.autoconfigs %}
+  menu {{ e.label }} — Fichier d'installation automatique
+  {% for ac in e.autoconfigs %}
+  item ac{{ ac.id }} {{ ac.label }}
+  {% endfor %}
+  item --gap
+  item manual_{{ e.id }} Installation manuelle (sans kickstart / args supplémentaires)
+  item back_v Retour
+  choose conf || goto back_v
+  goto ${conf}
+
+  {% for ac in e.autoconfigs %}
+  :ac{{ ac.id }}
+    kernel {{ e.kernel }}
+    imgargs mboot.c32 -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
+
+    {% for u in e.esxi_module_urls %}
+    module {{ u }}
+    {% endfor %}
+    boot
+  {% endfor %}
+
+  :manual_{{ e.id }}
+{% endif %}
+  kernel {{ e.kernel }}
+  imgargs mboot.c32 -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+
+  {% for u in e.esxi_module_urls %}
+  module {{ u }}
+  {% endfor %}
+  boot
+
+{% endfor %}
+
+{% if has_autres %}
+:autres
+chain --autofree {{ server_url }}/menus/{{ os_type.slug }}_autres.ipxe
+
+{% endif %}
+:back
+chain --autofree {{ server_url }}/menus/menu.ipxe

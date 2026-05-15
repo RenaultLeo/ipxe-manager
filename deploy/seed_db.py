@@ -22,7 +22,7 @@ DEFAULT_OS = [
     {"slug": "fedora",  "label": "Fedora",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "proxmox", "label": "Proxmox VE",  "icon": "bi-server",   "boot_type": "linux",   "is_builtin": True},
     {"slug": "winpe",   "label": "WinPE",       "icon": "bi-terminal", "boot_type": "windows", "is_builtin": True},
-    {"slug": "esxi",    "label": "VMware ESXi", "icon": "bi-cpu",      "boot_type": "linux",   "is_builtin": True},
+    {"slug": "esxi",    "label": "VMware ESXi", "icon": "bi-cpu",      "boot_type": "esxi",    "is_builtin": True},
     {"slug": "tools",   "label": "Outils",      "icon": "bi-tools",    "boot_type": "linux",   "is_builtin": False},
 ]
 
@@ -37,8 +37,9 @@ if __name__ == "__main__":
             db.add(OsType(**entry))
             added += 1
         else:
-            # Mettre à jour is_builtin sur les OS déjà présents
+            # Mettre à jour is_builtin / boot_type depuis la liste de référence
             existing.is_builtin = entry["is_builtin"]
+            existing.boot_type = entry["boot_type"]
             updated += 1
     db.commit()
     db.close()

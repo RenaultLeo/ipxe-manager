@@ -1,6 +1,7 @@
 """
 Generates all .ipxe menu files from the database and Jinja2 templates.
 """
+import json
 import logging
 import re
 from pathlib import Path
@@ -33,7 +34,11 @@ def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:
     """
     if not be:
         return None
-    for rel in (be.kernel_path, be.initrd_path):
+    for rel in (
+        be.kernel_path,
+        be.initrd_path,
+        getattr(be, "esxi_boot_cfg_path", None),
+    ):
         if not rel:
             continue
         parts = rel.replace("\\", "/").lstrip("/").split("/")
@@ -66,6 +71,32 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     def h(rel: str | None) -> str:
         return _http(rel, cfg)
 
+    esxi_boot_http = ""
+    esxi_module_urls: list[str] = []
+    slug_l = os_type.slug.lower()
+    bt_l = (os_type.boot_type or "linux").lower()
+    if be and (slug_l == "esxi" or bt_l == "esxi"):
+        esxi_boot_http = h(getattr(be, "esxi_boot_cfg_path", None))
+        raw_mods = getattr(be, "esxi_modules", "") or ""
+        prefix = ""
+        if be.kernel_path:
+            prefix = be.kernel_path.replace("\\", "/").lstrip("/").rsplit("/", 1)[0]
+        elif getattr(be, "esxi_boot_cfg_path", None):
+            prefix = (be.esxi_boot_cfg_path or "").replace("\\", "/").lstrip("/").rsplit("/", 1)[0]
+        mod_names: list[str] = []
+        if raw_mods.strip() and prefix:
+            try:
+                parsed = json.loads(raw_mods)
+                if isinstance(parsed, list):
+                    mod_names = [x for x in parsed if isinstance(x, str)]
+            except json.JSONDecodeError:
+                logger.warning(
+                    'ESXi modules JSON invalide pour la version \"%s\" — vérifiez boot_entries.esxi_modules.',
+                    v.version_label,
+                )
+        if prefix and mod_names:
+            esxi_module_urls = [h(f"{prefix}/{name}") for name in mod_names]
+
     return {
         "id":           v.id,
         "label":        f"{os_type.label} {v.version_label}",
@@ -78,7 +109,9 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "bootmgr":      h(be.bootmgr_path) if be and be.bootmgr_path else "",
         "custom_ipxe":  h(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      h(be.modloop_path) if be and be.modloop_path else "",
-        # Pour Alpine / Ubuntu : injections dans kernel_args ci-dessous
+        "esxi_boot_cfg": esxi_boot_http,
+        "esxi_module_urls": esxi_module_urls,
+        # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
         "kernel_args": _build_kernel_args(be, os_type.slug, cfg, nfsroot_pair=nfs_pair),
         "boot_type":   os_type.boot_type or "linux",
         "autoconfigs": [
@@ -132,7 +165,14 @@ def regenerate_all(db: Session) -> list[str]:
             has_autres = len(custom_entries) > 0
 
             # ── Menu principal de l'OS ──────────────────────────────────────
-            tmpl_name = "linux.ipxe.j2" if (os_type.boot_type or "linux") == "linux" else "windows.ipxe.j2"
+            slug_l = (os_type.slug or "").lower()
+            bt_l = (os_type.boot_type or "linux").lower()
+            if slug_l == "esxi" or bt_l == "esxi":
+                tmpl_name = "esxi.ipxe.j2"
+            elif bt_l == "windows":
+                tmpl_name = "windows.ipxe.j2"
+            else:
+                tmpl_name = "linux.ipxe.j2"
             if not (TMPL_DIR / tmpl_name).exists():
                 tmpl_name = "linux.ipxe.j2"
 
@@ -206,6 +246,9 @@ def _build_kernel_args(
     ne pas coller ``,vers=`` dans nfsroot).
     """
     args = be.kernel_args if be and be.kernel_args else ""
+
+    if os_slug.lower() == "esxi":
+        return args.strip()
 
     if os_slug == "alpine" and be and be.modloop_path:
         modloop_url = _http(be.modloop_path, cfg)

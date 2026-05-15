@@ -3,11 +3,16 @@ Extracteur ISO par distribution.
 Utilise 7z pour extraire l'ISO, puis cherche les fichiers de boot
 avec des règles spécifiques à chaque distro.
 """
+from __future__ import annotations
+
+import json
 import logging
 import subprocess
 import shutil
 import tempfile
-from pathlib import Path
+import re
+from pathlib import PurePosixPath, Path
+from urllib.parse import unquote, urlparse
 
 from app.config import settings
 
@@ -89,9 +94,10 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd":  ["initramfs-lts", "initramfs"],
         "extra":   {"modloop": ["modloop-lts", "modloop"]},
     },
-    # VMware ESXi — pas de boot standard via kernel/initrd (skip extraction)
+    # VMware ESXi — mboot.c32 + boot.cfg (+ kernel/module listés dans boot.cfg),
+    # boot réseau classique décrit dans la doc d'installation (« About the boot.cfg file »).
     "esxi": {
-        "type":    "skip",
+        "type":    "esxi",
         "kernel":  [],
         "initrd":  [],
         "extra":   {},
@@ -144,6 +150,22 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
             "Uploader les fichiers manuellement."
         )
 
+    if rule["type"] == "esxi":
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
+                capture_output=True, text=True,
+                timeout=settings.extract_timeout,
+            )
+            if proc.returncode not in (0, 1):
+                raise ExtractionError(
+                    f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
+                )
+            paths = _extract_esxi(Path(tmp), dest, os_slug, version_slug)
+        _fix_permissions(dest)
+        logger.info("Extraction terminée : %s", paths)
+        return paths
+
     if rule["type"] in ("windows", "ubuntu"):
         # Extraction COMPLÈTE de l'ISO directement dans dest
         # Windows : tous les fichiers nécessaires pour setup.exe via Samba/HTTP
@@ -179,6 +201,235 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
 
     logger.info("Extraction terminée : %s", paths)
     return paths
+
+
+# ── VMware ESXi (mboot.c32 / boot.cfg) ───────────────────────────────────────────
+
+_MODULES_SPLIT_RE = re.compile(r"\s*---\s*")
+
+
+def _esxi_merge_cfg_continuations(raw: str) -> str:
+    """Fusionne les lignes terminées par \\ (continuation typique VMware boot.cfg)."""
+    merged: list[str] = []
+    buf = ""
+    for line in raw.replace("\r\n", "\n").split("\n"):
+        s = line.rstrip("\r")
+        if s.endswith("\\"):
+            buf += s[:-1].rstrip()
+        else:
+            merged.append(buf + s)
+            buf = ""
+    if buf:
+        merged.append(buf)
+    return "\n".join(merged)
+
+
+def _parse_esxi_boot_cfg_text(text: str) -> tuple[dict[str, str], list[str]]:
+    """
+    Lecture boot.cfg VMware : retourne (clés simples hors kernel/modules/module, liste ordonnée modules).
+    """
+    body = _esxi_merge_cfg_continuations(text)
+    kv: dict[str, str] = {}
+    mods: list[str] = []
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        key = k.strip().lower()
+        val = v.strip()
+        if key == "module":
+            if val:
+                mods.append(val)
+        elif key == "modules":
+            for part in _MODULES_SPLIT_RE.split(val.strip()):
+                if part.strip():
+                    mods.append(part.strip())
+        else:
+            kv[key] = val
+    return kv, mods
+
+
+def _esxi_normalize_path(ref: str) -> str:
+    """Enlève file:// ou http(s) ; retient le chemin / nom de fichier utile sous l'ISO."""
+    ref = ref.strip().strip("\"'")
+    if not ref:
+        return ""
+    low = ref.lower()
+    if low.startswith("http://") or low.startswith("https://"):
+        p = urlparse(ref)
+        ref = unquote(p.path or "")
+    elif low.startswith("file://"):
+        p = urlparse(ref)
+        ref = unquote(p.path or "")
+    return ref.replace("\\", "/")
+
+
+def _esxi_resolve_file(iso_root: Path, boot_cfg_dir: Path, prefix: str, ref: str) -> Path | None:
+    """Résout un chemin mentionné dans boot.cfg vers un fichier sur l'ISO extraite."""
+    ref = _esxi_normalize_path(ref)
+    if not ref:
+        return None
+    pref = prefix.strip().replace("\\", "/").strip("/")
+    rel = ref.lstrip("/")
+    candidates: list[Path] = []
+    if pref and not rel.lower().startswith(pref.lower() + "/") and rel != pref:
+        candidates.append(iso_root / pref / rel)
+        candidates.append(iso_root / pref / PurePosixPath(rel).name)
+    candidates.append(iso_root / rel)
+    candidates.append(boot_cfg_dir / PurePosixPath(rel).name)
+    candidates.append(iso_root / PurePosixPath(rel).name)
+    seen: set[str] = set()
+    for c in candidates:
+        key = str(c.resolve()) if c.exists() else str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        if c.is_file():
+            return c
+    return None
+
+
+def _pick_esxi_boot_cfg(iso_root: Path) -> Path | None:
+    """Choisit le boot.cfg ESXi pertinent (EFI ou racine OEM)."""
+    candidates = sorted(
+        (p for p in iso_root.rglob("boot.cfg") if p.is_file()),
+        key=lambda p: (len(str(p.relative_to(iso_root))), str(p)),
+    )
+    best: tuple[int, Path] | None = None
+    for p in candidates:
+        try:
+            txt = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        low = txt.lower()
+        score = 0
+        if "kernel=" in low:
+            score += 2
+        if "modules=" in low or re.search(r"(?m)^module\s*=", txt):
+            score += 2
+        if "kernelopt=" in low:
+            score += 1
+        if score and (best is None or score > best[0]):
+            best = (score, p)
+    return best[1] if best else None
+
+
+def _rewrite_esxi_boot_cfg_flat(
+    original_text: str,
+    kernel_bn: str,
+    module_basenames: list[str],
+) -> str:
+    """
+    boot.cfg aplati pour HTTP : même répertoire pour mboot.c32, kernel, modules.
+    Supprime prefix= et les lignes module= dispersées ; remplace kernel / modules par des basenames.
+    """
+    merged = _esxi_merge_cfg_continuations(original_text)
+    out: list[str] = [
+        "# iPXE Manager — boot.cfg pour boot HTTP (chemins relatifs au dossier mboot.c32/boot.cfg).",
+    ]
+    for raw in merged.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        k, _, _v = line.partition("=")
+        key = k.strip().lower()
+        if key in ("prefix", "module", "kernel", "modules"):
+            continue
+        out.append(line)
+    out.append(f"kernel={kernel_bn}")
+    if module_basenames:
+        out.append("modules={}".format(" --- ".join(module_basenames)))
+    return "\n".join(out) + "\n"
+
+
+def _ensure_no_name_collision(paths: list[Path]) -> None:
+    """Empêche deux sources différentes de partager le même basename (aplati sous dest)."""
+    by_name: dict[str, Path] = {}
+    for p in paths:
+        n = p.name
+        if n in by_name and by_name[n].resolve() != p.resolve():
+            raise ExtractionError(
+                f"ESXi : collision de nom de fichier (« {n} ») — ISO ou boot.cfg incompatible."
+            )
+        by_name.setdefault(n, p)
+
+
+def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dict:
+    """Copie mboot.c32, boot.cfg réécrite, le kernel ESXi (.b00) et les modules nécessaires au PXE HTTP."""
+    base = f"boot/{os_slug}/{version_slug}"
+    boot_cfg = _pick_esxi_boot_cfg(src)
+    if not boot_cfg:
+        raise ExtractionError("ESXi : aucun boot.cfg trouvé dans l'ISO.")
+
+    raw_cfg = boot_cfg.read_text(encoding="utf-8", errors="replace")
+    parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
+    cfg_dir = boot_cfg.parent
+
+    mboot_source = _find_by_priority(src, ["mboot.c32"], mode="extra")
+    if not mboot_source or not mboot_source.is_file():
+        raise ExtractionError("ESXi : mboot.c32 introuvable dans l'ISO.")
+
+    prefix = parsed.get("prefix", "") or ""
+    kernel_ref = parsed.get("kernel", "") or ""
+    if not kernel_ref:
+        raise ExtractionError("ESXi : pas de ligne kernel= dans boot.cfg.")
+
+    k_path = _esxi_resolve_file(src, cfg_dir, prefix, kernel_ref)
+    if not k_path:
+        raise ExtractionError(
+            f"ESXi : impossible de localiser le fichier kernel « {kernel_ref} » sur l'ISO."
+        )
+
+    if not mod_refs:
+        raise ExtractionError(
+            "ESXi : aucun module listé (modules= / module=) dans boot.cfg — ISO inattendu."
+        )
+
+    mod_refs_dedup: list[str] = []
+    seen_r: set[str] = set()
+    for ref in mod_refs:
+        if ref not in seen_r:
+            seen_r.add(ref)
+            mod_refs_dedup.append(ref)
+    mod_refs = mod_refs_dedup
+
+    mod_paths: list[Path] = []
+    for ref in mod_refs:
+        p = _esxi_resolve_file(src, cfg_dir, prefix, ref)
+        if not p or not p.is_file():
+            raise ExtractionError(
+                f"ESXi : module introuvable sur l'ISO : « {ref} »"
+            )
+        mod_paths.append(p)
+
+    def copy_flat(path: Path) -> str:
+        target = dest / path.name
+        shutil.copy2(path, target)
+        return path.name
+
+    _ensure_no_name_collision([mboot_source, k_path, *mod_paths])
+
+    mboot_name = copy_flat(mboot_source)
+    kernel_bn = copy_flat(k_path)
+    mod_bn = [copy_flat(p) for p in mod_paths]
+
+    rewritten = _rewrite_esxi_boot_cfg_flat(
+        raw_cfg,
+        kernel_bn=kernel_bn,
+        module_basenames=mod_bn,
+    )
+    (dest / "boot.cfg").write_text(rewritten, encoding="utf-8")
+
+    modules_json = json.dumps(mod_bn, separators=(",", ":"))
+
+    return {
+        "kernel_path":          f"{base}/{mboot_name}",
+        "esxi_boot_cfg_path": f"{base}/boot.cfg",
+        "esxi_modules":       modules_json,
+    }
 
 
 # ── Linux ──────────────────────────────────────────────────────────────────────
