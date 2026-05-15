@@ -4,8 +4,8 @@
 # Sous-menu {{ os_type.label }} — généré automatiquement
 ########################################
 {% if os_type.slug == "ubuntu" and ubuntu_nfs_enabled %}
-# Ubuntu : vmlinuz/initrd restent en HTTP ; le reste du live (casper) vient du NFS.
-# Export : {{ ubuntu_nfs_host }} : {{ ubuntu_nfs_export_path }}  (sous-dossier = dossier version sous http/boot/ubuntu/… ; voir ligne kernel.)
+# Ubuntu : vmlinuz/initrd en HTTP ; casper sur NFS. nfsroot≈ {{ ubuntu_nfs_host }}:{{ ubuntu_nfs_export_path }}/<slug>
+# (chemin /boot/ubuntu/… aligné sur Nginx « location /boot/ » ; export NFS côté serveur à adapter à ce chemin.)
 {% endif %}
 
 :start

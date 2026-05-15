@@ -58,16 +58,17 @@ class Settings(BaseSettings):
 
     def ubuntu_nfsroot_pair(self, os_slug: str, version_slug: str) -> str | None:
         """
-        Valeur après nfsroot= : host:/chemin/absolu(,opts).
-        Chaque version a son dossier d’extraction sous boot/<slug>/<version_slug>.
+        Valeur après nfsroot= : host:/chemin(,opts).
+        Chemin logique identique à l’URL HTTP sous Nginx (location /boot/ → http_root/boot/) :
+        /boot/ubuntu/<version_slug>, ex. /boot/ubuntu/ubuntu2404.
         """
         if os_slug.lower() != "ubuntu" or not self.ubuntu_nfs_enabled:
             return None
         host = self.ubuntu_nfs_server_hostname()
         if not host:
             return None
-        root = self.boot_dir / "ubuntu" / version_slug
-        path = root.resolve().as_posix()
+        slug = version_slug.strip().replace("\\", "/").lstrip("/")
+        path = f"/boot/ubuntu/{slug}".replace("//", "/")
         opts = self.ubuntu_nfs_mount_opts.strip().strip(",").strip()
         base = f"{host}:{path}"
         return f"{base},{opts}" if opts else base

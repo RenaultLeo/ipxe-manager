@@ -136,7 +136,7 @@ def regenerate_all(db: Session) -> list[str]:
                 server_url=base,
                 ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
                 ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
-                ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
+                ubuntu_nfs_export_path="/boot/ubuntu",
             )
             out = cfg.menus_dir / f"{os_type.slug}.ipxe"
             out.write_text(content, encoding="utf-8")
