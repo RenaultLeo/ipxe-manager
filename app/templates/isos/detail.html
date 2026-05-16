@@ -69,12 +69,27 @@
       <div class="card-body">
         {% if version.boot_entry %}
         {% set be = version.boot_entry %}
+        {% set is_esxi = (version.os_type.slug == 'esxi') or (version.os_type.boot_type == 'esxi') %}
         <dl class="row mb-0">
+          {% if is_esxi %}
+          {# ESXi / iPXE : « kernel » = mboot.c32 ; VMkernel (.b00) livré comme modules — affichage clair #}
           {% if be.kernel_path %}
+          <dt class="col-4 text-muted">Chargeur VMware (mboot)</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
+          {% endif %}
+          {% if be.esxi_boot_cfg_path %}
+          <dt class="col-4 text-muted">boot.cfg</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_path }}</dd>
+          {% endif %}
+          {% if be.esxi_modules %}
+          <dt class="col-4 text-muted">Artefacts ESXi</dt>
+          <dd class="col-8 font-monospace small text-muted text-break" title="Noyau VMware + modules (iPXE « module »)">{{ be.esxi_modules }}</dd>
+          {% endif %}
+          {% elif be.kernel_path %}
           <dt class="col-4 text-muted">{{ be.kernel_path.split('/')[-1] }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
           {% endif %}
-          {% if be.initrd_path %}
+          {% if not is_esxi and be.initrd_path %}
           <dt class="col-4 text-muted">{{ be.initrd_path.split('/')[-1] }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.initrd_path }}</dd>
           {% endif %}
@@ -99,7 +114,7 @@
           <dd class="col-8 font-monospace small text-break">{{ be.bootmgr_path }}</dd>
           {% endif %}
           {% if be.kernel_args %}
-          <dt class="col-4 text-muted">Args kernel</dt>
+          <dt class="col-4 text-muted">{% if is_esxi %}Options boot (imgargs){% else %}Args kernel{% endif %}</dt>
           <dd class="col-8 font-monospace small">{{ be.kernel_args }}</dd>
           {% endif %}
         </dl>

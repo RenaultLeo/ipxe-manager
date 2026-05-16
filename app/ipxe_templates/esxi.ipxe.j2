@@ -2,7 +2,8 @@
 
 ########################################
 # Sous-menu {{ os_type.label }} (mboot.c32 + boot.cfg) — généré automatiquement
-# Doc VMware : fichier boot.cfg liste kernel= et modules (---) ; PXE/iPXE sert ces fichiers via HTTP.
+# « kernel » = URL vers mboot (COM32) ; « imgargs » 1er mot = même basename que ce fichier pour iPXE.
+# Docs VMware : boot.cfg liste kernel VMware + modules --- ; lignes « module » = artefacts pour mboot.
 ########################################
 
 :start
@@ -21,6 +22,7 @@ goto ${selected}
 
 {% for e in entries %}
 :v{{ e.id }}
+{% set mbasename = e.esxi_mboot_basename or 'mboot.c32' %}
 {% if e.autoconfigs %}
   menu {{ e.label }} — Fichier d'installation automatique
   {% for ac in e.autoconfigs %}
@@ -35,7 +37,7 @@ goto ${selected}
   {% for ac in e.autoconfigs %}
   :ac{{ ac.id }}
     kernel {{ e.kernel }}
-    imgargs mboot.c32 -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
+    imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
 
     {% for u in e.esxi_module_urls %}
     module {{ u }}
@@ -46,7 +48,7 @@ goto ${selected}
   :manual_{{ e.id }}
 {% endif %}
   kernel {{ e.kernel }}
-  imgargs mboot.c32 -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
   {% for u in e.esxi_module_urls %}
   module {{ u }}

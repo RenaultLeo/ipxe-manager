@@ -71,6 +71,47 @@
             </div>
             {% endif %}
           {% endfor %}
+        {% elif v.os_type.slug == 'esxi' or v.os_type.boot_type == 'esxi' %}
+          {% for label_esxi, path_esxi in [
+              ('Chargeur VMware (mboot)', be.kernel_path),
+              ('boot.cfg',               be.esxi_boot_cfg_path),
+          ] %}
+            {% if path_esxi %}
+            <div class="col-md-6">
+              <div class="p-2 bg-dark border border-secondary rounded">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="small text-info fw-semibold">{{ label_esxi }}</span>
+                  <a href="{{ server_url }}/{{ path_esxi }}" target="_blank" class="small text-muted">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                </div>
+                <code class="small text-break">{{ server_url }}/{{ path_esxi }}</code>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+          {% if be.esxi_modules %}
+          <div class="col-12">
+            <div class="p-2 bg-dark border border-secondary rounded">
+              <div class="small text-muted fw-semibold mb-1">Artefacts ESXi (noyau + modules HTTP)</div>
+              <code class="small text-break text-secondary">{{ be.esxi_modules }}</code>
+            </div>
+          </div>
+          {% endif %}
+          <div class="col-12">
+            <form method="post" action="/boot-files/{{ v.id }}/args" class="row g-2">
+              <div class="col-10">
+                <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
+                       value="{{ be.kernel_args or '' }}"
+                       placeholder="{{ t('iso.upload.kernel_args_ph') }}">
+              </div>
+              <div class="col-2">
+                <button class="btn btn-outline-secondary btn-sm w-100">
+                  <i class="bi bi-floppy me-1"></i>{{ t('boot.args') }}
+                </button>
+              </div>
+            </form>
+          </div>
         {% else %}
           {% for label, path in [
             (be.kernel_path.split('/')[-1] if be.kernel_path else 'vmlinuz', be.kernel_path),

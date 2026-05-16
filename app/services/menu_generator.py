@@ -73,6 +73,9 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
     esxi_boot_http = ""
     esxi_module_urls: list[str] = []
+    # iPXE : le 1er token de imgargs doit être le *basename* du fichier chargé par « kernel »
+    # (ex. MBOOT.C32 sur l’ISO), pas forcément mboot.c32 en minuscules.
+    esxi_mboot_basename = ""
     slug_l = os_type.slug.lower()
     bt_l = (os_type.boot_type or "linux").lower()
     if be and (slug_l == "esxi" or bt_l == "esxi"):
@@ -96,6 +99,10 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
                 )
         if prefix and mod_names:
             esxi_module_urls = [h(f"{prefix}/{name}") for name in mod_names]
+        if be.kernel_path:
+            esxi_mboot_basename = (
+                be.kernel_path.replace("\\", "/").rstrip("/").split("/")[-1]
+            )
 
     return {
         "id":           v.id,
@@ -110,6 +117,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "custom_ipxe":  h(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      h(be.modloop_path) if be and be.modloop_path else "",
         "esxi_boot_cfg": esxi_boot_http,
+        "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
         "kernel_args": _build_kernel_args(be, os_type.slug, cfg, nfsroot_pair=nfs_pair),
