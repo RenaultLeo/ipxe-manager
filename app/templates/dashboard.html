@@ -38,7 +38,7 @@
         {% for j in active_jobs_list %}
         <tr>
           <td class="font-monospace small">{{ j.filename }}</td>
-          <td><span class="badge bg-secondary">{{ j.file_type }}</span></td>
+          <td><span class="badge bg-secondary">{% if j.file_type == 'iso' %}{{ t('dash.upload_type_iso') }}{% elif j.file_type == 'extraction' %}{{ t('dash.upload_type_extraction') }}{% else %}{{ j.file_type }}{% endif %}</span></td>
           <td>{{ fmt_size(j.size) }}</td>
           <td class="text-muted small"
               data-utc="{{ j.created_at.isoformat() }}Z"
@@ -168,7 +168,7 @@
         {% for u in recent_uploads %}
         <tr>
           <td class="font-monospace small">{{ u.filename }}</td>
-          <td><span class="badge bg-secondary">{{ u.file_type }}</span></td>
+          <td><span class="badge bg-secondary">{% if u.file_type == 'iso' %}{{ t('dash.upload_type_iso') }}{% elif u.file_type == 'extraction' %}{{ t('dash.upload_type_extraction') }}{% else %}{{ u.file_type }}{% endif %}</span></td>
           <td>{{ fmt_size(u.size) }}</td>
           <td>
             {% if u.status == 'done' %}<span class="badge bg-success">{{ t('dash.status_done') }}</span>

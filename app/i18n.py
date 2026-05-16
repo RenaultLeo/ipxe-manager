@@ -324,6 +324,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "fw.status_step_unreached": "Étape non atteinte — consulter les logs",
         "fw.wait_celery_short": "En attente du worker Celery…",
         "common.save": "Enregistrer",
+        "dash.upload_type_iso": "ISO",
+        "dash.upload_type_extraction": "Extraction",
     },
     "en": {
         "nav.dashboard": "Dashboard",
@@ -623,6 +625,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "fw.status_step_unreached": "Step not reached — see logs",
         "fw.wait_celery_short": "Waiting for Celery worker…",
         "common.save": "Save",
+        "dash.upload_type_iso": "ISO",
+        "dash.upload_type_extraction": "Extraction",
     },
 }
 

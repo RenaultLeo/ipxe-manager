@@ -214,7 +214,7 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
 
     upload_log = Upload(
         filename=Path(version.iso_path).name,
-        file_type="iso",
+        file_type="extraction",
         size=version.iso_size,
         status="pending",
     )
