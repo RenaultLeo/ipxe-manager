@@ -65,30 +65,12 @@
             <i class="bi bi-translate me-1"></i>{{ lang|upper }}
           </button>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="langMenu">
+            {% for code in locale_choices %}
             <li>
-              <a class="dropdown-item {% if lang == 'fr' %}active{% endif %}"
-                 href="/set-language?lang=fr&amp;next={{ i18n_next }}">{{ t('lang.fr') }}</a>
+              <a class="dropdown-item {% if lang == code %}active{% endif %}"
+                 href="/set-language?lang={{ code }}&amp;next={{ i18n_next }}">{{ t('lang.' ~ code) }}</a>
             </li>
-            <li>
-              <a class="dropdown-item {% if lang == 'en' %}active{% endif %}"
-                 href="/set-language?lang=en&amp;next={{ i18n_next }}">{{ t('lang.en') }}</a>
-            </li>
-            <li>
-              <a class="dropdown-item {% if lang == 'de' %}active{% endif %}"
-                 href="/set-language?lang=de&amp;next={{ i18n_next }}">{{ t('lang.de') }}</a>
-            </li>
-            <li>
-              <a class="dropdown-item {% if lang == 'es' %}active{% endif %}"
-                 href="/set-language?lang=es&amp;next={{ i18n_next }}">{{ t('lang.es') }}</a>
-            </li>
-            <li>
-              <a class="dropdown-item {% if lang == 'it' %}active{% endif %}"
-                 href="/set-language?lang=it&amp;next={{ i18n_next }}">{{ t('lang.it') }}</a>
-            </li>
-            <li>
-              <a class="dropdown-item {% if lang == 'pt' %}active{% endif %}"
-                 href="/set-language?lang=pt&amp;next={{ i18n_next }}">{{ t('lang.pt') }}</a>
-            </li>
+            {% endfor %}
           </ul>
         </div>
         <a href="/logout" class="btn btn-outline-secondary btn-sm">

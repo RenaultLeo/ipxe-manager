@@ -19,8 +19,10 @@
         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
                 data-bs-toggle="dropdown">{{ lang|upper }}</button>
         <ul class="dropdown-menu dropdown-menu-end">
-          <li><a class="dropdown-item" href="/set-language?lang=fr&amp;next={{ i18n_next }}">{{ t('lang.fr') }}</a></li>
-          <li><a class="dropdown-item" href="/set-language?lang=en&amp;next={{ i18n_next }}">{{ t('lang.en') }}</a></li>
+          {% for code in locale_choices %}
+          <li><a class="dropdown-item {% if lang == code %}active{% endif %}"
+                 href="/set-language?lang={{ code }}&amp;next={{ i18n_next }}">{{ t('lang.' ~ code) }}</a></li>
+          {% endfor %}
         </ul>
       </div>
     </div>

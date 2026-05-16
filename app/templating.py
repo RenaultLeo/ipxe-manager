@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
-from app.i18n import translate
+from app.i18n import translate, SUPPORTED_LOCALES
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -28,5 +28,6 @@ def template_context(request: Request, **extra):
         "lang": lang,
         "t": t,
         "i18n_next": quote(raw_next, safe=""),
+        "locale_choices": sorted(SUPPORTED_LOCALES),
         **extra,
     }
