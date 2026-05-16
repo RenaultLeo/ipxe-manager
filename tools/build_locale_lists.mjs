@@ -4,8 +4,8 @@
  */
 import fs from "fs";
 
-const uniq = JSON.parse(fs.readFileSync("tools/_unique_en_strings.json", "utf8"));
 const enList = JSON.parse(fs.readFileSync("app/locale_values/_en.list.json", "utf8"));
+const uniq = [...new Set(enList)].sort((a, b) => a.localeCompare(b));
 
 function buildMap(pairs) {
   const m = Object.fromEntries(uniq.map((s) => [s, s]));
@@ -25,7 +25,7 @@ function writeLocale(code, pairs) {
   console.log("wrote", code, out.length);
 }
 
-// Paires [anglais exact depuis _unique_en_strings.json, traduction]
+// Paires [anglais exact depuis _en.list.json, traduction]
 const PAIRS_DE = [
   ["Action", "Aktion"],
   ["Actions", "Aktionen"],
@@ -305,10 +305,6 @@ const PAIRS_DE = [
     "Ubuntu: die ISO wird vollständig extrahiert (wie Windows), damit autoinstall/cloud-init Pakete per HTTP nutzen kann. vmlinuz und initrd werden in casper/ erkannt. user-data/meta-data werden unter Auto-Konfigurationen angelegt.",
   ],
   [
-    "These scripts are uploaded manually for an OS release and appear in the matching _autres.ipxe submenu. Deleting a script removes the file and regenerates the menu.",
-    "Diese Skripte werden manuell für eine OS-Version hochgeladen und erscheinen im passenden _autres.ipxe-Unmenü. Löschen entfernt die Datei und erzeugt das Menü neu.",
-  ],
-  [
     "These entries appear under Remote servers in menu.ipxe and chain-load the iPXE menu at the given URL. The URL is used as-is with no rewriting.",
     "Diese Einträge erscheinen unter Remote-Server in menu.ipxe und verketten das iPXE-Menü der angegebenen URL. Die URL wird unverändert verwendet.",
   ],
@@ -388,6 +384,173 @@ const PAIRS_DE = [
   ],
   ["answer.toml (Proxmox)", "answer.toml (Proxmox)"],
   ["answers (Alpine)", "answers (Alpine)"],
+  ["Type is locked by this OS group's settings.", "Der Typ ist durch die Einstellungen dieser OS-Gruppe gesperrt."],
+  ["iPXE menus", "iPXE-Menüs"],
+  ["Firmware", "Firmware"],
+  [
+    "iPXE scripts tied to one ISO release. For an OS group you add under Settings, <slug>.ipxe does not auto-boot from extracted ISO files; it jumps straight to these scripts (<slug>_autres.ipxe). Built-in OS groups still offer the same list under « Custom iPXE files… » from the distro submenu. Deleting a script removes the file from disk and regenerates menus.",
+    "Mit einer ISO-Veröffentlichung verknüpfte iPXE-Skripte. Für unter Einstellungen angelegte OS-Gruppen startet <slug>.ipxe nicht automatisch aus extrahierten ISO-Dateien, sondern verzweigt direkt zu diesen Skripten (<slug>_autres.ipxe). Eingebaute OS-Gruppen zeigen dieselbe Liste weiterhin unter „Eigene iPXE-Dateien …“ im Distro-Untermenü. Beim Löschen wird die Datei entfernt und die Menüs neu erzeugt.",
+  ],
+  [
+    "No custom scripts. Upload a .ipxe file when creating an OS release.",
+    "Keine benutzerdefinierten Skripte. Laden Sie beim Anlegen einer OS-Version eine .ipxe-Datei hoch.",
+  ],
+  ["Editor", "Editor"],
+  ["Name", "Name"],
+  ["iPXE firmware", "iPXE-Firmware"],
+  ["TFTP:", "TFTP:"],
+  ["Sources:", "Quellen:"],
+  [
+    "UEFI via EFI drivers (virtio, e1000…)",
+    "UEFI über EFI-Treiber (virtio, e1000…)",
+  ],
+  ["(BIOS)", "(BIOS)"],
+  ["bare-metal", "Bare-Metal"],
+  [
+    "script embedded in built firmware",
+    "in die gebaute Firmware eingebettetes Skript",
+  ],
+  ["Chainload URL (menu.ipxe)", "Chainload-URL (menu.ipxe)"],
+  ["Generated embed will be:", "Generierter Embed:"],
+  ["Update sources", "Quellen aktualisieren"],
+  ["embed.ipxe", "embed.ipxe"],
+  ["undionly.kpxe (BIOS)", "undionly.kpxe (BIOS)"],
+  ["snponly / ipxe.efi", "snponly / ipxe.efi"],
+  ["ISO", "ISO"],
+  ["Extraction", "Extraktion"],
+  [
+    "This ISO was already extracted. Running extraction again may overwrite boot files for this release. Continue?",
+    "Diese ISO wurde bereits extrahiert. Ein erneutes Extrahieren kann Boot-Dateien dieser Version überschreiben. Fortfahren?",
+  ],
+  ["Requested files (extraction report)", "Angefragte Dateien (Extraktionsbericht)"],
+  [
+    "For each filename configured on the OS type: relative paths under the version folder (limited by “Max”, filesystem scan order). A single match may be copied flat at the root; several matches keep intermediate directories.",
+    "Je nach Dateiname in der Konfiguration des OS-Typs: relative Pfade unter dem Versionsordner (begrenzt durch „Max“, Reihenfolge des Dateiscans). Bei einem Treffer kann flach ins Stammverzeichnis kopiert werden; mehrere Treffer behalten Zwischenordner relativ.",
+  ],
+  ["No paths reported.", "Keine Pfade gemeldet."],
+  ["Add OS type", "OS-Typ hinzufügen"],
+  ["New OS type", "Neuer OS-Typ"],
+  ["Edit OS type", "OS-Typ bearbeiten"],
+  ["New OS type — settings", "Neuer OS-Typ — Einstellungen"],
+  ["Edit OS type — settings", "OS-Typ bearbeiten — Einstellungen"],
+  ["Identity", "Identität"],
+  [
+    "Lowercase letters, digits and hyphen — at most 31 characters.",
+    "Nur Kleinbuchstaben, Ziffern und Bindestrich — höchstens 31 Zeichen.",
+  ],
+  ["ISO extraction", "ISO-Extraktion"],
+  ["Full ISO extraction", "Vollständige ISO-Extraktion"],
+  [
+    "When checked: the full ISO is unpacked under boot/os/version/. List basenames to track below; after extraction this release’s page lists every path found. Without full extraction, only matching files are extracted (see hint). Otherwise boot-type auto-detection applies.",
+    "Aktiviert: die komplette ISO wird unter boot/os/version/ ausgepackt. Basenamen hier erfassen; nach Extraktion listet die Seite dieser Version alle gefundenen Pfade. Ohne Vollextraktion werden nur übereinstimmende Dateien extrahiert (siehe Hinweis). Sonst greift automatische Boot-Typ-Erkennung.",
+  ],
+  [
+    "For any OS type you define manually here you must write your own iPXE script or menu for this ISO (generated menus stay generic).",
+    "Für jeden hier manuell angelegten OS-Typ erstellen Sie ein eigenes iPXE-Skript oder -Menü für diese ISO (generierte Menüs bleiben generisch).",
+  ],
+  [
+    "Files to find / extract (selective pull or audit after full extract)",
+    "Zu suchende / extrahierende Dateien (selektiv oder Prüfliste nach Vollextraktion)",
+  ],
+  [
+    "Enter a plain filename (e.g. vmlinuz, initrd). Multiple matches: full extract = list paths; selective extract = one file is copied to the version root, several matches keep relative subpaths. Legacy fnmatch rows with * ? or [ ] remain supported (from ISO or tree root).",
+    "Einen einfachen Dateinamen eintragen (z. B. vmlinuz, initrd). Mehrere Treffer: bei Vollextraktion werden Pfade aufgelistet; bei selektiver Extraktion wird eine Datei ins Versions-Stammverzeichnis kopiert, mehrere Treffer behalten relative Unterpfade. Alte fnmatch-Zeilen mit * ? oder [ ] bleiben unterstützt (aus ISO oder Verzeichnisbaum).",
+  ],
+  ["Filename or legacy pattern", "Dateiname oder Legacy-Muster"],
+  ["Max", "Max"],
+  ["Remove row", "Zeile entfernen"],
+  ["Add row", "Zeile hinzufügen"],
+  ["(built-in)", "(integriert)"],
+  ["Built-in OS types cannot be deleted.", "Integrierte OS-Typen können nicht gelöscht werden."],
+  ["Built-in OS types cannot be edited here.", "Integrierte OS-Typen können hier nicht bearbeitet werden."],
+  ["Invalid slug.", "Ungültiger Slug."],
+  ["Label is required.", "Bezeichnung ist erforderlich."],
+  ["Invalid boot type.", "Ungültiger Boot-Typ."],
+  ["This slug is already taken.", "Dieser Slug ist bereits vergeben."],
+  [
+    "Enable full extraction or add at least one filename (or legacy pattern).",
+    "Vollextraktion aktivieren oder mindestens einen Dateinamen (oder Legacy-Muster) hinzufügen.",
+  ],
+  ["Automatic configuration type", "Typ der automatischen Konfiguration"],
+  [
+    "If set, creating an auto-config for an ISO of this OS group locks the type (same idea as Debian → preseed). Leave empty to pick the type when creating each config.",
+    "Bei Aktivierung ist der Typ beim Anlegen einer Auto-Konfiguration für eine ISO dieser OS-Gruppe festgelegt (wie Debian → preseed). Leer lassen, um den Typ pro Konfiguration zu wählen.",
+  ],
+  [
+    "(no constraint — choose when creating each config)",
+    "(ohne Vorgabe — beim Anlegen jeder Konfiguration wählen)",
+  ],
+  ["New type (enter an identifier)…", "Neuer Typ (Kennung eingeben)…"],
+  ["New type identifier", "Kennung des neuen Typs"],
+  ["e.g. nixos-config", "z. B. nixos-config"],
+  [
+    "Invalid type or rejected identifier (lowercase letters, digits, hyphen only).",
+    "Ungültiger Typ oder abgewiesene Kennung (nur Kleinbuchstaben, Ziffern, Bindestrich).",
+  ],
+  [
+    "With an ISO, extraction follows this OS type’s “ISO extraction” settings (under Settings).",
+    "Mit ISO folgt die Extraktion den „ISO-Extraktions“-Einstellungen dieses OS-Typs (unter Einstellungen).",
+  ],
+  ["Filenames searched in the ISO:", "In der ISO gesuchte Dateinamen:"],
+  [
+    "No entries on this OS type yet: automatic detection; add names under Settings if needed.",
+    "Noch keine Einträge für diesen OS-Typ: automatische Erkennung; ggf. Namen unter Einstellungen ergänzen.",
+  ],
+  [
+    "Full ISO extraction is enabled: everything is unpacked, then these names are located in the tree.",
+    "Vollextraktion ist aktiv: Es wird alles ausgepackt; anschließend werden diese Namen im Baum gesucht.",
+  ],
+  ["Preseed / Kickstart / Unattend", "Preseed / Kickstart / Unattend"],
+  [
+    "e.g. quiet splash console=ttyS0 net.ifnames=0",
+    "z. B. quiet splash console=ttyS0 net.ifnames=0",
+  ],
+  [
+    "\u201cOther\u201d submenu",
+    "Untermenü „Sonstiges“",
+  ],
+  [
+    "If provided, this release appears in the OS \u201cOther\u201d submenu and chains this script instead of the default boot.",
+    "Sofern gesetzt erscheint diese Version im OS-Untermenü „Sonstiges“ und verzweigt zu diesem Skript statt dem Standardboot.",
+  ],
+  [
+    "Windows — custom boot.wim",
+    "Windows — eigene boot.wim",
+  ],
+  ["boot.wim", "boot.wim"],
+  ["optional", "optional"],
+  [" / kernel", " / Kernel"],
+  ["modloop-lts", "modloop-lts"],
+  ["Args", "Kernel-Argumente"],
+  ["boot.sdi", "boot.sdi"],
+  ["bootmgr.efi", "bootmgr.efi"],
+  ["vmlinuz / kernel", "vmlinuz / Kernel"],
+  ["initrd", "initrd"],
+  ["modloop (Alpine)", "modloop (Alpine)"],
+  ["bi-hdd (Bootstrap Icon)", "bi-HDD (Bootstrap-Icon)"],
+  ["Slug", "Slug"],
+  [
+    "e.g. Prod server, Lab PXE…",
+    "z. B. Prod-Server, Lab-PXE …",
+  ],
+  [
+    "e.g. 192.168.1.10/menus/menu.ipxe or http://srv2/boot.ipxe",
+    "z. B. 192.168.1.10/menus/menu.ipxe oder http://srv2/boot.ipxe",
+  ],
+  ["e.g. 22.04 LTS, 11 Bullseye, 2022…", "z. B. 22.04 LTS, 11 Bullseye, 2022 …"],
+  ["Version", "Version"],
+  ["URL", "URL"],
+  ["user-data", "user-data"],
+  ["user-data (single file)", "user-data (einzelne Datei)"],
+  ["unattend — Windows (autounattend.xml)", "unattend — Windows (autounattend.xml)"],
+  ["proxmox-answer — Proxmox (answer.toml)", "proxmox-answer — Proxmox (answer.toml)"],
+  ["alpine-answer — Alpine (answers / apkovl)", "alpine-answer — Alpine (answers / apkovl)"],
+  ["preseed — Debian", "Preseed — Debian"],
+  ["kickstart — CentOS / Rocky / Alma / Fedora / ESXi", "Kickstart — CentOS / Rocky / Alma / Fedora / ESXi"],
+  ["Ubuntu autoinstall (user-data + meta-data)", "Ubuntu autoinstall (user-data + meta-data)"],
+  ["Preseed (Debian)", "Preseed (Debian)"],
+  ["Kickstart (RHEL/CentOS/ESXi)", "Kickstart (RHEL/CentOS/ESXi)"],
+  ["Unattend.xml (Windows)", "Unattend.xml (Windows)"],
 ];
 
 const PAIRS_ES = [
@@ -682,10 +845,6 @@ const PAIRS_ES = [
     "Ubuntu: la ISO se extrae por completo (como Windows) para que autoinstall/cloud-init pueda obtener paquetes por HTTP. vmlinuz e initrd se detectan en casper/. user-data y meta-data se crean en Configuraciones automáticas.",
   ],
   [
-    "These scripts are uploaded manually for an OS release and appear in the matching _autres.ipxe submenu. Deleting a script removes the file and regenerates the menu.",
-    "Estos scripts se suben manualmente para una versión del SO y aparecen en el submenú _autres.ipxe correspondiente. Al eliminar un script se borra el archivo y se regenera el menú.",
-  ],
-  [
     "These entries appear under Remote servers in menu.ipxe and chain-load the iPXE menu at the given URL. The URL is used as-is with no rewriting.",
     "Estas entradas aparecen en Servidores remotos en menu.ipxe y encadenan el menú iPXE de la URL dada. La URL se usa tal cual.",
   ],
@@ -768,6 +927,144 @@ const PAIRS_ES = [
   ],
   ["answer.toml (Proxmox)", "answer.toml (Proxmox)"],
   ["answers (Alpine)", "answers (Alpine)"],
+  ["Type is locked by this OS group's settings.", "El tipo está bloqueado por los ajustes de este grupo de SO."],
+  ["Firmware", "Firmware"],
+  [
+    "iPXE scripts tied to one ISO release. For an OS group you add under Settings, <slug>.ipxe does not auto-boot from extracted ISO files; it jumps straight to these scripts (<slug>_autres.ipxe). Built-in OS groups still offer the same list under « Custom iPXE files… » from the distro submenu. Deleting a script removes the file from disk and regenerates menus.",
+    "Scripts iPXE asociados a una versión ISO. Para un grupo de SO creado en Ajustes, <slug>.ipxe no arranca automáticamente desde ISO extraídos; enlaza estos scripts (<slug>_autres.ipxe). Los grupos integrados siguen mostrando la misma lista en « Archivos iPXE personalizados… » del submenú de la distro. Eliminar quita el archivo en disco y regenera los menús.",
+  ],
+  [
+    "No custom scripts. Upload a .ipxe file when creating an OS release.",
+    "Sin scripts personalizados. Suba un archivo .ipxe al crear una versión del SO.",
+  ],
+  ["Name", "Nombre"],
+  [
+    "UEFI via EFI drivers (virtio, e1000…)",
+    "UEFI mediante controladores EFI (virtio, e1000…)",
+  ],
+  ["bare-metal", "Bare metal"],
+  [
+    "script embedded in built firmware",
+    "script incluido en el firmware compilado",
+  ],
+  ["Chainload URL (menu.ipxe)", "URL de chainload (menu.ipxe)"],
+  ["Generated embed will be:", "Embed generado:"],
+  ["Update sources", "Actualizar fuentes"],
+  ["ISO", "ISO"],
+  ["Extraction", "Extracción"],
+  [
+    "This ISO was already extracted. Running extraction again may overwrite boot files for this release. Continue?",
+    "Esta ISO ya se extrajo. Ejecutar de nuevo puede sobrescribir archivos de arranque de esta versión. ¿Continuar?",
+  ],
+  ["Requested files (extraction report)", "Archivos solicitados (informe de extracción)"],
+  [
+    "For each filename configured on the OS type: relative paths under the version folder (limited by “Max”, filesystem scan order). A single match may be copied flat at the root; several matches keep intermediate directories.",
+    "Por cada nombre de archivo configurado en el tipo de SO: rutas relativas bajo la carpeta de la versión (limitado por «Max», orden de escaneo). Una coincidencia puede copiarse a la raíz; varias mantienen subdirectorios intermedios.",
+  ],
+  ["No paths reported.", "Sin rutas informadas."],
+  ["Add OS type", "Añadir tipo de SO"],
+  ["New OS type", "Nuevo tipo de SO"],
+  ["Edit OS type", "Editar tipo de SO"],
+  ["New OS type — settings", "Nuevo tipo de SO — ajustes"],
+  ["Edit OS type — settings", "Editar tipo de SO — ajustes"],
+  ["Identity", "Identidad"],
+  [
+    "Lowercase letters, digits and hyphen — at most 31 characters.",
+    "Solo letras minúsculas, dígitos y guion — como máximo 31 caracteres.",
+  ],
+  ["ISO extraction", "Extracción de ISO"],
+  ["Full ISO extraction", "Extracción completa de ISO"],
+  [
+    "When checked: the full ISO is unpacked under boot/os/version/. List basenames to track below; after extraction this release’s page lists every path found. Without full extraction, only matching files are extracted (see hint). Otherwise boot-type auto-detection applies.",
+    "Si está marcado: la ISO completa se desempaqueta bajo boot/os/version/. Liste basenames más abajo; tras extraer la página de la versión muestra todas las rutas. Sin extracción completa solo coincidencias (véase la ayuda); si no se aplica detección automática del tipo de arranque.",
+  ],
+  [
+    "For any OS type you define manually here you must write your own iPXE script or menu for this ISO (generated menus stay generic).",
+    "Para cualquier tipo de SO que defina manualmente aquí debe escribir su propio script o menú iPXE para esta ISO (los menús generados siguen genéricos).",
+  ],
+  [
+    "Files to find / extract (selective pull or audit after full extract)",
+    "Archivos a buscar/extraer (descarga selectiva o auditoría tras extracción completa)",
+  ],
+  [
+    "Enter a plain filename (e.g. vmlinuz, initrd). Multiple matches: full extract = list paths; selective extract = one file is copied to the version root, several matches keep relative subpaths. Legacy fnmatch rows with * ? or [ ] remain supported (from ISO or tree root).",
+    "Indique un nombre de archivo (p. ej. vmlinuz, initrd). Varias coincidencias: extracción completa = listar rutas; selectiva = un archivo va a la raíz de la versión, varias conservan subrutas. Las filas fnmatch con * ? o [ ] siguen admitidas (desde ISO o la raíz del árbol).",
+  ],
+  ["Filename or legacy pattern", "Nombre o patrón heredado"],
+  ["Remove row", "Quitar fila"],
+  ["Add row", "Añadir fila"],
+  ["(built-in)", "(integrado)"],
+  ["Built-in OS types cannot be deleted.", "Los tipos de SO integrados no se pueden eliminar."],
+  ["Built-in OS types cannot be edited here.", "Los tipos de SO integrados no se pueden editar aquí."],
+  ["Invalid slug.", "Slug no válido."],
+  ["Label is required.", "La etiqueta es obligatoria."],
+  ["Invalid boot type.", "Tipo de arranque no válido."],
+  ["This slug is already taken.", "Este slug ya está en uso."],
+  [
+    "Enable full extraction or add at least one filename (or legacy pattern).",
+    "Active la extracción completa o añada al menos un nombre de archivo (o patrón heredado).",
+  ],
+  ["Automatic configuration type", "Tipo de configuración automática"],
+  [
+    "If set, creating an auto-config for an ISO of this OS group locks the type (same idea as Debian → preseed). Leave empty to pick the type when creating each config.",
+    "Si se define, al crear una autoconfiguración para una ISO de este grupo de SO queda fijado el tipo (como Debian → preseed). Vacío permite elegir al crear cada configuración.",
+  ],
+  [
+    "(no constraint — choose when creating each config)",
+    "(sin restricción — elegir al crear cada configuración)",
+  ],
+  ["New type (enter an identifier)…", "Nuevo tipo (escribir identificador)…"],
+  ["New type identifier", "Identificador del nuevo tipo"],
+  ["e.g. nixos-config", "p. ej. nixos-config"],
+  [
+    "Invalid type or rejected identifier (lowercase letters, digits, hyphen only).",
+    "Tipo no válido o identificador rechazado (solo minúsculas, dígitos y guion).",
+  ],
+  [
+    "With an ISO, extraction follows this OS type’s “ISO extraction” settings (under Settings).",
+    "Con una ISO la extracción sigue los ajustes de «extracción de ISO» de este tipo de SO (en Ajustes).",
+  ],
+  ["Filenames searched in the ISO:", "Nombres de archivo buscados en la ISO:"],
+  [
+    "No entries on this OS type yet: automatic detection; add names under Settings if needed.",
+    "Aún sin entradas en este tipo de SO: detección automática; añada nombres en Ajustes si hace falta.",
+  ],
+  [
+    "Full ISO extraction is enabled: everything is unpacked, then these names are located in the tree.",
+    "Extracción completa habilitada: se desempaqueta todo y luego se buscan estos nombres en el árbol.",
+  ],
+  [
+    "e.g. quiet splash console=ttyS0 net.ifnames=0",
+    "ej. quiet splash console=ttyS0 net.ifnames=0",
+  ],
+  [
+    "\u201cOther\u201d submenu",
+    "Submenú «Otro»",
+  ],
+  [
+    "If provided, this release appears in the OS \u201cOther\u201d submenu and chains this script instead of the default boot.",
+    "Si se indica, esta versión aparece en el submenú «Otro» del SO y enlaza este script en lugar del arranque por defecto.",
+  ],
+  [
+    "Windows — custom boot.wim",
+    "Windows — boot.wim personalizada",
+  ],
+  [" / kernel", " / núcleo"],
+  ["Args", "Argumentos"],
+  ["vmlinuz / kernel", "vmlinuz / núcleo"],
+  ["bi-hdd (Bootstrap Icon)", "bi-hdd (icono Bootstrap)"],
+  [
+    "e.g. Prod server, Lab PXE…",
+    "ej. servidor prod, lab PXE…",
+  ],
+  [
+    "e.g. 192.168.1.10/menus/menu.ipxe or http://srv2/boot.ipxe",
+    "ej. 192.168.1.10/menus/menu.ipxe o http://srv2/boot.ipxe",
+  ],
+  ["e.g. 22.04 LTS, 11 Bullseye, 2022…", "ej. 22.04 LTS, 11 Bullseye, 2022…"],
+  ["— Use in", "— Usar en"],
+  ["iPXE firmware", "Firmware iPXE"],
+  ["Sources:", "Fuentes:"],
 ];
 
 const PAIRS_IT = [
@@ -1052,10 +1349,6 @@ const PAIRS_IT = [
     "Ubuntu: l'ISO viene estratta per intero (come Windows) così autoinstall/cloud-init può scaricare i pacchetti via HTTP. vmlinuz e initrd sono rilevati in casper/. user-data e meta-data sono creati in Configurazioni automatiche.",
   ],
   [
-    "These scripts are uploaded manually for an OS release and appear in the matching _autres.ipxe submenu. Deleting a script removes the file and regenerates the menu.",
-    "Questi script sono caricati manualmente per una versione OS e compaiono nel sottomenu _autres.ipxe corrispondente. Eliminando uno script si rimuove il file e si rigenera il menu.",
-  ],
-  [
     "These entries appear under Remote servers in menu.ipxe and chain-load the iPXE menu at the given URL. The URL is used as-is with no rewriting.",
     "Queste voci compaiono in Server remoti in menu.ipxe e incaricano in catena il menu iPXE all'URL indicato. L'URL viene usato così com'è.",
   ],
@@ -1138,6 +1431,148 @@ const PAIRS_IT = [
   ],
   ["answer.toml (Proxmox)", "answer.toml (Proxmox)"],
   ["answers (Alpine)", "answers (Alpine)"],
+  ["Type is locked by this OS group's settings.", "Il tipo è bloccato dalle impostazioni di questo gruppo di OS."],
+  ["iPXE menus", "Menu iPXE"],
+  ["Firmware", "Firmware"],
+  [
+    "iPXE scripts tied to one ISO release. For an OS group you add under Settings, <slug>.ipxe does not auto-boot from extracted ISO files; it jumps straight to these scripts (<slug>_autres.ipxe). Built-in OS groups still offer the same list under « Custom iPXE files… » from the distro submenu. Deleting a script removes the file from disk and regenerates menus.",
+    "Script iPXE collegati a una versione ISO. Per un gruppo OS creato in Impostazioni, <slug>.ipxe non si avvia automaticamente da ISO estratti ma passa direttamente a questi script (<slug>_autres.ipxe). I gruppi incorporati continuano ad offrire lo stesso elenco in « File iPXE personalizzati… » dal sottomenu distro. Eliminando uno script viene rimosso il file dal disco e i menu sono rigenerati.",
+  ],
+  [
+    "No custom scripts. Upload a .ipxe file when creating an OS release.",
+    "Nessuno script personalizzato. Caricate un file .ipxe quando create una versione OS.",
+  ],
+  ["Editor", "Editor"],
+  ["Name", "Nome"],
+  ["iPXE firmware", "Firmware iPXE"],
+  [
+    "UEFI via EFI drivers (virtio, e1000…)",
+    "UEFI tramite driver EFI (virtio, e1000…)",
+  ],
+  ["bare-metal", "Bare metal"],
+  [
+    "script embedded in built firmware",
+    "script incorporato nella firmware compilata",
+  ],
+  ["Chainload URL (menu.ipxe)", "URL di chainload (menu.ipxe)"],
+  ["Generated embed will be:", "Embed generato:"],
+  ["Update sources", "Aggiorna le sorgenti"],
+  ["ISO", "ISO"],
+  ["Extraction", "Estrazione"],
+  [
+    "This ISO was already extracted. Running extraction again may overwrite boot files for this release. Continue?",
+    "Questa ISO è già stata estratta. Una nuova estrazione può sovrascrivere i file di avvio di questa versione. Continuare?",
+  ],
+  ["Requested files (extraction report)", "File richiesti (report di estrazione)"],
+  [
+    "For each filename configured on the OS type: relative paths under the version folder (limited by “Max”, filesystem scan order). A single match may be copied flat at the root; several matches keep intermediate directories.",
+    "Per ogni nome file configurato sul tipo OS: percorsi relativi sotto la cartella della versione (limitati da «Max», ordine di scansione del filesystem). Una sola corrispondenza può essere copiata nella radice; più corrispondenze mantengono le sottocartelle intermedie.",
+  ],
+  ["No paths reported.", "Nessun percorso segnalato."],
+  ["Add OS type", "Aggiungi tipo OS"],
+  ["New OS type", "Nuovo tipo OS"],
+  ["Edit OS type", "Modifica tipo OS"],
+  ["New OS type — settings", "Nuovo tipo OS — impostazioni"],
+  ["Edit OS type — settings", "Modifica tipo OS — impostazioni"],
+  ["Identity", "Identità"],
+  [
+    "Lowercase letters, digits and hyphen — at most 31 characters.",
+    "Solo lettere minuscole, cifre e trattino — al massimo 31 caratteri.",
+  ],
+  ["ISO extraction", "Estrazione ISO"],
+  ["Full ISO extraction", "Estrazione ISO completa"],
+  [
+    "When checked: the full ISO is unpacked under boot/os/version/. List basenames to track below; after extraction this release’s page lists every path found. Without full extraction, only matching files are extracted (see hint). Otherwise boot-type auto-detection applies.",
+    "Se selezionato: l'intera ISO viene estratta sotto boot/os/version/. Annotare i basename da rilevare; dopo l'estrazione la pagina della versione elenca tutti i percorsi. Senza estrazione completa vengono estratti solo i file corrispondenti (vedere il suggerimento). Altrimenti si applica il rilevamento automatico del tipo di avvio.",
+  ],
+  [
+    "For any OS type you define manually here you must write your own iPXE script or menu for this ISO (generated menus stay generic).",
+    "Per qualsiasi tipo OS definito manualmente qui dovete scrivere uno script o menu iPXE per questa ISO (i menu generati restano generici).",
+  ],
+  [
+    "Files to find / extract (selective pull or audit after full extract)",
+    "File da trovare / estrarre (estrazione selettiva o verifica dopo estrazione completa)",
+  ],
+  [
+    "Enter a plain filename (e.g. vmlinuz, initrd). Multiple matches: full extract = list paths; selective extract = one file is copied to the version root, several matches keep relative subpaths. Legacy fnmatch rows with * ? or [ ] remain supported (from ISO or tree root).",
+    "Inserire un semplice nome file (es. vmlinuz, initrd). Corrispondenze multiple: estrazione completa = elencare i percorsi; selettiva = un file viene copiato nella radice della versione, più corrispondenze mantengono sottopercorsi relativi. Le righe fnmatch con * ? o [ ] sono ancora supportate (da ISO o radice dell'albero).",
+  ],
+  ["Filename or legacy pattern", "Nome file o modello legacy"],
+  ["Remove row", "Rimuovi riga"],
+  ["Add row", "Aggiungi riga"],
+  ["(built-in)", "(integrato)"],
+  ["Built-in OS types cannot be deleted.", "I tipi OS incorporati non possono essere eliminati."],
+  ["Built-in OS types cannot be edited here.", "I tipi OS incorporati non sono modificabili qui."],
+  ["Invalid slug.", "Slug non valido."],
+  ["Label is required.", "L'etichetta è obbligatoria."],
+  ["Invalid boot type.", "Tipo di avvio non valido."],
+  ["This slug is already taken.", "Questo slug è già in uso."],
+  [
+    "Enable full extraction or add at least one filename (or legacy pattern).",
+    "Abilitate l'estrazione completa o aggiungete almeno un nome file (o modello legacy).",
+  ],
+  ["Automatic configuration type", "Tipo di configurazione automatica"],
+  [
+    "If set, creating an auto-config for an ISO of this OS group locks the type (same idea as Debian → preseed). Leave empty to pick the type when creating each config.",
+    "Se impostato, alla creazione di una autoconfigurazione per ISO di questo gruppo OS il tipo resta fisso (come Debian → preseed). Vuoto permette di sceglierlo per ogni configurazione.",
+  ],
+  [
+    "(no constraint — choose when creating each config)",
+    "(nessun vincolo — scegliere alla creazione di ogni configurazione)",
+  ],
+  ["New type (enter an identifier)…", "Nuovo tipo (inserire un identificatore)…"],
+  ["New type identifier", "Identificatore del nuovo tipo"],
+  ["e.g. nixos-config", "es. nixos-config"],
+  [
+    "Invalid type or rejected identifier (lowercase letters, digits, hyphen only).",
+    "Tipo non valido o identificatore rifiutato (solo minuscole, cifre e trattino).",
+  ],
+  [
+    "With an ISO, extraction follows this OS type’s “ISO extraction” settings (under Settings).",
+    "Con un'ISO l'estrazione segue le impostazioni di «estrazione ISO» di questo tipo OS (in Impostazioni).",
+  ],
+  ["Filenames searched in the ISO:", "Nomi di file cercati nell'ISO:"],
+  [
+    "No entries on this OS type yet: automatic detection; add names under Settings if needed.",
+    "Nessuna voce su questo tipo OS: rilevazione automatica; aggiungi nomi nelle Impostazioni se serve.",
+  ],
+  [
+    "Full ISO extraction is enabled: everything is unpacked, then these names are located in the tree.",
+    "Estrazione ISO completa attiva: viene estratto tutto, poi questi nomi sono cercati nell'albero.",
+  ],
+  [
+    "e.g. quiet splash console=ttyS0 net.ifnames=0",
+    "es. quiet splash console=ttyS0 net.ifnames=0",
+  ],
+  [
+    "\u201cOther\u201d submenu",
+    "Sottomenu «Altro»",
+  ],
+  [
+    "If provided, this release appears in the OS \u201cOther\u201d submenu and chains this script instead of the default boot.",
+    "Se specificato questa versione compare nel sottomenu «Altro» dell'OS ed esegue in catena questo script al posto dell'avvio predefinito.",
+  ],
+  [
+    "Windows — custom boot.wim",
+    "Windows — boot.wim personalizzata",
+  ],
+  [" / kernel", " / kernel"],
+  ["Args", "Argomenti"],
+  ["vmlinuz / kernel", "vmlinuz / kernel"],
+  ["bi-hdd (Bootstrap Icon)", "bi-hdd (icona Bootstrap)"],
+  [
+    "e.g. Prod server, Lab PXE…",
+    "es. server prod, lab PXE…",
+  ],
+  [
+    "e.g. 192.168.1.10/menus/menu.ipxe or http://srv2/boot.ipxe",
+    "es. 192.168.1.10/menus/menu.ipxe o http://srv2/boot.ipxe",
+  ],
+  ["e.g. 22.04 LTS, 11 Bullseye, 2022…", "es. 22.04 LTS, 11 Bullseye, 2022…"],
+  ["— Use in", "— Usare in"],
+  ["iPXE firmware", "Firmware iPXE"],
+  ["Sources:", "Sorgenti:"],
+  ["{n} GB free", "{n} GB liberi"],
 ];
 
 const PAIRS_PT = [
@@ -1424,10 +1859,6 @@ const PAIRS_PT = [
     "Ubuntu: a ISO é extraída por completo (como no Windows) para que autoinstall/cloud-init obtenha pacotes por HTTP. vmlinuz e initrd são detetados em casper/. user-data e meta-data são criados em Configurações automáticas.",
   ],
   [
-    "These scripts are uploaded manually for an OS release and appear in the matching _autres.ipxe submenu. Deleting a script removes the file and regenerates the menu.",
-    "Estes scripts são carregados manualmente para uma versão do SO e aparecem no sub-menu _autres.ipxe correspondente. Ao eliminar um script remove-se o ficheiro e regenera-se o menu.",
-  ],
-  [
     "These entries appear under Remote servers in menu.ipxe and chain-load the iPXE menu at the given URL. The URL is used as-is with no rewriting.",
     "Estas entradas aparecem em Servidores remotos no menu.ipxe e encadeiam o menu iPXE no URL indicado. O URL é usado tal como está.",
   ],
@@ -1510,6 +1941,144 @@ const PAIRS_PT = [
   ],
   ["answer.toml (Proxmox)", "answer.toml (Proxmox)"],
   ["answers (Alpine)", "answers (Alpine)"],
+  ["Type is locked by this OS group's settings.", "O tipo está bloqueado pelas definições deste grupo de SO."],
+  ["Firmware", "Firmware"],
+  [
+    "iPXE scripts tied to one ISO release. For an OS group you add under Settings, <slug>.ipxe does not auto-boot from extracted ISO files; it jumps straight to these scripts (<slug>_autres.ipxe). Built-in OS groups still offer the same list under « Custom iPXE files… » from the distro submenu. Deleting a script removes the file from disk and regenerates menus.",
+    "Scripts iPXE associados a uma versão ISO. Para um grupo de SO criado em Definições, <slug>.ipxe não arranca automaticamente de ISO extraídos; vai direto a estes scripts (<slug>_autres.ipxe). Grupos integrados continuam a mostrar a mesma lista em « Ficheiros iPXE personalizados… » no sub-menu da distro. Eliminar remove o ficheiro do disco e regenera os menus.",
+  ],
+  [
+    "No custom scripts. Upload a .ipxe file when creating an OS release.",
+    "Sem scripts personalizados. Carregue um ficheiro .ipxe ao criar uma versão do SO.",
+  ],
+  [
+    "UEFI via EFI drivers (virtio, e1000…)",
+    "UEFI via controladores EFI (virtio, e1000…)",
+  ],
+  ["bare-metal", "Bare metal"],
+  [
+    "script embedded in built firmware",
+    "script incorporado na firmware compilada",
+  ],
+  ["Chainload URL (menu.ipxe)", "URL de chainload (menu.ipxe)"],
+  ["Generated embed will be:", "Embed gerado:"],
+  ["Update sources", "Atualizar fontes"],
+  ["ISO", "ISO"],
+  ["Extraction", "Extração"],
+  [
+    "This ISO was already extracted. Running extraction again may overwrite boot files for this release. Continue?",
+    "Esta ISO já foi extraída. Extrair novamente pode substituir ficheiros de arranque desta versão. Continuar?",
+  ],
+  ["Requested files (extraction report)", "Ficheiros pedidos (relatório de extração)"],
+  [
+    "For each filename configured on the OS type: relative paths under the version folder (limited by “Max”, filesystem scan order). A single match may be copied flat at the root; several matches keep intermediate directories.",
+    "Para cada nome de ficheiro configurado no tipo de SO: caminhos relativos sob a pasta da versão (limitado por «Max», ordem de análise do sistema de ficheiros). Uma correspondência pode copiar-se de forma plana na raiz; várias mantêm pastas intermédias.",
+  ],
+  ["No paths reported.", "Sem caminhos reportados."],
+  ["Add OS type", "Adicionar tipo de SO"],
+  ["New OS type", "Novo tipo de SO"],
+  ["Edit OS type", "Editar tipo de SO"],
+  ["New OS type — settings", "Novo tipo de SO — definições"],
+  ["Edit OS type — settings", "Editar tipo de SO — definições"],
+  ["Identity", "Identidade"],
+  [
+    "Lowercase letters, digits and hyphen — at most 31 characters.",
+    "Apenas letras minúsculas, algarismos e hífen — no máximo 31 caracteres.",
+  ],
+  ["ISO extraction", "Extração de ISO"],
+  ["Full ISO extraction", "Extração completa da ISO"],
+  [
+    "When checked: the full ISO is unpacked under boot/os/version/. List basenames to track below; after extraction this release’s page lists every path found. Without full extraction, only matching files are extracted (see hint). Otherwise boot-type auto-detection applies.",
+    "Se marcado: a ISO completa é extraída para boot/os/version/. Liste basename a seguir; após a extração a página da versão lista todos os caminhos. Sem extração completa só ficheiros correspondentes (ver dica); caso contrário aplica-se deteção automática do tipo de arranque.",
+  ],
+  [
+    "For any OS type you define manually here you must write your own iPXE script or menu for this ISO (generated menus stay generic).",
+    "Para qualquer tipo de SO definido manualmente aqui deve criar o seu próprio script ou menu iPXE para esta ISO (menus gerados permanecem genéricos).",
+  ],
+  [
+    "Files to find / extract (selective pull or audit after full extract)",
+    "Ficheiros a localizar/extrair (extração selectiva ou auditoria após extração completa)",
+  ],
+  [
+    "Enter a plain filename (e.g. vmlinuz, initrd). Multiple matches: full extract = list paths; selective extract = one file is copied to the version root, several matches keep relative subpaths. Legacy fnmatch rows with * ? or [ ] remain supported (from ISO or tree root).",
+    "Indique um nome de ficheiro simples (ex. vmlinuz, initrd). Várias correspondências: extração completa = listar caminhos; selectiva = um ficheiro copiado para a raiz da versão, várias mantêm subcaminhos relativos. Linhas fnmatch antigas com * ? ou [ ] continuam suportadas (ISO ou raiz da árvore).",
+  ],
+  ["Filename or legacy pattern", "Nome ou padrão legado"],
+  ["Remove row", "Remover linha"],
+  ["Add row", "Adicionar linha"],
+  ["(built-in)", "(integrado)"],
+  ["Built-in OS types cannot be deleted.", "Tipos de SO integrados não podem ser eliminados."],
+  ["Built-in OS types cannot be edited here.", "Tipos de SO integrados não podem ser editados aqui."],
+  ["Invalid slug.", "Slug inválido."],
+  ["Label is required.", "A etiqueta é obrigatória."],
+  ["Invalid boot type.", "Tipo de arranque inválido."],
+  ["This slug is already taken.", "Este slug já está em uso."],
+  [
+    "Enable full extraction or add at least one filename (or legacy pattern).",
+    "Active a extração completa ou adicione pelo menos um nome de ficheiro (ou padrão legado).",
+  ],
+  ["Automatic configuration type", "Tipo de configuração automática"],
+  [
+    "If set, creating an auto-config for an ISO of this OS group locks the type (same idea as Debian → preseed). Leave empty to pick the type when creating each config.",
+    "Se definido, ao criar autoconfiguração para uma ISO deste grupo fixa-se o tipo (como Debian → preseed). Vazio permite escolher ao criar cada configuração.",
+  ],
+  [
+    "(no constraint — choose when creating each config)",
+    "(sem restrição — escolher ao criar cada configuração)",
+  ],
+  ["New type (enter an identifier)…", "Novo tipo (introduza um identificador)…"],
+  ["New type identifier", "Identificador do novo tipo"],
+  ["e.g. nixos-config", "ex. nixos-config"],
+  [
+    "Invalid type or rejected identifier (lowercase letters, digits, hyphen only).",
+    "Tipo inválido ou identificador rejeitado (apenas minúsculas, algarismos e hífen).",
+  ],
+  [
+    "With an ISO, extraction follows this OS type’s “ISO extraction” settings (under Settings).",
+    "Com uma ISO a extração segue as definições de «extração de ISO» deste tipo em Definições.",
+  ],
+  ["Filenames searched in the ISO:", "Nomes de ficheiro pesquisados na ISO:"],
+  [
+    "No entries on this OS type yet: automatic detection; add names under Settings if needed.",
+    "Ainda sem entradas neste tipo: deteção automática; adicione nomes em Definições se precisar.",
+  ],
+  [
+    "Full ISO extraction is enabled: everything is unpacked, then these names are located in the tree.",
+    "Extração completa ativa: tudo é descompactado e depois estes nomes são localizados na árvore.",
+  ],
+  [
+    "e.g. quiet splash console=ttyS0 net.ifnames=0",
+    "ex. quiet splash console=ttyS0 net.ifnames=0",
+  ],
+  [
+    "\u201cOther\u201d submenu",
+    "Sub-menu «Outro»",
+  ],
+  [
+    "If provided, this release appears in the OS \u201cOther\u201d submenu and chains this script instead of the default boot.",
+    "Se preenchido, esta versão aparece no sub-menu «Outro» do SO e encadeia este script em vez do arranque por omissão.",
+  ],
+  [
+    "Windows — custom boot.wim",
+    "Windows — boot.wim personalizada",
+  ],
+  [" / kernel", " / kernel"],
+  ["Args", "Argumentos"],
+  ["vmlinuz / kernel", "vmlinuz / kernel"],
+  ["bi-hdd (Bootstrap Icon)", "bi-hdd (ícone Bootstrap)"],
+  [
+    "e.g. Prod server, Lab PXE…",
+    "ex. servidor prod, lab PXE…",
+  ],
+  [
+    "e.g. 192.168.1.10/menus/menu.ipxe or http://srv2/boot.ipxe",
+    "ex. 192.168.1.10/menus/menu.ipxe ou http://srv2/boot.ipxe",
+  ],
+  ["e.g. 22.04 LTS, 11 Bullseye, 2022…", "ex. 22.04 LTS, 11 Bullseye, 2022…"],
+  ["— Use in", "— Utilizar em"],
+  ["Release", "Versão"],
+  ["iPXE firmware", "Firmware iPXE"],
+  ["Sources:", "Origens:"],
 ];
 
 writeLocale("de", PAIRS_DE);
