@@ -6,6 +6,16 @@
 
 {% if request.query_params.get('msg') == 'password_updated' %}
 <div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ t('sett.password_ok') }}</div>
+{% elif request.query_params.get('msg') == 'menu_logo_ok' %}
+<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ t('sett.menu_logo_ok') }}</div>
+{% elif request.query_params.get('msg') == 'menu_logo_removed' %}
+<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ t('sett.menu_logo_removed') }}</div>
+{% elif request.query_params.get('msg') == 'menu_logo_bad' %}
+<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.menu_logo_bad') }}</div>
+{% elif request.query_params.get('msg') == 'menu_logo_big' %}
+<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.menu_logo_big') }}</div>
+{% elif request.query_params.get('msg') == 'menu_logo_no_pillow' %}
+<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.menu_logo_no_pillow') }}</div>
 {% endif %}
 
 <div class="row g-4">
@@ -43,6 +53,38 @@
             <i class="bi bi-key me-1"></i>{{ t('sett.change_password') }}
           </button>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="card border-secondary">
+      <div class="card-header"><i class="bi bi-image me-2"></i>{{ t('sett.menu_logo_title') }}</div>
+      <div class="card-body">
+        <p class="text-muted small">{{ t('sett.menu_logo_help') }}</p>
+        {% if current.menu_logo_uploaded %}
+        <div class="mb-3">
+          <img src="{{ current.server_base_url }}/menus/{{ current.menu_logo_filename }}?v={{ current.menu_logo_qs }}"
+               alt="" class="img-thumbnail border-secondary" style="max-height:140px;background:#1e293b;">
+        </div>
+        {% endif %}
+        <form method="post" action="/settings/menu-logo" enctype="multipart/form-data" class="d-flex flex-wrap align-items-end gap-2 mb-2">
+          <div class="flex-grow-1" style="min-width:12rem;">
+            <label class="form-label small text-muted mb-0">{{ t('sett.menu_logo_choose') }}</label>
+            <input type="file" name="file" class="form-control form-control-sm" accept="image/png,image/jpeg,.jpg,.jpeg" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-upload me-1"></i>{{ t('sett.menu_logo_upload') }}
+          </button>
+        </form>
+        {% if current.menu_logo_uploaded %}
+        <form method="post" action="/settings/menu-logo/delete" class="mt-1"
+              onsubmit="return confirm({{ t('sett.menu_logo_confirm_remove')|tojson }})">
+          <button type="submit" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash me-1"></i>{{ t('sett.menu_logo_remove') }}
+          </button>
+        </form>
+        {% endif %}
       </div>
     </div>
   </div>

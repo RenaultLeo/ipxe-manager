@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
+# Fichier embarqué (app/resources/default_menu_logo.png) si pas d’upload utilisateur.
+DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
+
 
 def _esxi_version_dir(prefix_http: str, cfg: Settings) -> Path | None:
     """``prefix_http`` du type boot/<os>/<version> → répertoire disque sous cfg.boot_dir."""
@@ -180,13 +183,20 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
 
 
-def _build_menu_theme_png(repo_root: Path, menus_dir: Path) -> bool:
+def _build_menu_theme_png(menus_dir: Path) -> bool:
     """
-    Génère menus/menu-theme.png : fond bleu ardoise ; si image-ipxe.png existe,
-    la redimensionne et la colle en bas à droite (logo). Nécessite Pillow.
+    Génère menus/menu-theme.png : fond bleu ardoise ; logo en bas à droite depuis
+    menus/menu-logo-upload.png (Paramètres) si présent, sinon bannière incluse
+    app/resources/default_menu_logo.png. Nécessite Pillow.
     """
     out_path = menus_dir / "menu-theme.png"
-    logo_src = repo_root / "image-ipxe.png"
+    upload_logo = menus_dir / MENU_LOGO_UPLOAD_NAME
+    if upload_logo.is_file():
+        logo_src: Path | None = upload_logo
+    elif DEFAULT_MENU_LOGO.is_file():
+        logo_src = DEFAULT_MENU_LOGO
+    else:
+        logo_src = None
     for stale in (menus_dir / "menu-brand.png", menus_dir / "menu-background.png"):
         if stale.is_file():
             try:
@@ -209,7 +219,7 @@ def _build_menu_theme_png(repo_root: Path, menus_dir: Path) -> bool:
     bg_color = (22, 42, 74)
     canvas = Image.new("RGB", (w, h), bg_color)
 
-    if logo_src.is_file():
+    if logo_src is not None and logo_src.is_file():
         try:
             logo = Image.open(logo_src).convert("RGBA")
             max_w = min(200, w // 4)
@@ -226,7 +236,7 @@ def _build_menu_theme_png(repo_root: Path, menus_dir: Path) -> bool:
             y = h - logo.height - pad
             canvas.paste(logo, (x, y), logo)
         except OSError as e:
-            logger.warning("image-ipxe.png illisible (%s) — fond bleu seul.", e)
+            logger.warning("Logo menu illisible (%s) — fond bleu seul.", e)
 
     try:
         canvas.save(out_path, "PNG", optimize=True)
@@ -243,7 +253,7 @@ def regenerate_all(db: Session) -> list[str]:
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
     cfg.menus_dir.mkdir(parents=True, exist_ok=True)
     repo_root = Path(__file__).resolve().parent.parent.parent
-    has_menu_theme = _build_menu_theme_png(repo_root, cfg.menus_dir)
+    has_menu_theme = _build_menu_theme_png(cfg.menus_dir)
 
     env = _jinja_env()
     written: list[str] = []

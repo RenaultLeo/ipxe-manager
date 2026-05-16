@@ -1,8 +1,9 @@
 import json
 import re
-from pathlib import PurePosixPath
+import io
+from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -12,7 +13,7 @@ from app.database import get_db
 from app.auth import is_authenticated, hash_password
 from app.models.models import AppSetting, OsType
 from app.services.os_type_order import sort_os_types_for_ui
-from app.services.slugify import slugify
+from app.services.menu_generator import MENU_LOGO_UPLOAD_NAME
 from app.config import settings as app_settings
 from app.templating import templates, template_context
 from app.services.autoconfig_types import all_config_types_for_ui, config_type_labels as _config_type_labels
@@ -108,11 +109,18 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
 
+    logo_fs = Path(app_settings.http_root) / "menus" / MENU_LOGO_UPLOAD_NAME
+    menu_logo_uploaded = logo_fs.is_file()
+    menu_logo_qs = int(logo_fs.stat().st_mtime) if menu_logo_uploaded else 0
+
     current = {
         "server_base_url": _get_setting(db, "server_base_url", app_settings.server_base_url),
         "tftp_root": app_settings.tftp_root,
         "http_root": app_settings.http_root,
         "iso_root": app_settings.iso_root,
+        "menu_logo_uploaded": menu_logo_uploaded,
+        "menu_logo_qs": menu_logo_qs,
+        "menu_logo_filename": MENU_LOGO_UPLOAD_NAME,
     }
     os_types = sort_os_types_for_ui(db.query(OsType).all())
     return templates.TemplateResponse(
@@ -296,6 +304,70 @@ async def update_password(
         return redir
     _set_setting(db, "admin_password_hash", hash_password(new_password))
     return RedirectResponse("/settings?msg=password_updated", status_code=302)
+
+
+MENU_LOGO_MAX_BYTES = 3 * 1024 * 1024
+
+
+@router.post("/menu-logo")
+async def menu_logo_post(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+
+    menus_dir = Path(app_settings.http_root) / "menus"
+    menus_dir.mkdir(parents=True, exist_ok=True)
+    dest = menus_dir / MENU_LOGO_UPLOAD_NAME
+
+    try:
+        raw = await file.read()
+    except Exception:
+        return RedirectResponse("/settings?msg=menu_logo_bad", status_code=302)
+
+    if not raw:
+        return RedirectResponse("/settings?msg=menu_logo_bad", status_code=302)
+    if len(raw) > MENU_LOGO_MAX_BYTES:
+        return RedirectResponse("/settings?msg=menu_logo_big", status_code=302)
+
+    try:
+        from PIL import Image
+    except ImportError:
+        return RedirectResponse("/settings?msg=menu_logo_no_pillow", status_code=302)
+
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        img = img.convert("RGBA")
+        img.save(dest, "PNG", optimize=True)
+    except Exception:
+        return RedirectResponse("/settings?msg=menu_logo_bad", status_code=302)
+
+    from app.tasks.jobs import regenerate_menus_task
+
+    regenerate_menus_task.delay()
+    return RedirectResponse("/settings?msg=menu_logo_ok", status_code=302)
+
+
+@router.post("/menu-logo/delete")
+async def menu_logo_delete(request: Request):
+    redir = _auth(request)
+    if redir:
+        return redir
+
+    p = Path(app_settings.http_root) / "menus" / MENU_LOGO_UPLOAD_NAME
+    if p.is_file():
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+    from app.tasks.jobs import regenerate_menus_task
+
+    regenerate_menus_task.delay()
+    return RedirectResponse("/settings?msg=menu_logo_removed", status_code=302)
 
 
 @router.post("/os-types/reorder")
