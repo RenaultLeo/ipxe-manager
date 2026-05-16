@@ -584,6 +584,34 @@ const PAIRS_DE = [
     "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
     "Zeilen für iPXE-Menüs und ISO-Tabs sortieren. Das Augen-Symbol steuert nur die Karten in der Übersicht.",
   ],
+  [
+    "Menu image (bottom-right logo)",
+    "Menübild (Logo unten rechts)",
+  ],
+  [
+    "PNG or JPEG, max 3 MB. If you do not upload one, the bundled blue placeholder (\u201CCustomizable logo\u201D / \u201CSettings · iPXE menu image\u201D) is used. After upload, your image replaces it at the bottom-right of the iPXE menu; remove it to restore the default. Menus regenerate automatically.",
+    "PNG oder JPEG, max. 3 MB. Ohne Upload wird der blaue Platzhalter (\u201CAnpassbares Logo\u201D / \u201CEinstellungen · iPXE-Menübild\u201D) verwendet. Nach dem Hochladen ersetzt Ihr Bild ihn unten rechts im iPXE-Menü; entfernen Sie es, um die Standardeinstellung wiederherzustellen. Die Menüs werden automatisch neu erzeugt.",
+  ],
+  ["File (PNG or JPEG)", "Datei (PNG oder JPEG)"],
+  ["Remove custom image", "Eigenes Bild entfernen"],
+  [
+    "Remove the image and show the built-in placeholder again?",
+    "Bild entfernen und wieder den integrierten Platzhalter anzeigen?",
+  ],
+  [
+    "Image saved. Menus are being regenerated.",
+    "Bild gespeichert. Menüs werden neu erzeugt.",
+  ],
+  [
+    "Custom image removed. Menus are being regenerated.",
+    "Eigenes Bild entfernt. Menüs werden neu erzeugt.",
+  ],
+  ["Invalid or empty image file.", "Ungültige oder leere Bilddatei."],
+  ["File too large (max 3 MB).", "Datei zu groß (max. 3 MB)."],
+  [
+    "Pillow is not installed on the server (pip install pillow in the venv).",
+    "Pillow ist auf dem Server nicht installiert (pip install pillow in der venv).",
+  ],
 ];
 
 const PAIRS_ES = [
@@ -1131,6 +1159,34 @@ const PAIRS_ES = [
     "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
     "Reordene las filas para los menús iPXE y las pestañas ISO. El icono del ojo solo afecta a las tarjetas del panel.",
   ],
+  [
+    "Menu image (bottom-right logo)",
+    "Imagen del menú (logo abajo a la derecha)",
+  ],
+  [
+    "PNG or JPEG, max 3 MB. If you do not upload one, the bundled blue placeholder (\u201CCustomizable logo\u201D / \u201CSettings · iPXE menu image\u201D) is used. After upload, your image replaces it at the bottom-right of the iPXE menu; remove it to restore the default. Menus regenerate automatically.",
+    "PNG o JPEG, máx. 3 MB. Si no sube ninguna, se usa el marcador azul incluido (\u201CLogotipo personalizable\u201D / \u201CAjustes · imagen del menú iPXE\u201D). Tras la subida, su imagen lo sustituye abajo a la derecha en el menú iPXE; elimínela para restaurar el valor predeterminado. Los menús se regeneran automáticamente.",
+  ],
+  ["File (PNG or JPEG)", "Archivo (PNG o JPEG)"],
+  ["Remove custom image", "Eliminar imagen personalizada"],
+  [
+    "Remove the image and show the built-in placeholder again?",
+    "¿Quitar la imagen y volver a mostrar el marcador integrado?",
+  ],
+  [
+    "Image saved. Menus are being regenerated.",
+    "Imagen guardada. Los menús se están regenerando.",
+  ],
+  [
+    "Custom image removed. Menus are being regenerated.",
+    "Imagen personalizada eliminada. Los menús se están regenerando.",
+  ],
+  ["Invalid or empty image file.", "Archivo de imagen no válido o vacío."],
+  ["File too large (max 3 MB).", "Archivo demasiado grande (máx. 3 MB)."],
+  [
+    "Pillow is not installed on the server (pip install pillow in the venv).",
+    "Pillow no está instalado en el servidor (pip install pillow en el entorno virtual).",
+  ],
 ];
 
 const PAIRS_IT = [
@@ -1671,6 +1727,34 @@ const PAIRS_IT = [
   [
     "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
     "Riordina le righe per i menu iPXE e le schede ISO. L'icona dell'occhio attiva o disattiva solo le schede nel pannello.",
+  ],
+  [
+    "Menu image (bottom-right logo)",
+    "Immagine del menu (logo in basso a destra)",
+  ],
+  [
+    "PNG or JPEG, max 3 MB. If you do not upload one, the bundled blue placeholder (\u201CCustomizable logo\u201D / \u201CSettings · iPXE menu image\u201D) is used. After upload, your image replaces it at the bottom-right of the iPXE menu; remove it to restore the default. Menus regenerate automatically.",
+    "PNG o JPEG, max 3 MB. Se non carichi un file, viene usato il segnaposto blu incluso (\u201CLogo personalizzabile\u201D / \u201CImpostazioni · immagine del menu iPXE\u201D). Dopo il caricamento, la tua immagine lo sostituisce in basso a destra nel menu iPXE; rimuovila per ripristinare il predefinito. I menu si rigenerano automaticamente.",
+  ],
+  ["File (PNG or JPEG)", "File (PNG o JPEG)"],
+  ["Remove custom image", "Rimuovi immagine personalizzata"],
+  [
+    "Remove the image and show the built-in placeholder again?",
+    "Rimuovere l'immagine e mostrare di nuovo il segnaposto integrato?",
+  ],
+  [
+    "Image saved. Menus are being regenerated.",
+    "Immagine salvata. Rigenerazione dei menu in corso.",
+  ],
+  [
+    "Custom image removed. Menus are being regenerated.",
+    "Immagine personalizzata rimossa. Rigenerazione dei menu in corso.",
+  ],
+  ["Invalid or empty image file.", "File immagine non valido o vuoto."],
+  ["File too large (max 3 MB).", "File troppo grande (max 3 MB)."],
+  [
+    "Pillow is not installed on the server (pip install pillow in the venv).",
+    "Pillow non è installato sul server (pip install pillow nel venv).",
   ],
 ];
 
@@ -2213,6 +2297,34 @@ const PAIRS_PT = [
   [
     "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
     "Reordene as linhas para os menus iPXE e os separadores ISO. O ícone do olho apenas altera os cartões no painel.",
+  ],
+  [
+    "Menu image (bottom-right logo)",
+    "Imagem do menu (canto inferior direito)",
+  ],
+  [
+    "PNG or JPEG, max 3 MB. If you do not upload one, the bundled blue placeholder (\u201CCustomizable logo\u201D / \u201CSettings · iPXE menu image\u201D) is used. After upload, your image replaces it at the bottom-right of the iPXE menu; remove it to restore the default. Menus regenerate automatically.",
+    "PNG ou JPEG, máx. 3 MB. Se não enviar um, é usado o marcador azul incluído (\u201CLogo personalizável\u201D / \u201CDefinições · imagem do menu iPXE\u201D). Após o envio, a sua imagem substitui-o no canto inferior direito do menu iPXE; remova para repor o predefinido. Os menus regeneram-se automaticamente.",
+  ],
+  ["File (PNG or JPEG)", "Ficheiro (PNG ou JPEG)"],
+  ["Remove custom image", "Remover imagem personalizada"],
+  [
+    "Remove the image and show the built-in placeholder again?",
+    "Remover a imagem e voltar a mostrar o marcador incorporado?",
+  ],
+  [
+    "Image saved. Menus are being regenerated.",
+    "Imagem guardada. A regenerar os menus.",
+  ],
+  [
+    "Custom image removed. Menus are being regenerated.",
+    "Imagem personalizada removida. A regenerar os menus.",
+  ],
+  ["Invalid or empty image file.", "Ficheiro de imagem inválido ou vazio."],
+  ["File too large (max 3 MB).", "Ficheiro demasiado grande (máx. 3 MB)."],
+  [
+    "Pillow is not installed on the server (pip install pillow in the venv).",
+    "Pillow não está instalado no servidor (pip install pillow no venv).",
   ],
 ];
 
