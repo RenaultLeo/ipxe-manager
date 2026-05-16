@@ -125,6 +125,10 @@
           <dt class="col-4 text-muted">{% if is_esxi %}Options boot (imgargs){% else %}Args kernel{% endif %}</dt>
           <dd class="col-8 font-monospace small">{{ be.kernel_args }}</dd>
           {% endif %}
+          {% if be.custom_ipxe_path %}
+          <dt class="col-4 text-muted">{{ t('boot.role_custom_ipxe') }}</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.custom_ipxe_path }}</dd>
+          {% endif %}
         </dl>
         {% else %}
         <p class="text-muted mb-0">
@@ -184,13 +188,51 @@
   </div>
   {% endif %}
 
+  <!-- Script iPXE personnalisé (téléversement depuis la fiche ISO) -->
+  <div class="col-12">
+    <div class="card border-secondary border-warning">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>
+          <i class="bi bi-file-earmark-play me-2 text-warning"></i>{{ t('iso.detail_custom_title') }}
+          <span class="badge bg-secondary ms-2 small">{{ t('iso.upload.custom_badge') }}</span>
+        </span>
+        {% if version.boot_entry and version.boot_entry.custom_ipxe_path %}
+        <a href="/ipxe-menus?tab=custom" class="btn btn-outline-info btn-sm">
+          <i class="bi bi-list-ul me-1"></i>{{ t('iso.detail_custom_menus_link') }}
+        </a>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">{{ t('iso.detail_custom_intro') }}</p>
+        {% if version.boot_entry and version.boot_entry.custom_ipxe_path %}
+        <p class="font-monospace small text-break mb-2">{{ version.boot_entry.custom_ipxe_path }}</p>
+        <p class="small text-secondary mb-3">{{ t('iso.detail_custom_replace_hint') }}</p>
+        {% endif %}
+        <form method="post" action="/boot-files/{{ version.id }}/upload" enctype="multipart/form-data"
+              class="row g-2 align-items-end">
+          <input type="hidden" name="file_role" value="custom_ipxe">
+          <input type="hidden" name="redirect_to" value="/isos/{{ version.id }}">
+          <div class="col-md-8 col-lg-9">
+            <label class="form-label small">{{ t('iso.detail_custom_file_label') }}</label>
+            <input type="file" name="file" class="form-control form-control-sm" accept=".ipxe,.txt" required>
+          </div>
+          <div class="col-md-4 col-lg-3">
+            <button type="submit" class="btn btn-success btn-sm w-100 mt-md-4">
+              <i class="bi bi-upload me-1"></i>{{ t('iso.detail_custom_upload') }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Auto configs -->
   <div class="col-12">
     <div class="card border-secondary">
       <div class="card-header d-flex justify-content-between">
         <span><i class="bi bi-file-code me-2"></i>Configurations automatiques</span>
-        <a href="/ipxe-configs/new" class="btn btn-outline-success btn-sm">
-          <i class="bi bi-plus me-1"></i>Ajouter
+        <a href="/ipxe-configs/new?preset_version={{ version.id }}" class="btn btn-outline-success btn-sm">
+          <i class="bi bi-plus me-1"></i>{{ t('sett.add') }}
         </a>
       </div>
       <div class="card-body p-0">

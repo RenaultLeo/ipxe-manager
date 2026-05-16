@@ -19,6 +19,13 @@ from app.i18n import translate
 router = APIRouter(prefix="/boot-files")
 
 
+def _safe_redirect_path(raw: str, default: str) -> str:
+    p = (raw or "").strip()
+    if not p.startswith("/") or p.startswith("//") or "://" in p:
+        return default
+    return p
+
+
 def _auth(request: Request):
     if not is_authenticated(request):
         return RedirectResponse("/login", status_code=302)
@@ -82,6 +89,7 @@ async def upload_boot_file(
     request: Request,
     file_role: str = Form(...),  # kernel|initrd|boot_wim|efi|other
     kernel_args: str = Form(""),
+    redirect_to: str = Form(""),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -151,7 +159,8 @@ async def upload_boot_file(
     from app.tasks.jobs import regenerate_menus_task
     regenerate_menus_task.delay()
 
-    return RedirectResponse("/boot-files", status_code=302)
+    dest = _safe_redirect_path(redirect_to, "/boot-files")
+    return RedirectResponse(dest, status_code=302)
 
 
 @router.post("/{version_id}/replace-wim")

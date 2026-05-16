@@ -140,6 +140,45 @@
       {{ t('menu.custom_intro') }}
     </p>
 
+    <div class="card border-secondary border-success mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="small">
+          <i class="bi bi-plus-circle me-1 text-success"></i>{{ t('menu.custom_add_card_title') }}
+        </span>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">{{ t('menu.custom_add_intro') }}</p>
+        {% if iso_versions %}
+        <form id="form-custom-script-upload" method="post" action="" enctype="multipart/form-data"
+              class="row g-2 align-items-end">
+          <input type="hidden" name="file_role" value="custom_ipxe">
+          <input type="hidden" name="redirect_to" value="/ipxe-menus?tab=custom">
+          <div class="col-md-5">
+            <label class="form-label small">{{ t('menu.custom_add_release') }}</label>
+            <select id="custom-script-release-select" class="form-select form-select-sm" required>
+              <option value="">{{ t('common.choose') }}</option>
+              {% for v in iso_versions %}
+              <option value="{{ v.id }}">{{ v.os_type.label }} — {{ v.version_label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small">{{ t('iso.detail_custom_file_label') }}</label>
+            <input type="file" name="file" class="form-control form-control-sm" accept=".ipxe,.txt" required>
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-success btn-sm w-100 mt-md-4">
+              <i class="bi bi-upload me-1"></i>{{ t('sett.add') }}
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <p class="small text-muted mb-0">{{ t('boot.no_versions') }}
+          <a href="/isos/upload">{{ t('boot.add_first') }}</a> {{ t('boot.add_first_suffix') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
     {% if custom_scripts %}
     <div class="table-responsive mb-4">
       <table class="table table-dark table-hover table-bordered align-middle">
@@ -412,6 +451,20 @@ function confirmDeleteChain(id, name) {
     const btn = document.getElementById('tab-chains');
     if (btn) btn.click();
   }
+})();
+
+(function() {
+  const form = document.getElementById('form-custom-script-upload');
+  if (!form) return;
+  form.addEventListener('submit', function(e) {
+    const sel = document.getElementById('custom-script-release-select');
+    const vid = sel && sel.value;
+    if (!vid) {
+      e.preventDefault();
+      return;
+    }
+    form.action = '/boot-files/' + encodeURIComponent(vid) + '/upload';
+  });
 })();
 </script>
 {% endblock %}

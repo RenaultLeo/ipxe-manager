@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.auth import is_authenticated
@@ -79,6 +79,13 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
         return redir
 
     remote_chains = db.query(RemoteChain).order_by(RemoteChain.id).all()
+    iso_versions = (
+        db.query(IsoVersion)
+        .join(IsoVersion.os_type)
+        .options(joinedload(IsoVersion.os_type))
+        .order_by(OsType.label.asc(), IsoVersion.version_label.asc())
+        .all()
+    )
     return templates.TemplateResponse(
         "menus.html",
         template_context(
@@ -86,6 +93,7 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
             menu_files=_collect_menu_files(),
             custom_scripts=_collect_custom_scripts(db),
             os_types=sort_os_types_for_ui(db.query(OsType).all()),
+            iso_versions=iso_versions,
             server_url=settings.server_base_url,
             remote_chains=remote_chains,
         ),
@@ -106,6 +114,13 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
         err = traceback.format_exc()
         logger.error("Erreur régénération menus :\n%s", err)
         os_types = sort_os_types_for_ui(db.query(OsType).all())
+        iso_versions = (
+            db.query(IsoVersion)
+            .join(IsoVersion.os_type)
+            .options(joinedload(IsoVersion.os_type))
+            .order_by(OsType.label.asc(), IsoVersion.version_label.asc())
+            .all()
+        )
         menu_files = []
         if settings.menus_dir.exists():
             for f in sorted(settings.menus_dir.glob("*.ipxe")):
@@ -121,6 +136,7 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
                 request,
                 menu_files=menu_files,
                 os_types=os_types,
+                iso_versions=iso_versions,
                 server_url=settings.server_base_url,
                 error=err,
                 custom_scripts=[],

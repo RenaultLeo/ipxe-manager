@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -104,7 +104,11 @@ async def config_scan(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/new", response_class=HTMLResponse)
-async def config_new(request: Request, db: Session = Depends(get_db)):
+async def config_new(
+    request: Request,
+    db: Session = Depends(get_db),
+    preset_version: int | None = Query(None, gt=0),
+):
     redir = _auth(request)
     if redir:
         return redir
@@ -117,6 +121,7 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
             request,
             config=None,
             versions=versions,
+            preset_iso_version_id=preset_version,
             config_types=types_combo,
             server_url=settings.server_base_url,
             os_config_type=OS_CONFIG_TYPE,
@@ -225,6 +230,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
             request,
             config=cfg,
             versions=versions,
+            preset_iso_version_id=None,
             config_types=types_combo,
             server_url=settings.server_base_url,
             os_config_type=OS_CONFIG_TYPE,

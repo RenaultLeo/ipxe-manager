@@ -28,6 +28,7 @@
                 <option value="">{{ t('common.choose') }}</option>
                 {% for v in versions %}
                 <option value="{{ v.id }}"
+                        {% if preset_iso_version_id == v.id %}selected{% endif %}
                         data-os-slug="{{ v.os_type.slug }}"
                         data-os-boot="{{ v.os_type.boot_type }}"
                         data-is-builtin="{{ 'true' if v.os_type.is_builtin else 'false' }}"
@@ -466,6 +467,14 @@ document.querySelector('#config-type')?.closest('form')?.addEventListener('submi
 document.addEventListener('DOMContentLoaded', () => {
   applyUbuntuEditorsLayout();
   updateBundlePathPreview();
+  const preset = {% if preset_iso_version_id %}{{ preset_iso_version_id }}{% else %}null{% endif %};
+  if (preset != null) {
+    const sel = document.getElementById('version-select');
+    if (sel) {
+      sel.value = String(preset);
+      sel.dispatchEvent(new Event('change'));
+    }
+  }
 });
 </script>
 {% endblock %}
