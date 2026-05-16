@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -55,12 +55,19 @@ def _os_extract_meta_for_upload(os_types: list[OsType]) -> dict[str, dict]:
 # ── List ──────────────────────────────────────────────────────────────────────
 
 @router.get("", response_class=HTMLResponse)
-async def iso_list(request: Request, db: Session = Depends(get_db)):
+async def iso_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    os: str | None = Query(None, description="Slug du type d'OS : onglet pré-sélectionné (ex. windows)."),
+):
     redir = _auth(request)
     if redir:
         return redir
     os_types = sort_os_types_for_ui(db.query(OsType).all())
     versions = db.query(IsoVersion).order_by(IsoVersion.created_at.desc()).all()
+    slug_set = {ot.slug for ot in os_types}
+    raw = (os or "").strip().lower()
+    filter_os_slug = raw if raw in slug_set else ""
     return templates.TemplateResponse(
         "isos/index.html",
         template_context(
@@ -68,6 +75,7 @@ async def iso_list(request: Request, db: Session = Depends(get_db)):
             os_types=os_types,
             versions=versions,
             fmt_size=fmt_size,
+            filter_os_slug=filter_os_slug,
         ),
     )
 
