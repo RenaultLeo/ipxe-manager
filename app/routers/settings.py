@@ -13,7 +13,7 @@ from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
 from app.config import settings as app_settings
 from app.templating import templates, template_context
-from app.routers.configs import all_config_types_for_ui, _config_type_labels
+from app.services.autoconfig_types import all_config_types_for_ui, config_type_labels as _config_type_labels
 
 router = APIRouter(prefix="/settings")
 
