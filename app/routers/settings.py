@@ -1,5 +1,6 @@
 import json
 import re
+from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -41,42 +42,29 @@ def _set_setting(db: Session, key: str, value: str):
     db.commit()
 
 
-def _parse_extract_patterns(form) -> list[dict]:
-    pats = form.getlist("extract_pat")
+def _parse_extract_specs(form) -> list[dict]:
+    """Saisie « nom de fichier » ou motif fnmatch legacy (si *, ?, [])."""
+    cols = form.getlist("extract_file")
     mxs = form.getlist("extract_max")
     out: list[dict] = []
-    for i, pat in enumerate(pats):
-        pat = str(pat).strip()
-        if not pat:
+    for i, raw in enumerate(cols):
+        s = str(raw).strip()
+        if not s:
             continue
         mx_raw = str(mxs[i]).strip() if i < len(mxs) else "1"
         try:
             m = max(1, int(mx_raw))
         except ValueError:
             m = 1
-        out.append({"pattern": pat, "max": m})
+        s_posix = s.replace("\\", "/")
+        globs = ("*" in s_posix or "?" in s_posix or ("[" in s_posix and "]" in s_posix))
+        if globs:
+            out.append({"pattern": s_posix, "max": m})
+            continue
+        bn = PurePosixPath(s_posix).name
+        if bn:
+            out.append({"filename": bn, "max": m})
     return out
-
-
-def _parse_ipxe_roles(form) -> list[dict]:
-    roles = form.getlist("menu_role")
-    mpats = form.getlist("menu_pat")
-    mord = form.getlist("menu_order")
-    out: list[dict] = []
-    for i, role in enumerate(roles):
-        role_l = str(role).strip().lower()
-        if not role_l:
-            continue
-        ptn = str(mpats[i]).strip() if i < len(mpats) else ""
-        if not ptn:
-            continue
-        o_raw = str(mord[i]).strip() if i < len(mord) else str(i)
-        try:
-            o = int(o_raw)
-        except ValueError:
-            o = i
-        out.append({"role": role_l, "path_pattern": ptn, "sort_order": o})
-    return sorted(out, key=lambda r: r["sort_order"])
 
 
 @router.get("", response_class=HTMLResponse)
@@ -109,7 +97,6 @@ async def os_type_new_get(request: Request, db: Session = Depends(get_db)):
             request,
             ot=None,
             patterns=[{}],
-            roles=[{}],
             err=request.query_params.get("err"),
         ),
     )
@@ -128,8 +115,7 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
 
     extract_full = str(form.get("extract_full") or "") in ("1", "on", "true")
 
-    patterns = _parse_extract_patterns(form)
-    roles_j = _parse_ipxe_roles(form)
+    patterns = _parse_extract_specs(form)
 
     err = ""
     if not slug or not SLUG_RE.match(slug):
@@ -155,7 +141,7 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
             is_builtin=False,
             extract_full_iso=extract_full,
             extract_paths_json=json.dumps(patterns),
-            ipxe_roles_json=json.dumps(roles_j),
+            ipxe_roles_json="[]",
         )
     )
     db.commit()
@@ -178,19 +164,12 @@ async def os_type_edit_get(os_id: int, request: Request, db: Session = Depends(g
             patterns = [{}]
     except json.JSONDecodeError:
         patterns = [{}]
-    try:
-        roles = json.loads(ot.ipxe_roles_json or "[]")
-        if not roles:
-            roles = [{}]
-    except json.JSONDecodeError:
-        roles = [{}]
     return templates.TemplateResponse(
         "settings/os_type_form.html",
         template_context(
             request,
             ot=ot,
             patterns=patterns,
-            roles=roles,
             err=request.query_params.get("err"),
         ),
     )
@@ -213,8 +192,7 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
     icon = str(form.get("icon") or "bi-hdd").strip() or "bi-hdd"
 
     extract_full = str(form.get("extract_full") or "") in ("1", "on", "true")
-    patterns = _parse_extract_patterns(form)
-    roles_j = _parse_ipxe_roles(form)
+    patterns = _parse_extract_specs(form)
 
     err = ""
     if not label:
@@ -232,7 +210,7 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
     ot.icon = icon
     ot.extract_full_iso = extract_full
     ot.extract_paths_json = json.dumps(patterns)
-    ot.ipxe_roles_json = json.dumps(roles_j)
+    ot.ipxe_roles_json = "[]"
     db.commit()
     return RedirectResponse("/settings", status_code=302)
 

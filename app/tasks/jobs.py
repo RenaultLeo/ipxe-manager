@@ -4,6 +4,7 @@ Celery background jobs:
   - regenerate_menus_task : regenerates all .ipxe menu files
   - compile_ipxe_task     : compile les firmwares iPXE (undionly.kpxe + ipxe.efi)
 """
+import json
 import logging
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
@@ -39,6 +40,14 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
             version.version_label,
             os_type=version.os_type,
         )
+
+        meta = paths.pop("_meta", None)
+        br = {}
+        if isinstance(meta, dict):
+            raw_br = meta.get("basename_report")
+            if isinstance(raw_br, dict):
+                br = raw_br
+        version.extract_basename_report_json = json.dumps(br, ensure_ascii=False) if br else ""
 
         # Upsert BootEntry
         be = version.boot_entry

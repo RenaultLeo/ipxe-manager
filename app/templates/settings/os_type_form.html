@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% set ot_role_values = ['kernel', 'initrd', 'boot_wim', 'bcd', 'boot_sdi', 'bootmgr', 'modloop', 'esxi_boot_cfg', 'esxi_module'] %}
 {% block title %}{{ t('sett.ot_meta_title_' ~ ('edit' if ot else 'new')) }} — iPXE Manager{% endblock %}
 
 {% block content %}
@@ -14,6 +13,11 @@
 {% if err %}
 <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.ot_err_' ~ err) }}</div>
 {% endif %}
+
+<div class="alert alert-warning d-flex gap-2 align-items-start mb-4">
+  <i class="bi bi-exclamation-triangle mt-1"></i>
+  <div>{{ t('sett.ot_manual_ipxe_warn') }}</div>
+</div>
 
 <div class="row justify-content-center">
   <div class="col-lg-10">
@@ -75,8 +79,8 @@
               <tbody id="pat-body">
                 {% for row in patterns %}
                 <tr>
-                  <td><input type="text" name="extract_pat" class="form-control form-control-sm font-monospace"
-                             value="{{ row.get('pattern', '') }}" placeholder="**/casper/vmlinuz"></td>
+                  <td><input type="text" name="extract_file" class="form-control form-control-sm font-monospace"
+                             value="{{ row.get('filename', '') or row.get('pattern', '') }}" placeholder="vmlinuz"></td>
                   <td><input type="number" name="extract_max" class="form-control form-control-sm" min="1"
                              value="{{ row.get('max', 1) or 1 }}"></td>
                   <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="rmRow(this)" title="{{ t('sett.ot_rm_row') }}">×</button></td>
@@ -91,47 +95,6 @@
         </div>
       </div>
 
-      <div class="card border-secondary mb-4">
-        <div class="card-header"><i class="bi bi-hdd-network me-2"></i>{{ t('sett.ot_section_ipxe') }}</div>
-        <div class="card-body">
-          <p class="small text-muted">{{ t('sett.ot_ipxe_help') }}</p>
-          <div class="table-responsive">
-            <table class="table table-dark table-sm align-middle">
-              <thead>
-                <tr>
-                  <th>{{ t('sett.ot_col_role') }}</th>
-                  <th>{{ t('sett.ot_col_path_pattern') }}</th>
-                  <th style="width:6rem">{{ t('sett.ot_col_order') }}</th>
-                  <th style="width:3rem"></th>
-                </tr>
-              </thead>
-              <tbody id="menu-body">
-                {% for row in roles %}
-                <tr>
-                  <td>
-                    <select name="menu_role" class="form-select form-select-sm">
-                      {% set r = row.get('role', '') %}
-                      {% for rv in ot_role_values %}
-                      <option value="{{ rv }}" {% if r == rv %}selected{% endif %}>{{ rv }}</option>
-                      {% endfor %}
-                    </select>
-                  </td>
-                  <td><input type="text" name="menu_pat" class="form-control form-control-sm font-monospace"
-                             value="{{ row.get('path_pattern', '') }}" placeholder="**/casper/**"></td>
-                  <td><input type="number" name="menu_order" class="form-control form-control-sm"
-                             value="{{ row.get('sort_order', loop.index0) }}"></td>
-                  <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="rmRow(this)">×</button></td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addMenu()">
-            <i class="bi bi-plus-lg"></i> {{ t('sett.ot_add_menu_row') }}
-          </button>
-        </div>
-      </div>
-
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1"></i>{{ t('common.save') }}</button>
         <a href="/settings" class="btn btn-outline-secondary">{{ t('common.cancel') }}</a>
@@ -142,23 +105,8 @@
 
 <template id="tpl-pat">
   <tr>
-    <td><input type="text" name="extract_pat" class="form-control form-control-sm font-monospace" placeholder="**/casper/vmlinuz"></td>
+    <td><input type="text" name="extract_file" class="form-control form-control-sm font-monospace" placeholder="initrd"></td>
     <td><input type="number" name="extract_max" class="form-control form-control-sm" min="1" value="1"></td>
-    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="rmRow(this)">×</button></td>
-  </tr>
-</template>
-
-<template id="tpl-menu">
-  <tr>
-    <td>
-      <select name="menu_role" class="form-select form-select-sm">
-        {% for rv in ot_role_values %}
-        <option value="{{ rv }}">{{ rv }}</option>
-        {% endfor %}
-      </select>
-    </td>
-    <td><input type="text" name="menu_pat" class="form-control form-control-sm font-monospace" placeholder="**/vmlinuz"></td>
-    <td><input type="number" name="menu_order" class="form-control form-control-sm" value="0"></td>
     <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="rmRow(this)">×</button></td>
   </tr>
 </template>
@@ -173,11 +121,6 @@ function rmRow(btn) {
 function addPat() {
   document.getElementById('pat-body').appendChild(
     document.getElementById('tpl-pat').content.cloneNode(true)
-  );
-}
-function addMenu() {
-  document.getElementById('menu-body').appendChild(
-    document.getElementById('tpl-menu').content.cloneNode(true)
   );
 }
 </script>

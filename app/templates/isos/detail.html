@@ -151,6 +151,35 @@
     </div>
   </div>
 
+  {% if basename_report_items %}
+  <div class="col-12">
+    <div class="card border-secondary border-info">
+      <div class="card-header">
+        <i class="bi bi-search me-2"></i>{{ t('iso.basename_report_title') }}
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">{{ t('iso.basename_report_intro') }}</p>
+        <div class="row g-3">
+          {% for name, rels in basename_report_items %}
+          <div class="col-md-6 col-lg-4">
+            <div class="text-secondary small">{{ name }}</div>
+            {% if rels and rels|length > 0 %}
+            <ul class="small font-monospace mb-0 ps-3">
+              {% for rp in rels %}
+              <li class="text-break">{{ rp }}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="small text-muted mb-0">{{ t('iso.basename_report_none') }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Auto configs -->
   <div class="col-12">
     <div class="card border-secondary">

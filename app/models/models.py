@@ -18,8 +18,8 @@ class OsType(Base):
     is_builtin = Column(Boolean, default=False)               # True = OS de base, type de config forcé
 
     extract_full_iso = Column(Boolean, default=False)       # extraction 7z complète vers boot/<os>/<ver>/
-    extract_paths_json = Column(Text, default="[]")       # liste JSON [{ "pattern": "casper/vmlinuz", "max": 1 }, …]
-    ipxe_roles_json = Column(Text, default="[]")           # liste JSON [{ "role": "kernel", "path_pattern": "**/vmlinuz", "sort_order": 0 }, …]
+    extract_paths_json = Column(Text, default="[]")  # [{ "filename":"vmlinuz","max":1 }] ou legacy {"pattern":...}
+    ipxe_roles_json = Column(Text, default="[]")  # obsolète formulaire — conservé pour anciennes entrées
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -37,6 +37,7 @@ class IsoVersion(Base):
     iso_size = Column(BigInteger, default=0)
     notes = Column(Text, default="")
     iso_was_extracted = Column(Boolean, default=False)  # True après au moins une extraction ISO réussie
+    extract_basename_report_json = Column(Text, default="")  # dernier rapport recherche par nom { "init": ["a/b",…] }
     created_at = Column(DateTime, default=datetime.utcnow)
 
     os_type = relationship("OsType", back_populates="versions")

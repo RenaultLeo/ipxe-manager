@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 from datetime import datetime
@@ -195,9 +196,25 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
     version = db.query(IsoVersion).get(version_id)
     if not version:
         raise HTTPException(404, "Version introuvable")
+    basename_report: dict[str, list[str]] = {}
+    raw = getattr(version, "extract_basename_report_json", "") or ""
+    if raw.strip():
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                basename_report = {k: v for k, v in parsed.items() if isinstance(v, list)}
+        except (json.JSONDecodeError, TypeError):
+            basename_report = {}
+    basename_report_items = sorted(basename_report.items(), key=lambda kv: kv[0].lower())
     return templates.TemplateResponse(
         "isos/detail.html",
-        template_context(request, version=version, fmt_size=fmt_size),
+        template_context(
+            request,
+            version=version,
+            fmt_size=fmt_size,
+            basename_report=basename_report,
+            basename_report_items=basename_report_items,
+        ),
     )
 
 

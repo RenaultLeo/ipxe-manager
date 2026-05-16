@@ -1,6 +1,7 @@
 """
-Extraction ISO pilotée par la configuration enregistrée sur ``OsType`` (paramètres avancés).
-Utilisé lorsque ``extract_full_iso`` est coché ou que ``extract_paths_json`` liste des motifs.
+Extraction ISO pilotée par ``OsType`` :
+- Liste de **noms de fichier** (ex. ``vmlinuz``, ``init``) avec nombre max ;
+- anciens entrées ``pattern`` (fnmatch relatif ISO) encore prises en charge.
 """
 from __future__ import annotations
 
@@ -10,7 +11,8 @@ import logging
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 from app.config import settings
 from app.models.models import OsType
@@ -24,29 +26,51 @@ from app.services.iso_extractor import (
 
 logger = logging.getLogger(__name__)
 
-# Rôle saisi dans le formulaire → clé du dict retourné par l'extracteur (cf. jobs.py)
-ROLE_TO_RESULT_KEY: dict[str, str] = {
-    "kernel": "kernel_path",
-    "initrd": "initrd_path",
-    "boot_wim": "boot_wim_path",
-    "bcd": "bcd_path",
-    "boot_sdi": "boot_sdi_path",
-    "bootmgr": "bootmgr_path",
-    "modloop": "modloop_path",
-    "esxi_boot_cfg": "esxi_boot_cfg_path",
-}
+
+@dataclass
+class _UnifiedSpec:
+    pattern: str | None
+    basename: str | None
+    max_n: int
 
 
 def uses_custom_extract_plan(ot: OsType) -> bool:
-    """True si l'utilisateur a défini un plan personnalisé (hors comportement distro codé en dur)."""
     if getattr(ot, "extract_full_iso", False):
         return True
     try:
-        raw = getattr(ot, "extract_paths_json", None) or "[]"
-        data = json.loads(raw)
+        data = json.loads(getattr(ot, "extract_paths_json", None) or "[]")
         return isinstance(data, list) and len(data) > 0
     except (json.JSONDecodeError, TypeError):
         return False
+
+
+def _normalize_specs(specs_raw: list) -> list[_UnifiedSpec]:
+    out: list[_UnifiedSpec] = []
+    for obj in specs_raw:
+        if not isinstance(obj, dict):
+            continue
+        try:
+            max_n = max(1, int(obj.get("max", 1)))
+        except (TypeError, ValueError):
+            max_n = 1
+
+        fname = str(obj.get("filename") or obj.get("name") or "").strip()
+        if fname:
+            bn = PurePosixPath(fname.replace("\\", "/")).name
+            if bn:
+                out.append(_UnifiedSpec(pattern=None, basename=bn, max_n=max_n))
+            continue
+
+        pat = str(obj.get("pattern") or "").strip()
+        if not pat:
+            continue
+        if "*" in pat or "?" in pat or ("[" in pat and "]" in pat):
+            out.append(_UnifiedSpec(pattern=pat, basename=None, max_n=max_n))
+        else:
+            bn = PurePosixPath(pat).name
+            if bn:
+                out.append(_UnifiedSpec(pattern=None, basename=bn, max_n=max_n))
+    return out
 
 
 def try_extract_with_plan(
@@ -55,10 +79,6 @@ def try_extract_with_plan(
     version_id: int,
     version_label: str,
 ) -> dict | None:
-    """
-    Lance l'extraction selon OsType.extract_* / ipxe_roles_json.
-    Retourne None pour laisser le flux historique ``extract_iso`` (DISTRO_RULES).
-    """
     if not uses_custom_extract_plan(ot):
         return None
 
@@ -78,10 +98,24 @@ def try_extract_with_plan(
     dest.mkdir(parents=True, exist_ok=True)
 
     try:
-        specs = json.loads(ot.extract_paths_json or "[]")
+        specs_raw = json.loads(ot.extract_paths_json or "[]")
     except json.JSONDecodeError:
-        specs = []
-    specs = specs if isinstance(specs, list) else []
+        specs_raw = []
+    specs_raw = specs_raw if isinstance(specs_raw, list) else []
+    unified = _normalize_specs(specs_raw)
+    if not unified:
+        raise ExtractionError(
+            "Configuration d'extraction vide ou invalide (noms / motifs)."
+        )
+
+    basename_report: dict[str, list[str]] = {}
+
+    def find_by_basename(root: Path, basename: str) -> list[Path]:
+        low = basename.casefold()
+        return sorted(
+            (p for p in root.rglob("*") if p.is_file() and p.name.casefold() == low),
+            key=lambda p: str(p),
+        )
 
     if ot.extract_full_iso:
         proc = subprocess.run(
@@ -94,6 +128,22 @@ def try_extract_with_plan(
             raise ExtractionError(
                 f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
             )
+        for spec in unified:
+            if spec.basename:
+                hits = find_by_basename(dest, spec.basename)[: spec.max_n]
+                basename_report[spec.basename] = [p.relative_to(dest).as_posix() for p in hits]
+                if not hits:
+                    logger.warning(
+                        'Extraction complète : aucun fichier nommé "%s" dans l\'arborescence.',
+                        spec.basename,
+                    )
+            else:
+                logger.warning(
+                    "Motif fnmatch legacy « %s » ignoré en extraction complète (arborescence déjà déployée sous %s). "
+                    "Utilisez uniquement des noms de fichier pour les rapports, ou passez par l'extraction sélective.",
+                    spec.pattern,
+                    dest,
+                )
     else:
         with tempfile.TemporaryDirectory() as tmp:
             tmpp = Path(tmp)
@@ -107,125 +157,99 @@ def try_extract_with_plan(
                 raise ExtractionError(
                     f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
                 )
-            _selective_copy_patterns(tmpp, dest, specs)
+
+            for spec in unified:
+                if spec.pattern:
+                    _legacy_pattern_copy_to_dest(tmpp, dest, spec.pattern, spec.max_n)
+                    continue
+                if not spec.basename:
+                    continue
+
+                hits = find_by_basename(tmpp, spec.basename)[: spec.max_n]
+
+                if not hits:
+                    basename_report[spec.basename] = []
+                    logger.warning(
+                        'Sélectif : aucune occurrence de « %s » dans l\'ISO.',
+                        spec.basename,
+                    )
+                elif len(hits) == 1:
+                    shutil.copy2(hits[0], dest / hits[0].name)
+                    basename_report[spec.basename] = [hits[0].name]
+                else:
+                    for src in hits:
+                        rel = src.relative_to(tmpp)
+                        tgt = dest / rel
+                        tgt.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src, tgt)
+                    basename_report[spec.basename] = [h.relative_to(tmpp).as_posix() for h in hits]
+                logger.info(
+                    'Sélectif « %s » : %d occurrence(s) — %s',
+                    spec.basename,
+                    len(hits),
+                    basename_report.get(spec.basename),
+                )
 
     _fix_permissions(dest)
 
-    try:
-        roles = json.loads(ot.ipxe_roles_json or "[]")
-    except json.JSONDecodeError:
-        roles = []
-    roles = roles if isinstance(roles, list) else []
-
-    result: dict = {}
-    if roles:
-        result.update(_map_roles_under_dest(dest, os_slug, version_slug, roles))
-
+    result: dict[str, object] = {}
     bt = (ot.boot_type or "linux").lower()
     if bt == "windows":
-        extra = _find_windows_in_dest(dest, os_slug, version_slug)
-        for k, v in extra.items():
-            result.setdefault(k, v)
+        try:
+            extra = _find_windows_in_dest(dest, os_slug, version_slug)
+            for k, v in extra.items():
+                result.setdefault(k, v)
+        except Exception as exc:
+            logger.warning(
+                "Détection Windows automatique après plan personnalisé : %s",
+                exc,
+            )
     elif bt in ("linux", "tools", "custom"):
         _fallback_kernel_initrd_in_dest(dest, os_slug, version_slug, result)
 
-    # Garde ESXi hors plan personnalisé pour l’instant (règle codée en dur très spécifique)
-    if not result:
-        raise ExtractionError(
-            "Extraction pilotée par le type d’OS : aucun fichier de boot trouvé après application du plan "
-            "(vérifier les motifs et les rôles iPXE)."
-        )
+    filtered_report = {k: v for k, v in basename_report.items()}
+    paths_out = {k: v for k, v in result.items()}
+    paths_out["_meta"] = {"basename_report": filtered_report}
 
-    logger.info("Extraction plan OsType terminée [%s/%s] : %s", os_slug, version_slug, list(result.keys()))
-    return result
-
-
-def _selective_copy_patterns(src_root: Path, dest: Path, specs: list[dict]) -> None:
-    """Copie depuis l’ISO décompressée uniquement les fichiers correspondants (fnmatch POSIX relatif)."""
-    if not specs:
-        raise ExtractionError(
-            "Liste de motifs d’extraction vide : cochez « extraction complète » ou ajoutez au moins un motif."
-        )
-    seen_dst: set[str] = set()
-    for spec in specs:
-        pattern = (spec.get("pattern") or "").strip() or "**/*"
-        try:
-            max_n = max(1, int(spec.get("max", 1)))
-        except (TypeError, ValueError):
-            max_n = 1
-        candidates: list[Path] = []
-        for f in src_root.rglob("*"):
-            if not f.is_file():
-                continue
-            rel = f.relative_to(src_root).as_posix()
-            if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(rel.lower(), pattern.lower()):
-                candidates.append(f)
-        candidates.sort(key=lambda p: str(p))
-        taken = candidates[:max_n]
-        if not taken:
-            logger.warning("Aucun fichier pour le motif %s", pattern)
-        for src in taken:
-            rel = src.relative_to(src_root)
-            target = dest / rel
-            key = str(target.resolve())
-            if key in seen_dst:
-                continue
-            seen_dst.add(key)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, target)
-            logger.info("Copié (sélectif) : %s", rel)
+    logger.info(
+        "Extraction plan OsType [%s/%s] boot=%s champs détectés=%s rapport noms=%s",
+        os_slug,
+        version_slug,
+        bt,
+        list(paths_out.keys()),
+        filtered_report,
+    )
+    return paths_out
 
 
-def _map_roles_under_dest(dest: Path, os_slug: str, version_slug: str, roles: list[dict]) -> dict:
-    """Associe path_pattern → champs boot (ordre sort_order croissant)."""
-    base = f"boot/{os_slug}/{version_slug}"
-    out: dict = {}
-    esxi_mod_basenames: list[str] = []
-    used: set[str] = set()
-
-    def rel_key(p: Path) -> str:
-        return str(p.resolve())
-
-    ordered = sorted(roles, key=lambda r: int(r.get("sort_order", 0) or 0))
-    for row in ordered:
-        role = (row.get("role") or "").strip().lower()
-        pat = (row.get("path_pattern") or "").strip()
-        if not role or not pat:
+def _legacy_pattern_copy_to_dest(src_root: Path, dest: Path, pattern: str, max_n: int) -> None:
+    cand: list[Path] = []
+    for f in src_root.rglob("*"):
+        if not f.is_file():
             continue
-        hit = _first_unmatched_under_dest(dest, pat, used)
-        if not hit:
-            logger.warning("Rôle %s : aucun fichier pour pattern %s", role, pat)
+        rel = f.relative_to(src_root).as_posix()
+        pl = pattern.lower()
+        rl = rel.lower()
+        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(rl, pl):
+            cand.append(f)
+    cand.sort(key=lambda p: str(p))
+    if not cand:
+        logger.warning("Motif sélectif : aucun fichier pour %s", pattern)
+    taken = cand[:max_n]
+    seen: set[str] = set()
+    for src in taken:
+        rel = src.relative_to(src_root)
+        target = dest / rel
+        key = str(target.resolve())
+        if key in seen:
             continue
-        used.add(rel_key(hit))
-        rel = hit.relative_to(dest).as_posix()
-        url = f"{base}/{rel}"
-        if role == "esxi_module":
-            esxi_mod_basenames.append(hit.name)
-            continue
-        rkey = ROLE_TO_RESULT_KEY.get(role)
-        if rkey:
-            out[rkey] = url
-        else:
-            logger.warning("Rôle iPXE inconnu ignoré : %s", role)
-
-    if esxi_mod_basenames:
-        out["esxi_modules"] = json.dumps(esxi_mod_basenames)
-    return out
-
-
-def _first_unmatched_under_dest(dest: Path, pattern: str, used: set[str]) -> Path | None:
-    files = sorted((p for p in dest.rglob("*") if p.is_file()), key=lambda p: str(p))
-    for f in files:
-        if str(f.resolve()) in used:
-            continue
-        rel = f.relative_to(dest).as_posix()
-        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(rel.lower(), pattern.lower()):
-            return f
-    return None
+        seen.add(key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target)
+        logger.info("Copié (motif) : %s", rel)
 
 
 def _fallback_kernel_initrd_in_dest(dest: Path, os_slug: str, version_slug: str, result: dict) -> None:
-    """Complète kernel/initrd depuis l’arborescence déjà extraite (règles génériques)."""
     base = f"boot/{os_slug}/{version_slug}"
     if not result.get("kernel_path"):
         k = _find_in_dest(dest, _GENERIC_RULE["kernel"], "kernel")
