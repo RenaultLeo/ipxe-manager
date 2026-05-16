@@ -68,23 +68,35 @@
 
   <div class="col-md-6">
     <div class="card border-secondary">
-      <div class="card-header d-flex justify-content-between">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span><i class="bi bi-grid me-2"></i>{{ t('sett.os_types') }}</span>
+        <a href="/settings/os-types/new" class="btn btn-success btn-sm flex-shrink-0">
+          <i class="bi bi-plus-lg me-1"></i>{{ t('sett.os_type_add') }}
+        </a>
       </div>
       <div class="card-body p-0">
-        <table class="table table-dark table-sm mb-0">
-          <thead><tr><th>{{ t('sett.col_slug') }}</th><th>{{ t('sett.col_label') }}</th><th>{{ t('sett.col_boot') }}</th><th></th></tr></thead>
+        <table class="table table-dark table-sm mb-0 align-middle">
+          <thead><tr><th>{{ t('sett.col_slug') }}</th><th>{{ t('sett.col_label') }}</th><th>{{ t('sett.col_boot') }}</th><th class="text-end"></th></tr></thead>
           <tbody>
             {% for ot in os_types %}
             <tr>
               <td class="font-monospace">{{ ot.slug }}</td>
               <td>{{ ot.label }}</td>
               <td><span class="badge bg-secondary">{{ ot.boot_type }}</span></td>
-              <td>
-                <form method="post" action="/settings/os-types/{{ ot.id }}/delete"
+              <td class="text-end text-nowrap">
+                {% if not ot.is_builtin %}
+                <a href="/settings/os-types/{{ ot.id }}/edit" class="btn btn-sm btn-outline-secondary me-1" title="{{ t('sett.ot_edit') }}">
+                  <i class="bi bi-pencil-square"></i>
+                </a>
+                {% endif %}
+                {% if ot.is_builtin %}
+                <span class="text-muted small">{{ t('sett.os_builtin_locked') }}</span>
+                {% else %}
+                <form method="post" action="/settings/os-types/{{ ot.id }}/delete" class="d-inline"
                       onsubmit="return confirm({{ t('sett.delete_os_confirm', name=ot.label)|tojson }})">
-                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
+                {% endif %}
               </td>
             </tr>
             {% else %}
@@ -93,34 +105,14 @@
           </tbody>
         </table>
       </div>
-      <div class="card-footer">
-        <form method="post" action="/settings/os-types/add" class="row g-2">
-          <div class="col-3">
-            <input type="text" name="slug" class="form-control form-control-sm" placeholder="{{ t('sett.slug_ph') }}" required>
-          </div>
-          <div class="col-3">
-            <input type="text" name="label" class="form-control form-control-sm" placeholder="{{ t('sett.label_ph') }}" required>
-          </div>
-          <div class="col-3">
-            <select name="boot_type" class="form-select form-select-sm">
-              <option value="linux">linux</option>
-              <option value="windows">windows</option>
-              <option value="custom">custom</option>
-            </select>
-          </div>
-          <div class="col-3">
-            <button class="btn btn-success btn-sm w-100">
-              <i class="bi bi-plus"></i> {{ t('sett.add') }}
-            </button>
-          </div>
-          <div class="col-6">
-            <input type="text" name="icon" class="form-control form-control-sm"
-                   placeholder="{{ t('sett.icon_ph') }}" value="bi-hdd">
-          </div>
-        </form>
-      </div>
     </div>
   </div>
 
 </div>
+
+{% if request.query_params.get('msg') == 'os_builtin_nodelete' %}
+<div class="alert alert-warning mt-3"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.msg_builtin_no_delete') }}</div>
+{% elif request.query_params.get('msg') == 'os_builtin_noedit' %}
+<div class="alert alert-warning mt-3"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.msg_builtin_no_edit') }}</div>
+{% endif %}
 {% endblock %}

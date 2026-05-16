@@ -46,6 +46,9 @@ def _migrate_columns():
     _add_column_if_missing("autoconfigs",  "meta_data_content",  "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "ubuntu_cloud_slug",  "VARCHAR(128)")
     _add_column_if_missing("iso_versions", "iso_was_extracted", "BOOLEAN DEFAULT 0")
+    _add_column_if_missing("os_types", "extract_full_iso", "BOOLEAN DEFAULT 0")
+    _add_column_if_missing("os_types", "extract_paths_json", "TEXT DEFAULT '[]'")
+    _add_column_if_missing("os_types", "ipxe_roles_json", "TEXT DEFAULT '[]'")
     _backfill_iso_was_extracted()
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
 

@@ -37,6 +37,7 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
             version.os_type.slug,
             version.id,
             version.version_label,
+            os_type=version.os_type,
         )
 
         # Upsert BootEntry

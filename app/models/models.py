@@ -14,8 +14,13 @@ class OsType(Base):
     slug = Column(String(32), unique=True, nullable=False)   # windows, ubuntu, debian …
     label = Column(String(64), nullable=False)               # Windows, Ubuntu, Debian …
     icon = Column(String(64), default="bi-hdd")             # Bootstrap Icon class
-    boot_type  = Column(String(16), default="linux")          # linux | windows | custom
+    boot_type  = Column(String(16), default="linux")          # linux | windows | tools | esxi | custom…
     is_builtin = Column(Boolean, default=False)               # True = OS de base, type de config forcé
+
+    extract_full_iso = Column(Boolean, default=False)       # extraction 7z complète vers boot/<os>/<ver>/
+    extract_paths_json = Column(Text, default="[]")       # liste JSON [{ "pattern": "casper/vmlinuz", "max": 1 }, …]
+    ipxe_roles_json = Column(Text, default="[]")           # liste JSON [{ "role": "kernel", "path_pattern": "**/vmlinuz", "sort_order": 0 }, …]
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     versions = relationship("IsoVersion", back_populates="os_type", cascade="all, delete")

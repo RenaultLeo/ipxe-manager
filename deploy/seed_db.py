@@ -23,7 +23,7 @@ DEFAULT_OS = [
     {"slug": "proxmox", "label": "Proxmox VE",  "icon": "bi-server",   "boot_type": "linux",   "is_builtin": True},
     {"slug": "winpe",   "label": "WinPE",       "icon": "bi-terminal", "boot_type": "windows", "is_builtin": True},
     {"slug": "esxi",    "label": "VMware ESXi", "icon": "bi-cpu",      "boot_type": "esxi",    "is_builtin": True},
-    {"slug": "tools",   "label": "Outils",      "icon": "bi-tools",    "boot_type": "linux",   "is_builtin": False},
+    {"slug": "tools",   "label": "Outils",      "icon": "bi-tools",    "boot_type": "tools",    "is_builtin": False},
 ]
 
 if __name__ == "__main__":

@@ -125,7 +125,13 @@ WIN_EXACT = {
 
 # ── Point d'entrée public ──────────────────────────────────────────────────────
 
-def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str = "") -> dict:
+def extract_iso(
+    iso_path: str,
+    os_slug: str,
+    version_id: int,
+    version_label: str = "",
+    os_type=None,
+) -> dict:
     from app.services.slugify import slugify
     version_slug = slugify(version_label) if version_label else str(version_id)
 
@@ -141,6 +147,14 @@ def extract_iso(iso_path: str, os_slug: str, version_id: int, version_label: str
     dest.mkdir(parents=True, exist_ok=True)
 
     logger.info("Extraction %s → %s", iso.name, dest)
+
+    if os_type is not None:
+        from app.services.os_type_extract_plan import try_extract_with_plan
+
+        planned = try_extract_with_plan(iso_path, os_type, version_id, version_label)
+        if planned is not None:
+            logger.info("Extraction terminée : %s", planned)
+            return planned
 
     rule = DISTRO_RULES.get(os_slug, _GENERIC_RULE)
 
