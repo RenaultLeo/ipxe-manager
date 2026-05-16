@@ -5,6 +5,7 @@
 ########################################
 
 :start
+{% include '_theme.inc.j2' %}
 menu === {{ os_type.label }} — Scripts personnalisés ===
 {% for e in entries %}
 item c{{ e.id }} {{ e.label }}

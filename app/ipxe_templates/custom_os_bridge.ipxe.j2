@@ -9,10 +9,12 @@
 
 {% if has_autres %}
 :start
+{% include '_theme.inc.j2' %}
 chain --autofree {{ server_url }}/menus/{{ os_type.slug }}_autres.ipxe || goto erreur
 
 {% else %}
 :start
+{% include '_theme.inc.j2' %}
 goto vide
 
 :vide

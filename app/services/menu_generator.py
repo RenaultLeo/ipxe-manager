@@ -4,6 +4,7 @@ Generates all .ipxe menu files from the database and Jinja2 templates.
 import json
 import logging
 import re
+import shutil
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
@@ -183,6 +184,17 @@ def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
     cfg.menus_dir.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    bg_src = repo_root / "image-ipxe.png"
+    bg_dest = cfg.menus_dir / "menu-background.png"
+    has_menu_background = False
+    if bg_src.is_file():
+        shutil.copy2(bg_src, bg_dest)
+        has_menu_background = True
+        logger.info("Fond menu iPXE : %s → %s", bg_src, bg_dest)
+    elif bg_dest.is_file():
+        bg_dest.unlink(missing_ok=True)
+
     env = _jinja_env()
     written: list[str] = []
 
@@ -221,6 +233,7 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     has_autres=has_autres,
                     server_url=base,
+                    has_menu_background=has_menu_background,
                 )
                 out = cfg.menus_dir / f"{os_type.slug}.ipxe"
                 out.write_text(content, encoding="utf-8")
@@ -246,6 +259,7 @@ def regenerate_all(db: Session) -> list[str]:
                     entries=standard_entries,
                     has_autres=has_autres,
                     server_url=base,
+                    has_menu_background=has_menu_background,
                     ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
                     ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
                     ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
@@ -264,6 +278,7 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     entries=custom_entries,
                     server_url=base,
+                    has_menu_background=has_menu_background,
                     back_menu_url=autres_back_target,
                     back_item_label=autres_back_item,
                 )
@@ -286,6 +301,7 @@ def regenerate_all(db: Session) -> list[str]:
         os_types=os_types,
         server_url=cfg.server_base_url.rstrip("/"),
         remote_chains=remote_chains,
+        has_menu_background=has_menu_background,
     )
     out = cfg.menus_dir / "menu.ipxe"
     out.write_text(content, encoding="utf-8")

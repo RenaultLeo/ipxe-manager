@@ -9,6 +9,7 @@ set menu-timeout 30000
 set menu-default local
 
 :start
+{% include '_theme.inc.j2' %}
 menu === iPXE Boot Manager ===
 {% for ot in os_types %}
 item {{ ot.slug }} {{ ot.label }}
