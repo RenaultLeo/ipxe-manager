@@ -1,9 +1,21 @@
-{# Pas de « colour » : absent de nombreuses builds iPXE. Uniquement cpair + indices VGA 0–15. #}
+{# Transparence : arrière-plan des paires = indice 4 (semi-transparent sur image PNG, doc iPXE). #}
+{# Résolution console plus basse = moins de colonnes/lignes → texte plus lisible à l’écran. #}
 {% if has_menu_background %}
-console --picture {{ server_url }}/menus/menu-background.png --left 28 --right 28 --top 58 --bottom 36
+console --picture {{ server_url }}/menus/menu-background.png --left 24 --right 24 --top 40 --bottom 24 --x 1024 --y 640
 {% endif %}
+colour --rgb 0xe2e8f0 7
+colour --rgb 0x94a3b8 8
+colour --rgb 0xcbd5e1 6
+{% if has_menu_background %}
+cpair --foreground 7 --background 4 0
+cpair --foreground 7 --background 4 1
+cpair --foreground 7 --background 4 2
+cpair --foreground 8 --background 4 3
+cpair --foreground 0 --background 7 7
+{% else %}
 cpair --foreground 7 --background 0 0
 cpair --foreground 7 --background 0 1
 cpair --foreground 7 --background 0 2
 cpair --foreground 8 --background 0 3
 cpair --foreground 0 --background 7 7
+{% endif %}
