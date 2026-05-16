@@ -127,6 +127,8 @@ Pour **Windows**, l’extraction est **complète** (toute l’arborescence ISO) 
 
 Pour **Ubuntu**, l’ISO est aussi extraite **en entier** (cas autoinstall / accès aux couches live) ; noyau et initrd sont résolus dans **`casper/`**.
 
+Pour **Rocky Linux**, l’ISO est extraite **en entier** (BaseOS, AppStream, `images/install.img`, `.treeinfo`, etc.). Les menus ajoutent **`inst.repo=`** (URL du dossier version sur ton HTTP) et **`ip=dhcp`** si besoin pour qu’Anaconda trouve le média d’installation en PXE.
+
 ### Fichiers Boot
 
 Page de gestion centralisée : remplacer ou compléter kernel, initrd, modloop (Alpine), éléments Windows, args kernel, etc. Les **libellés** reflètent les **vrais noms de fichier** sur disque (ex. `vmlinuz-lts`).

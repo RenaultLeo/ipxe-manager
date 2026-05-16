@@ -390,6 +390,9 @@ def _build_kernel_args(
     live (casper) de lire le squashfs sur NFS : ``ip=dhcp`` si besoin, ``boot=casper``,
     ``netboot=nfs``, ``nfsroot=hôte:chemin``, et si besoin ``nfsopts=…`` (voir casper(7) —
     ne pas coller ``,vers=`` dans nfsroot).
+
+    Pour **Rocky** avec ISO extraite en entier : ajoute ``inst.repo=`` (URL du répertoire
+    racine servi par HTTP, avec ``.treeinfo``) et ``ip=dhcp`` si absent — requis par Anaconda/dracut.
     """
     args = be.kernel_args if be and be.kernel_args else ""
 
@@ -400,6 +403,20 @@ def _build_kernel_args(
         modloop_url = _http(be.modloop_path, cfg)
         if "modloop=" not in args:
             args = f"{args} modloop={modloop_url}".strip()
+
+    # Rocky (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
+    if os_slug == "rocky" and be:
+        seg = _boot_os_version_segment(be, os_slug)
+        if seg and "inst.repo=" not in args:
+            repo_url = _http(f"boot/{os_slug}/{seg}/", cfg)
+            if repo_url:
+                args = f"{args} inst.repo={repo_url}".strip()
+        elif not seg:
+            logger.warning(
+                'Rocky : inst.repo non ajouté — chemin kernel/intrd inattendu (pas de dossier sous "boot/rocky/<version>/").',
+            )
+        if not _has_ip_kernel_arg(args):
+            args = f"ip=dhcp {args}".strip()
 
     # Ubuntu ISO extraite : indiquer explicitement NFS pour monter casper depuis la racine exportée.
     if os_slug.lower() != "ubuntu" or not nfsroot_pair or "nfsroot=" in args:
