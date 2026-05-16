@@ -27,7 +27,8 @@
               <select name="os_type_id" class="form-select" id="os-select" required>
                 <option value="">{{ t('common.choose') }}</option>
                 {% for ot in os_types %}
-                <option value="{{ ot.id }}" data-boot="{{ ot.boot_type }}" data-slug="{{ ot.slug }}">
+                <option value="{{ ot.id }}" data-boot="{{ ot.boot_type }}" data-slug="{{ ot.slug }}"
+                        {% if preselect_os_slug and preselect_os_slug == ot.slug %}selected{% endif %}>
                   {{ ot.label }}
                 </option>
                 {% endfor %}
@@ -297,12 +298,18 @@ function updateLinuxFields() {
 }
 
 document.getElementById('os-select').addEventListener('change', function() {
-  const opt = this.options[this.selectedIndex];
+  syncOsSelectUi();
+});
+
+function syncOsSelectUi() {
+  const sel = document.getElementById('os-select');
+  const opt = sel.options[sel.selectedIndex];
   const bootType = opt.dataset.boot || '';
   document.getElementById('fields-windows').classList.toggle('d-none', bootType !== 'windows');
   document.getElementById('fields-linux').classList.toggle('d-none', bootType !== 'linux');
   if (bootType === 'linux') updateLinuxFields();
-});
+}
+syncOsSelectUi();
 
 document.getElementById('iso-file').addEventListener('change', function() {
   const sel = document.getElementById('os-select');

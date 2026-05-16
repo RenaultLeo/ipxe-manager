@@ -4,7 +4,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0"><i class="bi bi-disc me-2 text-primary"></i>{{ t('iso.heading') }}</h2>
-  <a href="/isos/upload" class="btn btn-primary">
+  <a href="{% if filter_os_slug %}/isos/upload?os={{ filter_os_slug }}{% else %}/isos/upload{% endif %}" class="btn btn-primary">
     <i class="bi bi-plus-circle me-1"></i>{{ t('iso.add_version') }}
   </a>
 </div>

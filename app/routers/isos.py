@@ -83,18 +83,26 @@ async def iso_list(
 # ── Upload form ───────────────────────────────────────────────────────────────
 
 @router.get("/upload", response_class=HTMLResponse)
-async def upload_form(request: Request, db: Session = Depends(get_db)):
+async def upload_form(
+    request: Request,
+    db: Session = Depends(get_db),
+    os: str | None = Query(None, description="Slug du type d'OS présélectionné dans le formulaire."),
+):
     redir = _auth(request)
     if redir:
         return redir
     os_types = sort_os_types_for_ui(db.query(OsType).all())
     os_extract_meta = _os_extract_meta_for_upload(os_types)
+    slug_set = {ot.slug for ot in os_types}
+    raw = (os or "").strip().lower()
+    preselect_os_slug = raw if raw in slug_set else ""
     return templates.TemplateResponse(
         "isos/upload.html",
         template_context(
             request,
             os_types=os_types,
             os_extract_meta=os_extract_meta,
+            preselect_os_slug=preselect_os_slug,
         ),
     )
 
