@@ -6,7 +6,7 @@ from app.database import get_db
 from app.auth import is_authenticated
 from app.services.disk_info import get_disk_usage, fmt_size
 from app.models.models import OsType, IsoVersion, Upload
-from app.services.os_type_order import sort_os_types_for_ui
+from app.services.os_type_order import visible_on_dashboard
 from app.config import settings
 from app.templating import templates, template_context
 
@@ -28,7 +28,9 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
     try:
         disk = get_disk_usage()
-        os_types = sort_os_types_for_ui(db.query(OsType).all())
+        all_os_types = db.query(OsType).all()
+        os_types = visible_on_dashboard(all_os_types)
+        os_type_count = len(all_os_types)
 
         stats = []
         for ot in os_types:
@@ -53,6 +55,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         traceback.print_exc()
         disk = {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
         stats, recent_uploads, active_jobs, active_jobs_list = [], [], 0, []
+        os_type_count = 0
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -65,5 +68,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             active_jobs=active_jobs,
             active_jobs_list=active_jobs_list,
             timeout_h=round(settings.extract_timeout / 3600, 1),
+            os_type_count=os_type_count,
         ),
     )

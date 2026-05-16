@@ -10,6 +10,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.database import init_db, SessionLocal
 from app.models.models import OsType
+from app.services.os_type_order import UI_OS_SLUG_ORDER
+
+_SLUG_ORDER_RANK = {s: i for i, s in enumerate(UI_OS_SLUG_ORDER)}
 
 DEFAULT_OS = [
     {"slug": "windows", "label": "Windows",     "icon": "bi-windows",  "boot_type": "windows", "is_builtin": True},
@@ -32,9 +35,17 @@ if __name__ == "__main__":
     added = 0
     updated = 0
     for entry in DEFAULT_OS:
-        existing = db.query(OsType).filter(OsType.slug == entry["slug"]).first()
+        slug = entry["slug"]
+        ui_order = _SLUG_ORDER_RANK.get(slug, len(_SLUG_ORDER_RANK))
+        existing = db.query(OsType).filter(OsType.slug == slug).first()
         if not existing:
-            db.add(OsType(**entry))
+            db.add(
+                OsType(
+                    **entry,
+                    ui_sort_order=ui_order,
+                    show_on_dashboard=True,
+                )
+            )
             added += 1
         else:
             # Mettre à jour is_builtin / boot_type depuis la liste de référence

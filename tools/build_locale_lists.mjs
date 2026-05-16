@@ -570,6 +570,20 @@ const PAIRS_DE = [
   ["Preseed (Debian)", "Preseed (Debian)"],
   ["Kickstart (RHEL/CentOS/ESXi)", "Kickstart (RHEL/CentOS/ESXi)"],
   ["Unattend.xml (Windows)", "Unattend.xml (Windows)"],
+  [
+    "All cards are hidden in Settings (eye icon).",
+    "Alle Karten sind in den Einstellungen ausgeblendet (Augen-Symbol).",
+  ],
+  [
+    "Drag to reorder (iPXE menus and tabs)",
+    "Zum Sortieren ziehen (iPXE-Menüs und Tabs)",
+  ],
+  ["Show on dashboard", "In der Übersicht anzeigen"],
+  ["Hide from dashboard", "In der Übersicht ausblenden"],
+  [
+    "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
+    "Zeilen für iPXE-Menüs und ISO-Tabs sortieren. Das Augen-Symbol steuert nur die Karten in der Übersicht.",
+  ],
 ];
 
 const PAIRS_ES = [
@@ -1103,6 +1117,20 @@ const PAIRS_ES = [
   ["— Use in", "— Usar en"],
   ["iPXE firmware", "Firmware iPXE"],
   ["Sources:", "Fuentes:"],
+  [
+    "All cards are hidden in Settings (eye icon).",
+    "Todas las tarjetas están ocultas en Ajustes (icono del ojo).",
+  ],
+  [
+    "Drag to reorder (iPXE menus and tabs)",
+    "Arrastrar para reordenar (menús iPXE y pestañas)",
+  ],
+  ["Show on dashboard", "Mostrar en el panel"],
+  ["Hide from dashboard", "Ocultar del panel"],
+  [
+    "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
+    "Reordene las filas para los menús iPXE y las pestañas ISO. El icono del ojo solo afecta a las tarjetas del panel.",
+  ],
 ];
 
 const PAIRS_IT = [
@@ -1630,6 +1658,20 @@ const PAIRS_IT = [
   ["iPXE firmware", "Firmware iPXE"],
   ["Sources:", "Sorgenti:"],
   ["{n} GB free", "{n} GB liberi"],
+  [
+    "All cards are hidden in Settings (eye icon).",
+    "Tutte le schede sono nascoste nelle Impostazioni (icona occhio).",
+  ],
+  [
+    "Drag to reorder (iPXE menus and tabs)",
+    "Trascina per riordinare (menu iPXE e schede)",
+  ],
+  ["Show on dashboard", "Mostra nel pannello"],
+  ["Hide from dashboard", "Nascondi dal pannello"],
+  [
+    "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
+    "Riordina le righe per i menu iPXE e le schede ISO. L'icona dell'occhio attiva o disattiva solo le schede nel pannello.",
+  ],
 ];
 
 const PAIRS_PT = [
@@ -2158,6 +2200,20 @@ const PAIRS_PT = [
   ["Release", "Versão"],
   ["iPXE firmware", "Firmware iPXE"],
   ["Sources:", "Origens:"],
+  [
+    "All cards are hidden in Settings (eye icon).",
+    "Todos os cartões estão ocultos nas Definições (ícone do olho).",
+  ],
+  [
+    "Drag to reorder (iPXE menus and tabs)",
+    "Arrastar para reordenar (menus iPXE e separadores)",
+  ],
+  ["Show on dashboard", "Mostrar no painel"],
+  ["Hide from dashboard", "Ocultar do painel"],
+  [
+    "Reorder rows for iPXE menus and ISO tabs. The eye icon toggles dashboard cards only.",
+    "Reordene as linhas para os menus iPXE e os separadores ISO. O ícone do olho apenas altera os cartões no painel.",
+  ],
 ];
 
 writeLocale("de", PAIRS_DE);

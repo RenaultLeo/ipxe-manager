@@ -107,9 +107,13 @@
   </div>
   {% else %}
   <div class="col-12">
-    <div class="alert alert-info">
+    <div class="alert {% if os_type_count and os_type_count > 0 %}alert-secondary{% else %}alert-info{% endif %}">
+      {% if os_type_count and os_type_count > 0 %}
+      <i class="bi bi-eye-slash me-2"></i>{{ t('dash.no_os_all_hidden') }}
+      {% else %}
       <i class="bi bi-info-circle me-2"></i>{{ t('dash.no_os') }}
       <a href="/settings">{{ t('dash.no_os_link') }}</a> {{ t('dash.no_os_settings') }}
+      {% endif %}
     </div>
   </div>
   {% endfor %}

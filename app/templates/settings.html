@@ -74,15 +74,34 @@
           <i class="bi bi-plus-lg me-1"></i>{{ t('sett.os_type_add') }}
         </a>
       </div>
+      <p class="text-muted small px-3 pt-3 mb-0">{{ t('sett.os_order_hint') }}</p>
       <div class="card-body p-0">
         <table class="table table-dark table-sm mb-0 align-middle">
-          <thead><tr><th>{{ t('sett.col_slug') }}</th><th>{{ t('sett.col_label') }}</th><th>{{ t('sett.col_boot') }}</th><th class="text-end"></th></tr></thead>
-          <tbody>
+          <thead><tr>
+            <th class="text-muted" style="width:2.5rem;" title="{{ t('sett.drag_reorder') }}"><span class="visually-hidden">{{ t('sett.drag_reorder') }}</span></th>
+            <th>{{ t('sett.col_slug') }}</th>
+            <th>{{ t('sett.col_label') }}</th>
+            <th>{{ t('sett.col_boot') }}</th>
+            <th class="text-center">{{ t('sett.col_dash') }}</th>
+            <th class="text-end"></th>
+          </tr></thead>
+          <tbody id="os-types-sortable">
             {% for ot in os_types %}
-            <tr>
+            <tr data-os-id="{{ ot.id }}">
+              <td class="text-muted align-middle">
+                <span class="drag-handle user-select-none" role="button" tabindex="0" title="{{ t('sett.drag_reorder') }}" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></span>
+              </td>
               <td class="font-monospace">{{ ot.slug }}</td>
               <td>{{ ot.label }}</td>
               <td><span class="badge bg-secondary">{{ ot.boot_type }}</span></td>
+              <td class="text-center">
+                <form method="post" action="/settings/os-types/{{ ot.id }}/toggle-dashboard" class="d-inline">
+                  <button type="submit" class="btn btn-sm btn-outline-secondary border-0 px-2"
+                          title="{% if ot.show_on_dashboard %}{{ t('sett.dash_hide') }}{% else %}{{ t('sett.dash_show') }}{% endif %}">
+                    <i class="bi {% if ot.show_on_dashboard %}bi-eye{% else %}bi-eye-slash text-muted{% endif %}"></i>
+                  </button>
+                </form>
+              </td>
               <td class="text-end text-nowrap">
                 {% if not ot.is_builtin %}
                 <a href="/settings/os-types/{{ ot.id }}/edit" class="btn btn-sm btn-outline-secondary me-1" title="{{ t('sett.ot_edit') }}">
@@ -100,7 +119,7 @@
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="4" class="text-center text-muted py-2">{{ t('sett.empty_os') }}</td></tr>
+            <tr><td colspan="6" class="text-center text-muted py-2">{{ t('sett.empty_os') }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -115,4 +134,31 @@
 {% elif request.query_params.get('msg') == 'os_builtin_noedit' %}
 <div class="alert alert-warning mt-3"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.msg_builtin_no_edit') }}</div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+  var tb = document.getElementById('os-types-sortable');
+  if (!tb || typeof Sortable === 'undefined') return;
+  var rows = tb.querySelectorAll('tr[data-os-id]');
+  if (rows.length < 2) return;
+  Sortable.create(tb, {
+    animation: 150,
+    handle: '.drag-handle',
+    draggable: 'tr[data-os-id]',
+    onEnd: function () {
+      var ids = Array.prototype.map.call(tb.querySelectorAll('tr[data-os-id]'), function (tr) {
+        return parseInt(tr.getAttribute('data-os-id'), 10);
+      });
+      fetch('/settings/os-types/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: ids })
+      }).catch(function () {});
+    }
+  });
+})();
+</script>
 {% endblock %}

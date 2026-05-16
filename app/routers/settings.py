@@ -3,7 +3,9 @@ import re
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -23,6 +25,10 @@ BOOT_TYPE_CHOICES = frozenset({"linux", "windows", "tools"})
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,30}$")
 FORCED_AUTOCONFIG_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,62}$")
+
+
+class OsTypeReorderBody(BaseModel):
+    order: list[int] = Field(..., min_length=1)
 
 
 def _auth(request: Request):
@@ -167,6 +173,8 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
     if err:
         return RedirectResponse(f"/settings/os-types/new?err={err}", status_code=302)
 
+    max_ord = db.query(func.coalesce(func.max(OsType.ui_sort_order), -1)).scalar()
+    next_ord = int(max_ord if max_ord is not None else -1) + 1
     db.add(
         OsType(
             slug=slug,
@@ -174,6 +182,8 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
             icon=icon,
             boot_type=boot_type,
             is_builtin=False,
+            ui_sort_order=next_ord,
+            show_on_dashboard=True,
             extract_full_iso=extract_full,
             extract_paths_json=json.dumps(patterns),
             ipxe_roles_json="[]",
@@ -286,6 +296,43 @@ async def update_password(
         return redir
     _set_setting(db, "admin_password_hash", hash_password(new_password))
     return RedirectResponse("/settings?msg=password_updated", status_code=302)
+
+
+@router.post("/os-types/reorder")
+async def os_types_reorder(
+    request: Request,
+    body: OsTypeReorderBody,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    rows = db.query(OsType).all()
+    all_ids = {r.id for r in rows}
+    got = list(body.order)
+    if set(got) != all_ids or len(got) != len(all_ids):
+        return JSONResponse({"ok": False, "error": "invalid_order"}, status_code=400)
+    rank: dict[int, OsType] = {r.id: r for r in rows}
+    for idx, oid in enumerate(got):
+        rank[oid].ui_sort_order = idx
+    db.commit()
+    from app.tasks.jobs import regenerate_menus_task
+
+    regenerate_menus_task.delay()
+    return JSONResponse({"ok": True})
+
+
+@router.post("/os-types/{os_id}/toggle-dashboard")
+async def os_type_toggle_dashboard(os_id: int, request: Request, db: Session = Depends(get_db)):
+    redir = _auth(request)
+    if redir:
+        return redir
+    ot = db.query(OsType).get(os_id)
+    if not ot:
+        raise HTTPException(status_code=404)
+    ot.show_on_dashboard = not bool(getattr(ot, "show_on_dashboard", True))
+    db.commit()
+    return RedirectResponse("/settings", status_code=302)
 
 
 @router.post("/os-types/{os_id}/delete")

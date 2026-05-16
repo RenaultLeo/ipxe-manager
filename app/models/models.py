@@ -17,6 +17,11 @@ class OsType(Base):
     boot_type  = Column(String(16), default="linux")          # linux | windows | tools | esxi | custom…
     is_builtin = Column(Boolean, default=False)               # True = OS de base, type de config forcé
 
+    # Ordre d'affichage (menus iPXE, onglets ISO, liste paramètres) — modifiable au glisser-déposer.
+    ui_sort_order = Column(Integer, default=0, nullable=False)
+    # Afficher la carte correspondante sur le tableau de bord.
+    show_on_dashboard = Column(Boolean, default=True, nullable=False)
+
     extract_full_iso = Column(Boolean, default=False)       # extraction 7z complète vers boot/<os>/<ver>/
     extract_paths_json = Column(Text, default="[]")  # [{ "filename":"vmlinuz","max":1 }] ou legacy {"pattern":...}
     ipxe_roles_json = Column(Text, default="[]")  # obsolète formulaire — conservé pour anciennes entrées

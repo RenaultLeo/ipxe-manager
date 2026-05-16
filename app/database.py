@@ -52,8 +52,59 @@ def _migrate_columns():
     _add_column_if_missing("os_types", "extract_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("os_types", "ipxe_roles_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("os_types", "forced_autoconfig_type", "VARCHAR(64)")
+    order_added = _add_column_if_missing("os_types", "ui_sort_order", "INTEGER DEFAULT 0")
+    dash_added = _add_column_if_missing("os_types", "show_on_dashboard", "BOOLEAN DEFAULT 1")
+    if order_added or dash_added:
+        _backfill_os_types_ui_order()
+    _ensure_os_types_ui_order_when_collapsed()
     _backfill_iso_was_extracted()
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
+
+
+def _backfill_os_types_ui_order() -> None:
+    """Après ajout des colonnes UI : répartir l'ordre initial comme l'ancien tri par slug."""
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        from app.models.models import OsType
+        from app.services.os_type_order import UI_OS_SLUG_ORDER
+
+        rank = {s: i for i, s in enumerate(UI_OS_SLUG_ORDER)}
+        db = SessionLocal()
+        try:
+            ots = list(db.query(OsType).all())
+            if not ots:
+                return
+            known = [ot for ot in ots if ot.slug in rank]
+            unknown = [ot for ot in ots if ot.slug not in rank]
+            known.sort(key=lambda ot: rank[ot.slug])
+            unknown.sort(key=lambda ot: (ot.label or ot.slug or "").lower())
+            ordered = known + unknown
+            for idx, ot in enumerate(ordered):
+                ot.ui_sort_order = idx
+                if getattr(ot, "show_on_dashboard", None) is None:
+                    ot.show_on_dashboard = True
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Migration : backfill os_types ui_sort_order")
+
+
+def _ensure_os_types_ui_order_when_collapsed() -> None:
+    """Installations toutes neuves : tous les ui_sort_order à 0 — réappliquer l'ordre par slug."""
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT COUNT(*), COUNT(DISTINCT ui_sort_order) FROM os_types")
+            ).fetchone()
+        if not row or row[0] <= 1 or row[1] > 1:
+            return
+        _backfill_os_types_ui_order()
+    except Exception:
+        logger.exception("Migration : ensure os_types ui_sort_order")
 
 
 def _backfill_iso_was_extracted() -> None:
@@ -87,7 +138,8 @@ def _backfill_iso_was_extracted() -> None:
         logger.exception("Migration : backfill iso_was_extracted")
 
 
-def _add_column_if_missing(table: str, column: str, col_type: str):
+def _add_column_if_missing(table: str, column: str, col_type: str) -> bool:
+    """Retourne True si la colonne a été créée (préremplissage possible)."""
     with engine.connect() as conn:
         try:
             # SQLite: check if column exists via PRAGMA
@@ -97,5 +149,8 @@ def _add_column_if_missing(table: str, column: str, col_type: str):
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
                 conn.commit()
                 logger.info("Migration : colonne '%s.%s' ajoutée", table, column)
+                return True
+            return False
         except Exception:
             logger.exception("Migration échouée pour %s.%s", table, column)
+            return False
