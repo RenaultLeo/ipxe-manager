@@ -3,7 +3,8 @@
 ########################################
 # Sous-menu {{ os_type.label }} (mboot.c32 + boot.cfg) — généré automatiquement
 # « kernel » = URL vers mboot (COM32) ; « imgargs » 1er mot = même basename que ce fichier pour iPXE.
-# Docs VMware : boot.cfg liste kernel VMware + modules --- ; lignes « module » = artefacts pour mboot.
+# « module » suivants = artefacts boot.cfg --- … en taille importante ; la 1re entrée doit
+# être le fichier VMware « kernel= » (.b00, etc.), obligatoire pour que mboot démarre après les OK.
 ########################################
 
 :start

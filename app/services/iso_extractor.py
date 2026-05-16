@@ -462,6 +462,14 @@ def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dic
     kernel_bn = copy_flat(k_path)
     mod_bn = [copy_flat(p) for p in mod_paths]
 
+    # iPXE : mboot (MBOOT.C32) + boot.cfg lisent bien kernel=/modules= mais ne refont pas
+    # tous les téléchargements HTTP — le fichier « kernel= » (vmkernel/boot payload) doit
+    # passer en première directive « module » avant les artefacts de modules= --- …
+    # (voir dépôts type netboot.xyz / doc VMware PXE+iPXE).
+    full_modules = [kernel_bn] + [
+        m for m in mod_bn if m.lower() != kernel_bn.lower()
+    ]
+
     rewritten = _rewrite_esxi_boot_cfg_flat(
         raw_cfg,
         kernel_bn=kernel_bn,
@@ -469,7 +477,7 @@ def _extract_esxi(src: Path, dest: Path, os_slug: str, version_slug: str) -> dic
     )
     (dest / "boot.cfg").write_text(rewritten, encoding="utf-8")
 
-    modules_json = json.dumps(mod_bn, separators=(",", ":"))
+    modules_json = json.dumps(full_modules, separators=(",", ":"))
 
     return {
         "kernel_path":          f"{base}/{mboot_name}",
