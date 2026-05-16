@@ -326,6 +326,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "common.save": "Enregistrer",
         "dash.upload_type_iso": "ISO",
         "dash.upload_type_extraction": "Extraction",
+        "iso.extract_again_confirm": "Cette ISO a déjà été extraite. Une nouvelle extraction peut écraser les fichiers boot de cette version. Continuer ?",
     },
     "en": {
         "nav.dashboard": "Dashboard",
@@ -627,6 +628,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "common.save": "Save",
         "dash.upload_type_iso": "ISO",
         "dash.upload_type_extraction": "Extraction",
+        "iso.extract_again_confirm": "This ISO was already extracted. Running extraction again may overwrite boot files for this release. Continue?",
     },
 }
 

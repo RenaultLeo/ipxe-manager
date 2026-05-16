@@ -31,6 +31,7 @@ class IsoVersion(Base):
     iso_path = Column(String(512))
     iso_size = Column(BigInteger, default=0)
     notes = Column(Text, default="")
+    iso_was_extracted = Column(Boolean, default=False)  # True après au moins une extraction ISO réussie
     created_at = Column(DateTime, default=datetime.utcnow)
 
     os_type = relationship("OsType", back_populates="versions")

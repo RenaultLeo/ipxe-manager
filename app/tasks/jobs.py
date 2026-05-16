@@ -57,6 +57,7 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.updated_at    = datetime.utcnow()
 
         version.status = "ready"
+        version.iso_was_extracted = True
         if upload:
             upload.status = "done"
         db.commit()

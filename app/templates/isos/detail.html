@@ -52,7 +52,11 @@
         <span><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
         <div class="d-flex gap-2">
           {% if version.iso_path and version.status != 'extracting' %}
-          <form method="post" action="/isos/{{ version.id }}/extract" class="d-inline">
+          <form method="post" action="/isos/{{ version.id }}/extract" class="d-inline"
+                {% if version.iso_was_extracted %}
+                data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
+                onsubmit="return confirm(this.dataset.confirmReextract)"
+                {% endif %}>
             <button class="btn btn-warning btn-sm">
               <i class="bi bi-box-arrow-in-down me-1"></i>Extraire depuis l'ISO
             </button>

@@ -45,7 +45,40 @@ def _migrate_columns():
     _add_column_if_missing("boot_entries", "esxi_modules",       "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "meta_data_content",  "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "ubuntu_cloud_slug",  "VARCHAR(128)")
+    _add_column_if_missing("iso_versions", "iso_was_extracted", "BOOLEAN DEFAULT 0")
+    _backfill_iso_was_extracted()
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
+
+
+def _backfill_iso_was_extracted() -> None:
+    """Déjà déployés : ISO prête avec chemins boot — considéré comme déjà extrait au moins une fois."""
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE iso_versions
+                    SET iso_was_extracted = 1
+                    WHERE (iso_was_extracted = 0 OR iso_was_extracted IS NULL)
+                      AND iso_path IS NOT NULL AND LENGTH(TRIM(iso_path)) > 0
+                      AND status = 'ready'
+                      AND id IN (
+                        SELECT iso_version_id FROM boot_entries
+                        WHERE COALESCE(kernel_path, '') <> ''
+                           OR COALESCE(initrd_path, '') <> ''
+                           OR COALESCE(boot_wim_path, '') <> ''
+                           OR COALESCE(esxi_boot_cfg_path, '') <> ''
+                           OR TRIM(COALESCE(esxi_modules, '')) <> ''
+                           OR COALESCE(modloop_path, '') <> ''
+                      )
+                    """
+                )
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Migration : backfill iso_was_extracted")
 
 
 def _add_column_if_missing(table: str, column: str, col_type: str):

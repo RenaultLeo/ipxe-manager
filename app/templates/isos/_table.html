@@ -43,7 +43,11 @@
             <i class="bi bi-eye"></i>
           </a>
           {% if v.iso_path and v.status != 'extracting' %}
-          <form method="post" action="/isos/{{ v.id }}/extract" class="d-inline">
+          <form method="post" action="/isos/{{ v.id }}/extract" class="d-inline"
+                {% if v.iso_was_extracted %}
+                data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
+                onsubmit="return confirm(this.dataset.confirmReextract)"
+                {% endif %}>
             <button class="btn btn-sm btn-outline-warning me-1" title="{{ t('iso.extract_title') }}">
               <i class="bi bi-box-arrow-in-down"></i>
             </button>
