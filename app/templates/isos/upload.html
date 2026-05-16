@@ -101,30 +101,37 @@
                   <span id="distro-hint" class="badge bg-secondary ms-1 small d-none"></span>
                 </div>
                 <div class="card-body">
-                  <div class="row g-3" id="linux-manual-fields">
-                    <div class="col-md-6">
-                      <label class="form-label">
-                        <span id="lbl-kernel">vmlinuz</span>{{ t('iso.upload.kernel_slash') }}
-                      </label>
-                      <input type="file" name="file_kernel" class="form-control">
+                  <div id="linux-manual-fields">
+                    <div id="linux-dynamic-wrap" class="d-none mb-3">
+                      <div class="row g-3" id="linux-dynamic-slots"></div>
                     </div>
-                    <div class="col-md-6">
-                      <label class="form-label">
-                        <span id="lbl-initrd">initrd</span>
-                      </label>
-                      <input type="file" name="file_initrd" class="form-control">
+                    <div id="linux-legacy-wrap" class="row g-3">
+                      <div class="col-md-6">
+                        <label class="form-label">
+                          <span id="lbl-kernel">vmlinuz</span>{{ t('iso.upload.kernel_slash') }}
+                        </label>
+                        <input type="file" name="file_kernel" class="form-control">
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label">
+                          <span id="lbl-initrd">initrd</span>
+                        </label>
+                        <input type="file" name="file_initrd" class="form-control">
+                      </div>
+                      <div class="col-md-6" id="field-modloop" style="display:none">
+                        <label class="form-label">{{ t('iso.upload.modloop_label') }} <span class="text-muted small">(Alpine)</span></label>
+                        <input type="file" name="file_modloop" class="form-control">
+                        <div class="form-text text-muted">{{ t('iso.upload.modloop_help') }}</div>
+                      </div>
                     </div>
-                    <div class="col-md-6" id="field-modloop" style="display:none">
-                      <label class="form-label">{{ t('iso.upload.modloop_label') }} <span class="text-muted small">(Alpine)</span></label>
-                      <input type="file" name="file_modloop" class="form-control">
-                      <div class="form-text text-muted">{{ t('iso.upload.modloop_help') }}</div>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">{{ t('iso.upload.kernel_args') }}</label>
-                      <input type="text" name="kernel_args" class="form-control font-monospace"
-                             id="kernel-args-input"
-                             placeholder="{{ t('iso.upload.kernel_args_ph') }}">
-                      <div class="form-text text-muted">{{ t('iso.upload.kernel_args_help') }}</div>
+                    <div class="row g-3 mt-1">
+                      <div class="col-12">
+                        <label class="form-label">{{ t('iso.upload.kernel_args') }}</label>
+                        <input type="text" name="kernel_args" class="form-control font-monospace"
+                               id="kernel-args-input"
+                               placeholder="{{ t('iso.upload.kernel_args_ph') }}">
+                        <div class="form-text text-muted">{{ t('iso.upload.kernel_args_help') }}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -185,6 +192,7 @@
 <script>
 const UBUNTU_HINT = {{ t('iso.upload.hint_ubuntu_full')|tojson }};
 const OS_EXTRACT_META = {{ os_extract_meta|tojson }};
+const LINUX_UPLOAD_OPT = {{ t('iso.upload.optional')|tojson }};
 const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows']);
 
 const DISTRO_HINTS = {
@@ -198,6 +206,41 @@ const DISTRO_HINTS = {
   alpine:  { kernel: 'vmlinuz-lts', initrd: 'initramfs-lts', hint: 'vmlinuz-lts + initramfs-lts + modloop-lts', modloop: true },
 };
 
+function escHtml(txt) {
+  const d = document.createElement('div');
+  d.textContent = (txt === undefined || txt === null) ? '' : String(txt);
+  return d.innerHTML;
+}
+
+function rebuildLinuxManualSlots(slug, terms) {
+  const dynWrap = document.getElementById('linux-dynamic-wrap');
+  const dynSlots = document.getElementById('linux-dynamic-slots');
+  const legWrap = document.getElementById('linux-legacy-wrap');
+  dynSlots.innerHTML = '';
+  const info = DISTRO_HINTS[slug] || {};
+
+  if (terms.length === 0) {
+    dynWrap.classList.add('d-none');
+    legWrap.classList.remove('d-none');
+    document.getElementById('lbl-kernel').textContent = info.kernel || 'vmlinuz';
+    document.getElementById('lbl-initrd').textContent = info.initrd || 'initrd';
+    document.getElementById('field-modloop').style.display = info.modloop ? '' : 'none';
+    return;
+  }
+
+  dynWrap.classList.remove('d-none');
+  legWrap.classList.add('d-none');
+  terms.forEach(function(term, idx) {
+    const col = document.createElement('div');
+    col.className = 'col-md-6';
+    col.innerHTML =
+      '<label class="form-label"><code>' + escHtml(term) + '</code>' +
+      ' <span class="text-muted small">— ' + LINUX_UPLOAD_OPT + '</span></label>' +
+      '<input type="file" name="linux_manual_' + idx + '" class="form-control">';
+    dynSlots.appendChild(col);
+  });
+}
+
 function updateLinuxFields() {
   const sel   = document.getElementById('os-select');
   const opt   = sel.options[sel.selectedIndex];
@@ -208,6 +251,8 @@ function updateLinuxFields() {
   const metaFull = !!meta.extract_full;
   const info  = DISTRO_HINTS[slug] || {};
   const isUbuntuStyle = !!info.fullExtract || FULL_EXTRACT_SLUGS.has(slug);
+
+  rebuildLinuxManualSlots(slug, terms);
 
   document.getElementById('ubuntu-notice').classList.toggle('d-none', !info.fullExtract);
   const hasIso = !!document.getElementById('iso-file').value;
@@ -249,15 +294,6 @@ function updateLinuxFields() {
       distroBadge.classList.remove('d-none');
     }
   }
-
-  let kLbl = info.kernel || 'vmlinuz';
-  let iLbl = info.initrd || 'initrd';
-  if (terms.length >= 1) kLbl = terms[0];
-  if (terms.length >= 2) iLbl = terms[1];
-
-  document.getElementById('lbl-kernel').textContent = kLbl;
-  document.getElementById('lbl-initrd').textContent = iLbl;
-  document.getElementById('field-modloop').style.display = info.modloop ? '' : 'none';
 }
 
 document.getElementById('os-select').addEventListener('change', function() {

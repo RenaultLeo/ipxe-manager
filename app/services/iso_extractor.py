@@ -107,7 +107,7 @@ DISTRO_RULES: dict[str, dict] = {
 # Règle générique fallback pour les distros non listées
 _GENERIC_RULE: dict = {
     "type":   "linux",
-    "kernel": ["vmlinuz", "vmlinux", "linux26", "kernel"],
+    "kernel": ["vmlinuz", "vmlinux", "linux26", "kernel", "bzimage"],
     "initrd": ["initrd.gz", "initrd.img", "initrd", "initramfs.img", "initramfs"],
     "extra":  {},
 }

@@ -101,6 +101,10 @@
           <dt class="col-4 text-muted">{{ be.modloop_path.split('/')[-1] }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.modloop_path }}</dd>
           {% endif %}
+          {% for x in boot_extra_linux %}
+          <dt class="col-4 text-muted font-monospace small">{{ x.get('basename', '—') }}</dt>
+          <dd class="col-8 font-monospace small text-break">{{ x.get('path') }}</dd>
+          {% endfor %}
           {% if be.boot_wim_path %}
           <dt class="col-4 text-muted">boot.wim</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.boot_wim_path }}</dd>

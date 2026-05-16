@@ -71,6 +71,9 @@ class BootEntry(Base):
     # Script iPXE personnalisé (optionnel — chainload custom)
     custom_ipxe_path = Column(String(512))
 
+    # Upload manuel : artefacts Linux au-delà de kernel/initrd (ex. NixOS « init »)
+    extra_linux_paths_json = Column(Text, default="[]")  # [{"basename":"init","path":"boot/os/ver/init"},…]
+
     # VMware ESXi — mboot.c32 / boot.cfg + liste de modules (.b00 / .vgz / .tgz…)
     # esxi_modules : liste JSON ["b.b00", "jumpstrt.gz", ...] (chemins relatifs sous boot/esxi/<ver>/)
     esxi_boot_cfg_path = Column(String(512))

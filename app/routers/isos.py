@@ -1,15 +1,15 @@
 import json
 import shutil
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
-from app.models.models import OsType, IsoVersion, Upload
+from app.models.models import OsType, IsoVersion, Upload, BootEntry
 from app.services.disk_info import fmt_size
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
@@ -28,25 +28,17 @@ def _auth(request: Request):
 
 def _extract_search_terms_for_ot(ot: OsType) -> list[str]:
     """Noms ou motifs configurés dans ``extract_paths_json`` (affichage upload)."""
-    out: list[str] = []
     try:
         raw = json.loads(getattr(ot, "extract_paths_json", None) or "[]")
     except (json.JSONDecodeError, TypeError):
-        return out
+        return []
     if not isinstance(raw, list):
-        return out
-    for row in raw:
-        if not isinstance(row, dict):
-            continue
-        fn = str(row.get("filename") or row.get("name") or "").strip()
-        pat = str(row.get("pattern") or "").strip()
-        if fn:
-            bn = PurePosixPath(fn.replace("\\", "/")).name
-            if bn:
-                out.append(bn)
-        elif pat:
-            out.append(pat)
-    return out
+        return []
+
+    # Même liste / ordre que l’extraction plan (linux_manual_*)
+    from app.services.os_type_extract_plan import _slot_terms_from_specs_raw
+
+    return _slot_terms_from_specs_raw(raw)
 
 
 def _os_extract_meta_for_upload(os_types: list[OsType]) -> dict[str, dict]:
@@ -99,31 +91,58 @@ async def upload_form(request: Request, db: Session = Depends(get_db)):
     )
 
 
+def _pick_upload_file(form, key: str):
+    """Récupère un UploadFile non vide depuis un formulaire multipart, ou ``None``."""
+    from starlette.datastructures import UploadFile
+
+    item = form.get(key)
+    if item is None or not isinstance(item, UploadFile):
+        return None
+    fn = (getattr(item, "filename", None) or "").strip()
+    return item if fn else None
+
+
+def _route_linux_manual_file(
+    be: BootEntry,
+    ot: OsType,
+    idx: int,
+    term: str,
+    rel: str,
+) -> dict | None:
+    """Affecte kernel/initrd/modloop ou retourne un dict pour ``extra_linux_paths_json``."""
+    t_low = term.lower()
+    bn = Path(rel.split("/")[-1]).name.lower() if rel else ""
+    if idx == 0:
+        be.kernel_path = rel
+        return None
+    if idx == 1:
+        be.initrd_path = rel
+        return None
+    if ot.slug == "alpine" and ("modloop" in t_low or bn.startswith("modloop")):
+        if not be.modloop_path:
+            be.modloop_path = rel
+            return None
+    return {"basename": term, "path": rel}
+
+
 @router.post("/upload")
-async def upload_iso(
-    request: Request,
-    os_type_id: int = Form(...),
-    version_label: str = Form(...),
-    notes: str = Form(""),
-    file: UploadFile = File(None),
-    # Windows boot files
-    file_boot_wim: UploadFile = File(None),
-    file_bcd:      UploadFile = File(None),
-    file_boot_sdi: UploadFile = File(None),
-    file_bootmgr:  UploadFile = File(None),
-    # Linux boot files
-    file_kernel:      UploadFile = File(None),
-    file_initrd:      UploadFile = File(None),
-    kernel_args:      str = Form(""),
-    # Alpine modloop
-    file_modloop:     UploadFile = File(None),
-    # Script iPXE custom (tous OS)
-    file_custom_ipxe: UploadFile = File(None),
-    db: Session = Depends(get_db),
-):
+async def upload_iso(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:
         return redir
+
+    form = await request.form()
+    try:
+        os_type_id = int(form.get("os_type_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Type d'OS invalide")
+
+    version_label = str(form.get("version_label") or "").strip()
+    notes = str(form.get("notes") or "").strip()
+    kernel_args = str(form.get("kernel_args") or "").strip()
+
+    if not version_label:
+        raise HTTPException(400, "Label de version requis")
 
     os_type = db.query(OsType).get(os_type_id)
     if not os_type:
@@ -140,9 +159,10 @@ async def upload_iso(
     db.add(version)
     db.flush()  # obtenir version.id
 
+    file_iso = _pick_upload_file(form, "file")
     # ── ISO (optionnel) ────────────────────────────────────
-    if file and file.filename:
-        safe_name = Path(file.filename).name
+    if file_iso:
+        safe_name = Path(file_iso.filename).name
         ext = Path(safe_name).suffix.lower()
         if ext not in {".iso", ".img", ""}:
             raise HTTPException(400, f"Extension non supportée : {ext}")
@@ -152,7 +172,7 @@ async def upload_iso(
         dest = iso_dir / safe_name
         size = 0
         with open(dest, "wb") as f:
-            while chunk := await file.read(1024 * 1024):
+            while chunk := await file_iso.read(1024 * 1024):
                 f.write(chunk)
                 size += len(chunk)
                 if size > settings.max_upload_size:
@@ -164,51 +184,75 @@ async def upload_iso(
 
     # ── Fichiers boot manuels ──────────────────────────────
     from app.services.slugify import slugify
+    from starlette.datastructures import UploadFile as StarletteUploadFile
+
     version_slug = slugify(version.version_label)
 
     boot_dir = settings.boot_dir / os_type.slug / version_slug
     boot_dir.mkdir(parents=True, exist_ok=True)
 
-    from app.models.models import BootEntry
     be = BootEntry(iso_version_id=version.id, kernel_args=kernel_args)
     db.add(be)
 
-    async def save_boot_file(upload: UploadFile, fname: str) -> str:
-        dest = boot_dir / fname
-        with open(dest, "wb") as f:
+    async def save_boot_file(upload: StarletteUploadFile, fname: str) -> str:
+        dest_p = boot_dir / fname
+        with open(dest_p, "wb") as f:
             while chunk := await upload.read(1024 * 1024):
                 f.write(chunk)
         return f"boot/{os_type.slug}/{version_slug}/{fname}"
 
     has_boot_files = False
+    extra_linux: list[dict] = []
 
     if os_type.boot_type == "windows":
-        if file_bcd and file_bcd.filename:
+        file_bcd = _pick_upload_file(form, "file_bcd")
+        file_boot_sdi = _pick_upload_file(form, "file_boot_sdi")
+        file_boot_wim = _pick_upload_file(form, "file_boot_wim")
+        file_bootmgr = _pick_upload_file(form, "file_bootmgr")
+        if file_bcd:
             be.bcd_path = await save_boot_file(file_bcd, "BCD")
             has_boot_files = True
-        if file_boot_sdi and file_boot_sdi.filename:
+        if file_boot_sdi:
             be.boot_sdi_path = await save_boot_file(file_boot_sdi, "boot.sdi")
             has_boot_files = True
-        if file_boot_wim and file_boot_wim.filename:
+        if file_boot_wim:
             be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
             has_boot_files = True
-        if file_bootmgr and file_bootmgr.filename:
-            be.bootmgr_path = await save_boot_file(file_bootmgr, file_bootmgr.filename)
+        if file_bootmgr:
+            be.bootmgr_path = await save_boot_file(file_bootmgr, Path(file_bootmgr.filename).name)
             has_boot_files = True
     else:
-        if file_kernel and file_kernel.filename:
-            be.kernel_path = await save_boot_file(file_kernel, Path(file_kernel.filename).name)
-            has_boot_files = True
-        if file_initrd and file_initrd.filename:
-            be.initrd_path = await save_boot_file(file_initrd, Path(file_initrd.filename).name)
-            has_boot_files = True
+        linux_terms = _extract_search_terms_for_ot(os_type)
+        if linux_terms:
+            for i, term in enumerate(linux_terms):
+                uf = _pick_upload_file(form, f"linux_manual_{i}")
+                if not uf:
+                    continue
+                name_on_disk = Path(uf.filename).name
+                rel = await save_boot_file(uf, name_on_disk)
+                routed = _route_linux_manual_file(be, os_type, i, term, rel)
+                if routed is not None:
+                    extra_linux.append(routed)
+                has_boot_files = True
+        else:
+            file_kernel = _pick_upload_file(form, "file_kernel")
+            file_initrd = _pick_upload_file(form, "file_initrd")
+            file_modloop = _pick_upload_file(form, "file_modloop")
+            if file_kernel:
+                be.kernel_path = await save_boot_file(file_kernel, Path(file_kernel.filename).name)
+                has_boot_files = True
+            if file_initrd:
+                be.initrd_path = await save_boot_file(file_initrd, Path(file_initrd.filename).name)
+                has_boot_files = True
+            if file_modloop:
+                be.modloop_path = await save_boot_file(file_modloop, Path(file_modloop.filename).name)
+                has_boot_files = True
 
-    # ── Script iPXE custom (optionnel, tous OS) ───────────────
-    if file_modloop and file_modloop.filename:
-        be.modloop_path = await save_boot_file(file_modloop, Path(file_modloop.filename).name)
-        has_boot_files = True
+    if extra_linux:
+        be.extra_linux_paths_json = json.dumps(extra_linux, ensure_ascii=False)
 
-    if file_custom_ipxe and file_custom_ipxe.filename:
+    file_custom_ipxe = _pick_upload_file(form, "file_custom_ipxe")
+    if file_custom_ipxe:
         be.custom_ipxe_path = await save_boot_file(file_custom_ipxe, Path(file_custom_ipxe.filename).name)
         has_boot_files = True
 
@@ -245,6 +289,17 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
         except (json.JSONDecodeError, TypeError):
             basename_report = {}
     basename_report_items = sorted(basename_report.items(), key=lambda kv: kv[0].lower())
+    boot_extra_linux: list[dict] = []
+    be_detail = getattr(version, "boot_entry", None)
+    if be_detail:
+        lx = getattr(be_detail, "extra_linux_paths_json", "") or ""
+        if lx.strip():
+            try:
+                plist = json.loads(lx)
+                if isinstance(plist, list):
+                    boot_extra_linux = [x for x in plist if isinstance(x, dict) and x.get("path")]
+            except (json.JSONDecodeError, TypeError):
+                boot_extra_linux = []
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
@@ -253,6 +308,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             fmt_size=fmt_size,
             basename_report=basename_report,
             basename_report_items=basename_report_items,
+            boot_extra_linux=boot_extra_linux,
         ),
     )
 

@@ -73,6 +73,25 @@ def _normalize_specs(specs_raw: list) -> list[_UnifiedSpec]:
     return out
 
 
+def _slot_terms_from_specs_raw(specs_raw: list) -> list[str]:
+    """Même ordre / libellés que ``linux_manual_*`` dans le formulaire d'upload ISO."""
+    out: list[str] = []
+    if not isinstance(specs_raw, list):
+        return out
+    for row in specs_raw:
+        if not isinstance(row, dict):
+            continue
+        fn = str(row.get("filename") or row.get("name") or "").strip()
+        pat = str(row.get("pattern") or "").strip()
+        if fn:
+            bn = PurePosixPath(fn.replace("\\", "/")).name
+            if bn:
+                out.append(bn)
+        elif pat:
+            out.append(pat)
+    return out
+
+
 def try_extract_with_plan(
     iso_path: str,
     ot: OsType,
@@ -205,6 +224,10 @@ def try_extract_with_plan(
                 exc,
             )
     elif bt in ("linux", "tools", "custom"):
+        base = f"boot/{os_slug}/{version_slug}"
+        _assign_ordered_linux_slots_from_plan(
+            os_slug, specs_raw, unified, basename_report, base, result
+        )
         _fallback_kernel_initrd_in_dest(dest, os_slug, version_slug, result)
 
     filtered_report = {k: v for k, v in basename_report.items()}
@@ -247,6 +270,67 @@ def _legacy_pattern_copy_to_dest(src_root: Path, dest: Path, pattern: str, max_n
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, target)
         logger.info("Copié (motif) : %s", rel)
+
+
+def _assign_ordered_linux_slots_from_plan(
+    os_slug: str,
+    specs_raw: list,
+    unified: list[_UnifiedSpec],
+    basename_report: dict[str, list[str]],
+    base: str,
+    result: dict,
+) -> None:
+    """
+    Mappe les entrées du plan (ordre dans ``extract_paths_json``) comme sur l’upload manuel :
+    slot 0 → kernel_path, slot 1 → initrd_path, Alpine+modloop → modloop_path, le reste → extra_linux_paths.
+
+    Absent ces slots, le fallback générique ``vmlinuz`` / ``initrd`` ne voit pas par ex. ``bzImage`` (NixOS)
+    alors que le fichier a bien été copié depuis l’ISO selon le plan.
+    """
+    slot_terms = _slot_terms_from_specs_raw(specs_raw)
+    if len(slot_terms) != len(unified):
+        logger.warning(
+            "Plan extraction [%s]: %s termes formulaire ≠ %s entrées normalisées — alignement par index minimal.",
+            os_slug,
+            len(slot_terms),
+            len(unified),
+        )
+    extras: list[dict] = []
+    for idx in range(min(len(slot_terms), len(unified))):
+        spec = unified[idx]
+        term = slot_terms[idx]
+        if spec.pattern:
+            continue
+        if not (spec.basename or "").strip():
+            continue
+        rels = basename_report.get(spec.basename) or []
+        if not rels:
+            continue
+        rel_first = rels[0].replace("\\", "/")
+        http_rel = f"{base}/{rel_first}"
+
+        low_term = term.lower()
+        basename_only = PurePosixPath(http_rel.replace("\\", "/")).name.casefold()
+
+        if idx == 0:
+            result["kernel_path"] = http_rel
+            logger.info("Plan slot %s kernel : %s", idx, http_rel)
+        elif idx == 1:
+            result["initrd_path"] = http_rel
+            logger.info("Plan slot %s initrd : %s", idx, http_rel)
+        elif os_slug == "alpine" and (
+            "modloop" in low_term or basename_only.startswith("modloop")
+        ):
+            if not result.get("modloop_path"):
+                result["modloop_path"] = http_rel
+                logger.info("Plan slot %s modloop : %s", idx, http_rel)
+            else:
+                extras.append({"basename": term, "path": http_rel})
+        else:
+            extras.append({"basename": term, "path": http_rel})
+            logger.info("Plan slot %s extra Linux (« %s ») : %s", idx, term, http_rel)
+
+    result["extra_linux_paths"] = extras
 
 
 def _fallback_kernel_initrd_in_dest(dest: Path, os_slug: str, version_slug: str, result: dict) -> None:
