@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
+MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
+
 # Fichier embarqué (app/resources/default_menu_logo.png) si pas d’upload utilisateur.
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
