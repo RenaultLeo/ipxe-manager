@@ -1,18 +1,16 @@
-{# Pas de « colour --rgb » : certains builds / consoles renvoient Invalid argument (ipxe.org/1d1e2002). #}
-{# Transparence : fond des paires = indice 4 (au-dessus du PNG). Résolution basse = texte plus gros. #}
-{% if has_menu_background %}
-console --picture {{ server_url }}/menus/menu-background.png --left 24 --right 24 --top 40 --bottom 24 --x 1024 --y 640
-{% endif %}
-{% if has_menu_background %}
-cpair --foreground 7 --background 4 0
-cpair --foreground 7 --background 4 1
-cpair --foreground 7 --background 4 2
-cpair --foreground 8 --background 4 3
+{# Uniquement cpair + console (doc iPXE). Pas de « colour ». #}
+{# Avec image : fond PNG + marges pour ne pas passer sur le bas-droite (logo dans le fichier image). #}
+{% if has_menu_brand %}
+console --picture {{ server_url }}/menus/menu-brand.png --left 24 --right 260 --top 40 --bottom 120 --x 1280 --y 720
+cpair --foreground 15 --background 4 0
+cpair --foreground 15 --background 4 1
+cpair --foreground 15 --background 4 2
+cpair --foreground 7 --background 4 3
 cpair --foreground 0 --background 7 7
 {% else %}
-cpair --foreground 7 --background 0 0
-cpair --foreground 7 --background 0 1
-cpair --foreground 7 --background 0 2
-cpair --foreground 8 --background 0 3
+cpair --foreground 15 --background 1 0
+cpair --foreground 15 --background 1 1
+cpair --foreground 15 --background 1 2
+cpair --foreground 7 --background 1 3
 cpair --foreground 0 --background 7 7
 {% endif %}
