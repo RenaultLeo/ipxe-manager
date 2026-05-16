@@ -62,12 +62,26 @@
       <div class="card-header"><i class="bi bi-image me-2"></i>{{ t('sett.menu_logo_title') }}</div>
       <div class="card-body">
         <p class="text-muted small">{{ t('sett.menu_logo_help') }}</p>
-        {% if current.menu_logo_uploaded %}
-        <div class="mb-3">
-          <img src="{{ current.server_base_url }}/menus/{{ current.menu_logo_filename }}?v={{ current.menu_logo_qs }}"
-               alt="" class="img-thumbnail border-secondary" style="max-height:140px;background:#1e293b;">
+        <p class="mb-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="menu-logo-preview-toggle"
+                  aria-expanded="false" aria-controls="menu-logo-preview-wrap"
+                  data-label-preview="{{ t('sett.menu_logo_preview') }}"
+                  data-label-hide="{{ t('sett.menu_logo_hide_preview') }}">
+            <i class="bi bi-eye me-1"></i>
+            <span class="menu-logo-preview-btn-text">{{ t('sett.menu_logo_preview') }}</span>
+          </button>
+        </p>
+        <div id="menu-logo-preview-wrap" class="d-none mb-3">
+          <div class="rounded border border-secondary p-2 d-inline-block" style="background:#1e293b;">
+            {% if current.menu_logo_uploaded %}
+            <img src="{{ current.server_base_url }}/menus/{{ current.menu_logo_filename }}?v={{ current.menu_logo_qs }}"
+                 alt="" class="img-thumbnail border-secondary d-block" style="max-height:140px;background:#1e293b;">
+            {% else %}
+            <img src="/settings/bundled-menu-logo.png" alt=""
+                 class="img-thumbnail border-secondary d-block" style="max-height:140px;background:#1e293b;">
+            {% endif %}
+          </div>
         </div>
-        {% endif %}
         <form method="post" action="/settings/menu-logo" enctype="multipart/form-data" class="d-flex flex-wrap align-items-end gap-2 mb-2">
           <div class="flex-grow-1" style="min-width:12rem;">
             <label class="form-label small text-muted mb-0">{{ t('sett.menu_logo_choose') }}</label>
@@ -231,6 +245,20 @@
         body: JSON.stringify({ order: ids })
       }).catch(function () {});
     }
+  });
+})();
+(function () {
+  var previewBtn = document.getElementById('menu-logo-preview-toggle');
+  var previewWrap = document.getElementById('menu-logo-preview-wrap');
+  if (!previewBtn || !previewWrap) return;
+  var span = previewBtn.querySelector('.menu-logo-preview-btn-text');
+  var lp = previewBtn.getAttribute('data-label-preview');
+  var lh = previewBtn.getAttribute('data-label-hide');
+  previewBtn.addEventListener('click', function () {
+    previewWrap.classList.toggle('d-none');
+    var isHidden = previewWrap.classList.contains('d-none');
+    if (span && lp && lh) span.textContent = isHidden ? lp : lh;
+    previewBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
   });
 })();
 </script>

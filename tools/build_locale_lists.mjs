@@ -612,6 +612,7 @@ const PAIRS_DE = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow ist auf dem Server nicht installiert (pip install pillow in der venv).",
   ],
+  ["Hide preview", "Vorschau ausblenden"],
 ];
 
 const PAIRS_ES = [
@@ -1187,6 +1188,7 @@ const PAIRS_ES = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow no está instalado en el servidor (pip install pillow en el entorno virtual).",
   ],
+  ["Hide preview", "Ocultar vista previa"],
 ];
 
 const PAIRS_IT = [
@@ -1756,6 +1758,7 @@ const PAIRS_IT = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow non è installato sul server (pip install pillow nel venv).",
   ],
+  ["Hide preview", "Nascondi anteprima"],
 ];
 
 const PAIRS_PT = [
@@ -2326,6 +2329,7 @@ const PAIRS_PT = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow não está instalado no servidor (pip install pillow no venv).",
   ],
+  ["Hide preview", "Ocultar pré-visualização"],
 ];
 
 writeLocale("de", PAIRS_DE);

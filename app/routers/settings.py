@@ -4,7 +4,7 @@ import io
 from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -17,6 +17,8 @@ from app.services.menu_generator import MENU_LOGO_UPLOAD_NAME
 from app.config import settings as app_settings
 from app.templating import templates, template_context
 from app.services.autoconfig_types import all_config_types_for_ui, config_type_labels as _config_type_labels
+
+BUNDLED_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
 router = APIRouter(prefix="/settings")
 
@@ -101,6 +103,14 @@ def _parse_forced_autoconfig(form, db: Session) -> tuple[str | None, str]:
     if choice not in allowed:
         return None, "autoconfig"
     return choice, ""
+
+
+@router.get("/bundled-menu-logo.png")
+async def bundled_menu_logo_png():
+    """PNG intégré affiché dans l’aperçu Paramètres quand aucun logo personnalisé n’est en place."""
+    if not BUNDLED_MENU_LOGO.is_file():
+        raise HTTPException(status_code=404, detail="bundled logo missing")
+    return FileResponse(BUNDLED_MENU_LOGO, media_type="image/png")
 
 
 @router.get("", response_class=HTMLResponse)
