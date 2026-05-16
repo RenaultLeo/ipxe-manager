@@ -19,6 +19,32 @@ logger = logging.getLogger(__name__)
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
 
+def _esxi_version_dir(prefix_http: str, cfg: Settings) -> Path | None:
+    """``prefix_http`` du type boot/<os>/<version> → répertoire disque sous cfg.boot_dir."""
+    parts = prefix_http.replace("\\", "/").strip("/").split("/")
+    if len(parts) >= 3 and parts[0].lower() == "boot":
+        return cfg.boot_dir.joinpath(*parts[1:])
+    return None
+
+
+def _esxi_kernel_basename_from_boot_cfg(boot_cfg: Path) -> str | None:
+    """Lit ``kernel=<basename>`` dans boot.cfg aplati à côté de mboot (insensible ligne #)."""
+    if not boot_cfg.is_file():
+        return None
+    try:
+        text = boot_cfg.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("kernel="):
+            val = line.split("=", 1)[1].strip().strip("\"'")
+            return Path(val.replace("\\", "/")).name
+    return None
+
+
 def _jinja_env() -> Environment:
     return Environment(
         loader=FileSystemLoader(str(TMPL_DIR)),
@@ -97,7 +123,21 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
                     'ESXi modules JSON invalide pour la version \"%s\" — vérifiez boot_entries.esxi_modules.',
                     v.version_label,
                 )
+        # Anciennes entrées BDD peuvent avoir esxi_modules sans le fichier kernel= en tête.
+        # On aligne systématiquement sur boot.cfg du disque (ex. kernel=B.B00 puis modules= --- …).
         if prefix and mod_names:
+            vdir = _esxi_version_dir(prefix, cfg)
+            if vdir:
+                kr = _esxi_kernel_basename_from_boot_cfg(vdir / "boot.cfg")
+                if kr:
+                    tail = [m for m in mod_names if m.lower() != kr.lower()]
+                    if not mod_names or mod_names[0].lower() != kr.lower():
+                        mod_names = [kr] + tail
+                        logger.debug(
+                            'ESXi menu : ordre « module » réaligné (kernel=%s en tête) pour la version #%s.',
+                            kr,
+                            v.id,
+                        )
             esxi_module_urls = [h(f"{prefix}/{name}") for name in mod_names]
         if be.kernel_path:
             esxi_mboot_basename = (
