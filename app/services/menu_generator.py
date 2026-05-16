@@ -27,14 +27,6 @@ MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
 
-def _esxi_version_dir(prefix_http: str, cfg: Settings) -> Path | None:
-    """``prefix_http`` du type boot/<os>/<version> → répertoire disque sous cfg.boot_dir."""
-    parts = prefix_http.replace("\\", "/").strip("/").split("/")
-    if len(parts) >= 3 and parts[0].lower() == "boot":
-        return cfg.boot_dir.joinpath(*parts[1:])
-    return None
-
-
 def _esxi_kernel_basename_from_boot_cfg(boot_cfg: Path) -> str | None:
     """Lit ``kernel=<basename>`` dans boot.cfg aplati à côté de mboot (insensible ligne #)."""
     if not boot_cfg.is_file():
@@ -115,38 +107,24 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     if be and (slug_l == "esxi" or bt_l == "esxi"):
         esxi_boot_http = h(getattr(be, "esxi_boot_cfg_path", None))
         raw_mods = getattr(be, "esxi_modules", "") or ""
-        prefix = ""
-        if be.kernel_path:
-            prefix = be.kernel_path.replace("\\", "/").lstrip("/").rsplit("/", 1)[0]
-        elif getattr(be, "esxi_boot_cfg_path", None):
-            prefix = (be.esxi_boot_cfg_path or "").replace("\\", "/").lstrip("/").rsplit("/", 1)[0]
+        seg = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
+        vr = f"boot/{os_type.slug}/{seg}".replace("\\", "/")
         mod_names: list[str] = []
-        if raw_mods.strip() and prefix:
+        if raw_mods.strip():
             try:
-                parsed = json.loads(raw_mods)
-                if isinstance(parsed, list):
-                    mod_names = [x for x in parsed if isinstance(x, str)]
+                parsed_mods = json.loads(raw_mods)
+                if isinstance(parsed_mods, list):
+                    mod_names = [x for x in parsed_mods if isinstance(x, str)]
             except json.JSONDecodeError:
                 logger.warning(
                     'ESXi modules JSON invalide pour la version \"%s\" — vérifiez boot_entries.esxi_modules.',
                     v.version_label,
                 )
-        # Anciennes entrées BDD peuvent avoir esxi_modules sans le fichier kernel= en tête.
-        # On aligne systématiquement sur boot.cfg du disque (ex. kernel=B.B00 puis modules= --- …).
-        if prefix and mod_names:
-            vdir = _esxi_version_dir(prefix, cfg)
-            if vdir:
-                kr = _esxi_kernel_basename_from_boot_cfg(vdir / "boot.cfg")
-                if kr:
-                    tail = [m for m in mod_names if m.lower() != kr.lower()]
-                    if not mod_names or mod_names[0].lower() != kr.lower():
-                        mod_names = [kr] + tail
-                        logger.debug(
-                            'ESXi menu : ordre « module » réaligné (kernel=%s en tête) pour la version #%s.',
-                            kr,
-                            v.id,
-                        )
-            esxi_module_urls = [h(f"{prefix}/{name}") for name in mod_names]
+        if mod_names:
+            esxi_module_urls = []
+            for m in mod_names:
+                mnorm = m.replace("\\", "/").lstrip("/")
+                esxi_module_urls.append(h(f"{vr}/{mnorm}"))
         if be.kernel_path:
             esxi_mboot_basename = (
                 be.kernel_path.replace("\\", "/").rstrip("/").split("/")[-1]
@@ -253,9 +231,49 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
     return True
 
 
+def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
+    """
+    Réécrit la ligne ``prefix=`` de chaque ``boot/esxi/<version>/ipxe-boot.cfg`` pour
+    refléter ``server_base_url`` courant (ex. changement d’IP/DNS), sans ré-extraire l’ISO.
+    """
+    esxi_root = cfg.boot_dir / "esxi"
+    if not esxi_root.is_dir():
+        return
+    base = cfg.server_base_url.rstrip("/")
+    for d in sorted(esxi_root.iterdir()):
+        if not d.is_dir():
+            continue
+        path = d / "ipxe-boot.cfg"
+        if not path.is_file():
+            continue
+        ver = d.name
+        new_line = f"prefix={base}/boot/esxi/{ver}/"
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            logger.warning("ESXi ipxe-boot.cfg illisible %s : %s", path, e)
+            continue
+        lines = text.splitlines()
+        out: list[str] = []
+        replaced = False
+        for line in lines:
+            if line.strip().lower().startswith("prefix="):
+                out.append(new_line)
+                replaced = True
+            else:
+                out.append(line)
+        if not replaced:
+            continue
+        try:
+            path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        except OSError as e:
+            logger.warning("ESXi ipxe-boot.cfg non écrit %s : %s", path, e)
+
+
 def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
+    _refresh_esxi_ipxe_boot_cfg_prefixes(cfg)
     cfg.menus_dir.mkdir(parents=True, exist_ok=True)
     repo_root = Path(__file__).resolve().parent.parent.parent
     has_menu_theme = _build_menu_theme_png(cfg.menus_dir)
