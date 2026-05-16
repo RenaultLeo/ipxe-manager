@@ -1,0 +1,31 @@
+#!ipxe
+
+########################################
+# OS defini dans Parametres (non fourni par defaut avec l outil).
+# Pas de boot auto kernel/initrd/wimboot depuis extraction ISO ;
+# pont vers scripts iPXE uploades (<slug>_autres.ipxe).
+# {{ os_type.label }}
+########################################
+
+{% if has_autres %}
+:start
+chain --autofree {{ server_url }}/menus/{{ os_type.slug }}_autres.ipxe || goto erreur
+
+{% else %}
+:start
+goto vide
+
+:vide
+echo Aucun fichier iPXE personnalise sur une version "{{ os_type.label }}" ?
+echo Ajoutez un script sur une version ISO (Fichiers boot ou fiche ISO) puis regenerez les menus (Menus iPXE).
+sleep 18
+goto back
+
+{% endif %}
+
+:erreur
+echo Echec du chargement du sous-menu scripts.
+sleep 8
+
+:back
+chain --autofree {{ server_url }}/menus/menu.ipxe

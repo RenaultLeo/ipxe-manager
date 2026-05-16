@@ -51,6 +51,7 @@ def _migrate_columns():
     _add_column_if_missing("os_types", "extract_full_iso", "BOOLEAN DEFAULT 0")
     _add_column_if_missing("os_types", "extract_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("os_types", "ipxe_roles_json", "TEXT DEFAULT '[]'")
+    _add_column_if_missing("os_types", "forced_autoconfig_type", "VARCHAR(64)")
     _backfill_iso_was_extracted()
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
 

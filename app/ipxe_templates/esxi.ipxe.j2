@@ -15,7 +15,7 @@ item v{{ e.id }} {{ e.label }}{% if e.autoconfigs %} [+kickstart/conf]{% endif %
 {% endfor %}
 item --gap
 {% if has_autres %}
-item autres Autres variantes {{ os_type.label }}…
+item autres Fichiers iPXE personnalisés pour {{ os_type.label }}…
 {% endif %}
 item back Retour au menu principal
 choose selected || goto back

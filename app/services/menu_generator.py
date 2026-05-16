@@ -211,33 +211,51 @@ def regenerate_all(db: Session) -> list[str]:
                     standard_entries.append(entry)
 
             has_autres = len(custom_entries) > 0
+            base = cfg.server_base_url.rstrip("/")
+            custom_os = not bool(getattr(os_type, "is_builtin", True))
 
             # ── Menu principal de l'OS ──────────────────────────────────────
-            slug_l = (os_type.slug or "").lower()
-            bt_l = (os_type.boot_type or "linux").lower()
-            if slug_l == "esxi" or bt_l == "esxi":
-                tmpl_name = "esxi.ipxe.j2"
-            elif bt_l == "windows":
-                tmpl_name = "windows.ipxe.j2"
-            else:
-                tmpl_name = "linux.ipxe.j2"
-            if not (TMPL_DIR / tmpl_name).exists():
-                tmpl_name = "linux.ipxe.j2"
+            if custom_os:
+                tmpl_bridge = env.get_template("custom_os_bridge.ipxe.j2")
+                content = tmpl_bridge.render(
+                    os_type=os_type,
+                    has_autres=has_autres,
+                    server_url=base,
+                )
+                out = cfg.menus_dir / f"{os_type.slug}.ipxe"
+                out.write_text(content, encoding="utf-8")
+                written.append(str(out))
 
-            tmpl = env.get_template(tmpl_name)
-            base = cfg.server_base_url.rstrip("/")
-            content = tmpl.render(
-                os_type=os_type,
-                entries=standard_entries,
-                has_autres=has_autres,
-                server_url=base,
-                ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
-                ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
-                ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
-            )
-            out = cfg.menus_dir / f"{os_type.slug}.ipxe"
-            out.write_text(content, encoding="utf-8")
-            written.append(str(out))
+                autres_back_target = f"{base}/menus/menu.ipxe"
+                autres_back_item = "Retour au menu principal"
+            else:
+                slug_l = (os_type.slug or "").lower()
+                bt_l = (os_type.boot_type or "linux").lower()
+                if slug_l == "esxi" or bt_l == "esxi":
+                    tmpl_name = "esxi.ipxe.j2"
+                elif bt_l == "windows":
+                    tmpl_name = "windows.ipxe.j2"
+                else:
+                    tmpl_name = "linux.ipxe.j2"
+                if not (TMPL_DIR / tmpl_name).exists():
+                    tmpl_name = "linux.ipxe.j2"
+
+                tmpl = env.get_template(tmpl_name)
+                content = tmpl.render(
+                    os_type=os_type,
+                    entries=standard_entries,
+                    has_autres=has_autres,
+                    server_url=base,
+                    ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
+                    ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
+                    ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
+                )
+                out = cfg.menus_dir / f"{os_type.slug}.ipxe"
+                out.write_text(content, encoding="utf-8")
+                written.append(str(out))
+
+                autres_back_target = f"{base}/menus/{os_type.slug}.ipxe"
+                autres_back_item = f"Retour à {os_type.label}"
 
             # ── Sous-menu "Autres" (scripts iPXE custom) ────────────────────
             if has_autres:
@@ -246,11 +264,13 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     entries=custom_entries,
                     server_url=base,
+                    back_menu_url=autres_back_target,
+                    back_item_label=autres_back_item,
                 )
                 out_autres = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
                 out_autres.write_text(content_autres, encoding="utf-8")
                 written.append(str(out_autres))
-                logger.info("Menu Autres généré : %s (%d entrées)", out_autres, len(custom_entries))
+                logger.info("Menu scripts iPXE généré : %s (%d entrées)", out_autres, len(custom_entries))
             else:
                 # Supprimer l'ancien _autres.ipxe s'il n'y a plus de versions custom
                 old = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"

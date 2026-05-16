@@ -20,6 +20,7 @@ class OsType(Base):
     extract_full_iso = Column(Boolean, default=False)       # extraction 7z complète vers boot/<os>/<ver>/
     extract_paths_json = Column(Text, default="[]")  # [{ "filename":"vmlinuz","max":1 }] ou legacy {"pattern":...}
     ipxe_roles_json = Column(Text, default="[]")  # obsolète formulaire — conservé pour anciennes entrées
+    forced_autoconfig_type = Column(String(64))  # type de config AutoConfig imposé (OS non built-in)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -89,7 +90,7 @@ class AutoConfig(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     iso_version_id = Column(Integer, ForeignKey("iso_versions.id"), nullable=False)
-    config_type = Column(String(32))   # preseed | kickstart | unattend | cloud-init | custom
+    config_type = Column(String(64))   # prédefini (preseed, …) ou type personnalisé (slug utilisateur)
     label = Column(String(128), default="")
     content = Column(Text, default="")            # Ubuntu cloud-init bundle : corps user-data
     meta_data_content = Column(Text, default="")  # Ubuntu bundle : corps meta-data

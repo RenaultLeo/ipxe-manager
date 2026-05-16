@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 from app.database import get_db
 from app.auth import is_authenticated
-from app.models.models import IsoVersion, AutoConfig
+from app.models.models import IsoVersion, AutoConfig, OsType
 from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
 from app.services.slugify import slugify
 from app.templating import templates, template_context
@@ -32,12 +32,45 @@ CONFIG_TYPES = [
 UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
 
 
-def _config_type_labels(lang: str) -> dict[str, str]:
-    """Libellés lisibles du select « type » (traduits)."""
-    out: dict[str, str] = {}
-    for ct in CONFIG_TYPES:
+def all_config_types_for_ui(db: Session) -> list[str]:
+    """Types prédéfinis puis types utilisés en base (forçage OS ou configs existantes)."""
+    seen = set(CONFIG_TYPES)
+    for (val,) in (
+        db.query(OsType.forced_autoconfig_type)
+        .filter(
+            OsType.forced_autoconfig_type.isnot(None),
+            OsType.forced_autoconfig_type != "",
+        )
+        .distinct()
+        .all()
+    ):
+        s = str(val).strip()
+        if s:
+            seen.add(s)
+    for (val,) in (
+        db.query(AutoConfig.config_type)
+        .filter(
+            AutoConfig.config_type.isnot(None),
+            AutoConfig.config_type != "",
+        )
+        .distinct()
+        .all()
+    ):
+        s = str(val).strip()
+        if s:
+            seen.add(s)
+    custom = sorted((seen - set(CONFIG_TYPES)), key=str.casefold)
+    return list(CONFIG_TYPES) + custom
+
+
+def _config_type_labels(lang: str, types: list[str] | None = None) -> dict[str, str]:
+    """Libellés du select « type » (traduction pour les entrées ayant une clé i18n)."""
+    iterable = list(types) if types is not None else list(CONFIG_TYPES)
+    out = {}
+    for ct in iterable:
         key = "cfg.type_dd_" + ct.replace("-", "_")
-        out[ct] = translate(lang, key)
+        lab = translate(lang, key)
+        out[ct] = ct if lab == key else lab
     return out
 
 
@@ -84,13 +117,14 @@ async def config_list(request: Request, db: Session = Depends(get_db),
         return redir
     configs = db.query(AutoConfig).order_by(AutoConfig.updated_at.desc()).all()
     versions = db.query(IsoVersion).all()
+    types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
         "configs/index.html",
         template_context(
             request,
             configs=configs,
             versions=versions,
-            config_types=CONFIG_TYPES,
+            config_types=types_combo,
             scan_result=scan_result,
         ),
     )
@@ -122,17 +156,18 @@ async def config_new(request: Request, db: Session = Depends(get_db)):
         return redir
     versions = db.query(IsoVersion).all()
     lang = getattr(request.state, "locale", "fr")
+    types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
         "configs/edit.html",
         template_context(
             request,
             config=None,
             versions=versions,
-            config_types=CONFIG_TYPES,
+            config_types=types_combo,
             server_url=settings.server_base_url,
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
-            config_type_labels=_config_type_labels(lang),
+            config_type_labels=_config_type_labels(lang, types_combo),
         ),
     )
 
@@ -158,9 +193,20 @@ async def config_create(
         raise HTTPException(404)
 
     os_slug = version.os_type.slug
+    allowed_types = set(all_config_types_for_ui(db))
+
     if version.os_type.is_builtin and os_slug in FORCED_CONFIGS:
+        cfg_ct = FORCED_CONFIGS[os_slug]["type"]
         if config_type not in CONFIG_TYPES:
-            config_type = FORCED_CONFIGS[os_slug]["type"]
+            config_type = cfg_ct
+        if config_type != cfg_ct:
+            config_type = cfg_ct
+    else:
+        fc = (version.os_type.forced_autoconfig_type or "").strip()
+        if fc:
+            config_type = fc
+        elif config_type not in allowed_types:
+            raise HTTPException(400, "Type de configuration non autorisé.")
 
     cfg = AutoConfig(
         iso_version_id=iso_version_id,
@@ -218,17 +264,18 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(404)
     versions = db.query(IsoVersion).all()
     lang = getattr(request.state, "locale", "fr")
+    types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
         "configs/edit.html",
         template_context(
             request,
             config=cfg,
             versions=versions,
-            config_types=CONFIG_TYPES,
+            config_types=types_combo,
             server_url=settings.server_base_url,
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
-            config_type_labels=_config_type_labels(lang),
+            config_type_labels=_config_type_labels(lang, types_combo),
         ),
     )
 

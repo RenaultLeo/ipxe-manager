@@ -30,7 +30,8 @@
                 <option value="{{ v.id }}"
                         data-os-slug="{{ v.os_type.slug }}"
                         data-os-boot="{{ v.os_type.boot_type }}"
-                        data-is-builtin="{{ 'true' if v.os_type.is_builtin else 'false' }}">
+                        data-is-builtin="{{ 'true' if v.os_type.is_builtin else 'false' }}"
+                        data-forced-autoconfig="{{ v.os_type.forced_autoconfig_type or '' }}">
                   {{ v.os_type.label }} {{ v.version_label }}
                 </option>
                 {% endfor %}
@@ -152,6 +153,7 @@ const CFG_I18N = {
   bundlePathPlaceholder: {{ t('cfg.bundle_path_placeholder')|tojson }},
 };
 const TYPE_LABELS = {{ config_type_labels | tojson }};
+const CFG_FORCED_OS_HINT = {{ t('cfg.type_forced_by_os')|tojson }};
 /** Contexte serveur édition : bundle Ubuntu avec user-data + meta-data */
 const EDIT_UBUNTU_AUTOSTALL_BUNDLE = {{ (config is not none and config.ubuntu_cloud_slug) | tojson }};
 /** Édition d'une ancienne entrée Ubuntu (un seul fichier user-data plat) */
@@ -191,6 +193,17 @@ function updateBundlePathPreview() {
   out.textContent = slug ? (UBUNTU_BUNDLE_PREFIX + slug + '/') : CFG_I18N.bundlePathPlaceholder;
 }
 
+function ensureConfigTypeOption(select, val) {
+  if (!select || !val) return;
+  for (let i = 0; i < select.options.length; i++) {
+    if (select.options[i].value === val) return;
+  }
+  const o = document.createElement('option');
+  o.value = val;
+  o.textContent = TYPE_LABELS[val] || val;
+  select.appendChild(o);
+}
+
 function onVersionChange(sel) {
   const opt       = sel.options[sel.selectedIndex];
   const osSlug    = opt.dataset.osSlug  || '';
@@ -202,48 +215,72 @@ function onVersionChange(sel) {
   const fileSelect    = document.getElementById('file-choice');
   const fileDesc      = document.getElementById('file-choice-desc');
 
-  const forced        = isBuiltin ? FORCED_CONFIGS[osSlug] : null;
-  const suggestedType = (forced ? forced.type : null) || OS_CONFIG_TYPE[osSlug] || 'custom';
+  const forcedBuiltin = isBuiltin ? FORCED_CONFIGS[osSlug] : null;
+  const forcedCustom  = (!isBuiltin && opt.dataset.forcedAutoconfig)
+    ? String(opt.dataset.forcedAutoconfig).trim() : '';
+  const suggestedType = (forcedBuiltin ? forcedBuiltin.type : null) || OS_CONFIG_TYPE[osSlug] || 'custom';
 
-  // Mettre à jour les labels du dropdown de type
   for (let i = 0; i < typeSelect.options.length; i++) {
     const v = typeSelect.options[i].value;
     typeSelect.options[i].textContent = TYPE_LABELS[v] || v;
   }
 
-  // Sélectionner le type suggéré — verrouillé pour les OS built-in (FORCED_CONFIGS)
-  for (let i = 0; i < typeSelect.options.length; i++) {
-    if (typeSelect.options[i].value === suggestedType) {
-      typeSelect.selectedIndex = i;
-      break;
-    }
-  }
-  typeSelect.disabled = !!forced;
-  hint.textContent = (!forced && osSlug)
-    ? CFG_I18N.typeSuggestedHint.replace('{slug}', osSlug).replace('{type}', suggestedType)
-    : '';
+  fileWrap.classList.add('d-none');
+  fileSelect.innerHTML = '';
+  fileDesc.textContent = '';
 
-  // Sélecteur de fichier pour les distros multi-file (pas Ubuntu bundle)
-  if (forced && forced.multi_file && !forced.ubuntu_bundle) {
-    fileSelect.innerHTML = '';
-    forced.filenames.forEach(fn => {
-      const o = document.createElement('option');
-      o.value = fn; o.textContent = fn;
-      fileSelect.appendChild(o);
-    });
-    fileDesc.textContent = forced.description || '';
-    fileWrap.classList.remove('d-none');
+  let pickType = suggestedType;
+
+  if (forcedBuiltin) {
+    pickType = forcedBuiltin.type;
+    for (let i = 0; i < typeSelect.options.length; i++) {
+      if (typeSelect.options[i].value === pickType) {
+        typeSelect.selectedIndex = i;
+        break;
+      }
+    }
+    typeSelect.disabled = true;
+    hint.textContent = '';
+
+    if (forcedBuiltin.multi_file && !forcedBuiltin.ubuntu_bundle) {
+      forcedBuiltin.filenames.forEach(fn => {
+        const o = document.createElement('option');
+        o.value = fn; o.textContent = fn;
+        fileSelect.appendChild(o);
+      });
+      fileDesc.textContent = forcedBuiltin.description || '';
+      fileWrap.classList.remove('d-none');
+    }
+  } else if (forcedCustom) {
+    ensureConfigTypeOption(typeSelect, forcedCustom);
+    pickType = forcedCustom;
+    for (let i = 0; i < typeSelect.options.length; i++) {
+      if (typeSelect.options[i].value === pickType) {
+        typeSelect.selectedIndex = i;
+        break;
+      }
+    }
+    typeSelect.disabled = true;
+    hint.textContent = CFG_FORCED_OS_HINT;
   } else {
-    fileWrap.classList.add('d-none');
-    fileSelect.innerHTML = '';
+    for (let i = 0; i < typeSelect.options.length; i++) {
+      if (typeSelect.options[i].value === suggestedType) {
+        typeSelect.selectedIndex = i;
+        break;
+      }
+    }
+    typeSelect.disabled = false;
+    hint.textContent = (osSlug)
+      ? CFG_I18N.typeSuggestedHint.replace('{slug}', osSlug).replace('{type}', suggestedType)
+      : '';
   }
 
   applyUbuntuEditorsLayout();
   updateBundlePathPreview();
 
   const editor = document.getElementById('config-editor');
-  if (!editor.value.trim() && suggestedType && !isUbuntuDualEditorMode() && TEMPLATES[suggestedType]) {
-    insertTemplate(suggestedType);
+  if (!editor.value.trim() && pickType && !isUbuntuDualEditorMode() && TEMPLATES[pickType]) {
+    insertTemplate(pickType);
   }
   if (isUbuntuDualEditorMode() && !EDIT_UBUNTU_AUTOSTALL_BUNDLE && !editor.value.trim()) {
     insertUbuntuAutoinstallPair();

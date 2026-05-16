@@ -10,8 +10,10 @@ from app.database import get_db
 from app.auth import is_authenticated, hash_password
 from app.models.models import AppSetting, OsType
 from app.services.os_type_order import sort_os_types_for_ui
+from app.services.slugify import slugify
 from app.config import settings as app_settings
 from app.templating import templates, template_context
+from app.routers.configs import all_config_types_for_ui, _config_type_labels
 
 router = APIRouter(prefix="/settings")
 
@@ -20,6 +22,7 @@ EDITABLE_KEYS = ["server_base_url", "admin_password_hash"]
 BOOT_TYPE_CHOICES = frozenset({"linux", "windows", "tools"})
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,30}$")
+FORCED_AUTOCONFIG_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,62}$")
 
 
 def _auth(request: Request):
@@ -67,6 +70,32 @@ def _parse_extract_specs(form) -> list[dict]:
     return out
 
 
+def _autoconfig_form_context(db: Session, request: Request) -> dict:
+    lang = getattr(request.state, "locale", "fr")
+    choices = all_config_types_for_ui(db)
+    labels = _config_type_labels(lang, choices)
+    return {"autoconfig_choices": choices, "autoconfig_labels": labels}
+
+
+def _parse_forced_autoconfig(form, db: Session) -> tuple[str | None, str]:
+    """Retourne (valeur BDD ou None, code erreur vide si ok)."""
+    choice = str(form.get("autoconfig_type") or "").strip()
+    raw_new = str(form.get("autoconfig_type_new") or "").strip()
+    allowed = set(all_config_types_for_ui(db))
+    if not choice:
+        return None, ""
+    if choice == "__new__":
+        if not raw_new:
+            return None, "autoconfig"
+        cand = slugify(raw_new).replace(".", "-")
+        if not cand or not FORCED_AUTOCONFIG_SLUG_RE.match(cand):
+            return None, "autoconfig"
+        return cand, ""
+    if choice not in allowed:
+        return None, "autoconfig"
+    return choice, ""
+
+
 @router.get("", response_class=HTMLResponse)
 async def settings_page(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
@@ -91,6 +120,7 @@ async def os_type_new_get(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:
         return redir
+    ctx = _autoconfig_form_context(db, request)
     return templates.TemplateResponse(
         "settings/os_type_form.html",
         template_context(
@@ -98,6 +128,7 @@ async def os_type_new_get(request: Request, db: Session = Depends(get_db)):
             ot=None,
             patterns=[{}],
             err=request.query_params.get("err"),
+            **ctx,
         ),
     )
 
@@ -129,6 +160,10 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
     elif not extract_full and len(patterns) == 0:
         err = "patterns"
 
+    forced_cfg, ferr = _parse_forced_autoconfig(form, db)
+    if not err and ferr:
+        err = ferr
+
     if err:
         return RedirectResponse(f"/settings/os-types/new?err={err}", status_code=302)
 
@@ -142,6 +177,7 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
             extract_full_iso=extract_full,
             extract_paths_json=json.dumps(patterns),
             ipxe_roles_json="[]",
+            forced_autoconfig_type=forced_cfg,
         )
     )
     db.commit()
@@ -164,6 +200,7 @@ async def os_type_edit_get(os_id: int, request: Request, db: Session = Depends(g
             patterns = [{}]
     except json.JSONDecodeError:
         patterns = [{}]
+    ctx = _autoconfig_form_context(db, request)
     return templates.TemplateResponse(
         "settings/os_type_form.html",
         template_context(
@@ -171,6 +208,7 @@ async def os_type_edit_get(os_id: int, request: Request, db: Session = Depends(g
             ot=ot,
             patterns=patterns,
             err=request.query_params.get("err"),
+            **ctx,
         ),
     )
 
@@ -202,6 +240,10 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
     elif not extract_full and len(patterns) == 0:
         err = "patterns"
 
+    forced_cfg, ferr = _parse_forced_autoconfig(form, db)
+    if not err and ferr:
+        err = ferr
+
     if err:
         return RedirectResponse(f"/settings/os-types/{os_id}/edit?err={err}", status_code=302)
 
@@ -211,6 +253,7 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
     ot.extract_full_iso = extract_full
     ot.extract_paths_json = json.dumps(patterns)
     ot.ipxe_roles_json = "[]"
+    ot.forced_autoconfig_type = forced_cfg
     db.commit()
     return RedirectResponse("/settings", status_code=302)
 

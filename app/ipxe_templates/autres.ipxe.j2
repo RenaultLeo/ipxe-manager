@@ -10,7 +10,7 @@ menu === {{ os_type.label }} — Scripts personnalisés ===
 item c{{ e.id }} {{ e.label }}
 {% endfor %}
 item --gap
-item back Retour à {{ os_type.label }}
+item back {{ back_item_label }}
 choose selected || goto back
 goto ${selected}
 
@@ -20,4 +20,4 @@ goto ${selected}
 {% endfor %}
 
 :back
-chain --autofree {{ server_url }}/menus/{{ os_type.slug }}.ipxe
+chain --autofree {{ back_menu_url }}

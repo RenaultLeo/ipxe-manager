@@ -59,6 +59,30 @@
             <input type="text" name="icon" class="form-control font-monospace" maxlength="64"
                    value="{{ ot.icon if ot else 'bi-hdd' }}" placeholder="bi-hdd">
           </div>
+          <div class="col-12">
+            <label class="form-label" for="autoconfig-type-sel">{{ t('sett.ot_autoconfig_label') }}</label>
+            <select name="autoconfig_type" id="autoconfig-type-sel" class="form-select"
+                    onchange="onAutoconfigTypeChange(this)">
+              <option value="">{{ t('sett.ot_autoconfig_none') }}</option>
+              {% for ct in autoconfig_choices %}
+              <option value="{{ ct }}"
+                      {% if ot and ot.forced_autoconfig_type == ct %}selected{% endif %}>
+                {{ autoconfig_labels[ct] }}
+              </option>
+              {% endfor %}
+              {% if ot and ot.forced_autoconfig_type
+                    and ot.forced_autoconfig_type not in autoconfig_choices %}
+              <option value="{{ ot.forced_autoconfig_type }}" selected>{{ ot.forced_autoconfig_type }}</option>
+              {% endif %}
+              <option value="__new__">{{ t('sett.ot_autoconfig_new_opt') }}</option>
+            </select>
+            <div class="form-text">{{ t('sett.ot_autoconfig_help') }}</div>
+          </div>
+          <div class="col-md-6 d-none" id="autoconfig-new-wrap">
+            <label class="form-label" for="autoconfig-new-input">{{ t('sett.ot_autoconfig_new_name') }}</label>
+            <input type="text" name="autoconfig_type_new" id="autoconfig-new-input" class="form-control font-monospace"
+                   maxlength="80" autocomplete="off" placeholder="{{ t('sett.ot_autoconfig_new_ph') }}">
+          </div>
         </div>
       </div>
 
@@ -123,5 +147,17 @@ function addPat() {
     document.getElementById('tpl-pat').content.cloneNode(true)
   );
 }
+function onAutoconfigTypeChange(sel) {
+  var wrap = document.getElementById('autoconfig-new-wrap');
+  var inp = document.getElementById('autoconfig-new-input');
+  if (!wrap || !inp) return;
+  var isNew = sel && sel.value === '__new__';
+  wrap.classList.toggle('d-none', !isNew);
+  inp.required = !!isNew;
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var s = document.getElementById('autoconfig-type-sel');
+  if (s) onAutoconfigTypeChange(s);
+});
 </script>
 {% endblock %}
