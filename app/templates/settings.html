@@ -95,12 +95,13 @@
               <td>{{ ot.label }}</td>
               <td><span class="badge bg-secondary">{{ ot.boot_type }}</span></td>
               <td class="text-center">
-                <form method="post" action="/settings/os-types/{{ ot.id }}/toggle-dashboard" class="d-inline">
-                  <button type="submit" class="btn btn-sm btn-outline-secondary border-0 px-2"
-                          title="{% if ot.show_on_dashboard %}{{ t('sett.dash_hide') }}{% else %}{{ t('sett.dash_show') }}{% endif %}">
-                    <i class="bi {% if ot.show_on_dashboard %}bi-eye{% else %}bi-eye-slash text-muted{% endif %}"></i>
-                  </button>
-                </form>
+                <button type="button" class="btn btn-sm btn-outline-secondary border-0 px-2 js-toggle-dash"
+                        data-os-id="{{ ot.id }}"
+                        data-label-show="{{ t('sett.dash_show')|e }}"
+                        data-label-hide="{{ t('sett.dash_hide')|e }}"
+                        title="{% if ot.show_on_dashboard %}{{ t('sett.dash_hide') }}{% else %}{{ t('sett.dash_show') }}{% endif %}">
+                  <i class="bi {% if ot.show_on_dashboard %}bi-eye{% else %}bi-eye-slash text-muted{% endif %}"></i>
+                </button>
               </td>
               <td class="text-end text-nowrap">
                 {% if not ot.is_builtin %}
@@ -140,6 +141,36 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script>
 (function () {
+  document.querySelectorAll('.js-toggle-dash').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-os-id');
+      var icon = btn.querySelector('i');
+      var showLab = btn.getAttribute('data-label-show');
+      var hideLab = btn.getAttribute('data-label-hide');
+      if (!id || !icon) return;
+      btn.disabled = true;
+      fetch('/settings/os-types/' + id + '/toggle-dashboard', {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin'
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error('toggle failed');
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || !data.ok) throw new Error('bad response');
+          var vis = !!data.show_on_dashboard;
+          icon.className = 'bi ' + (vis ? 'bi-eye' : 'bi-eye-slash text-muted');
+          btn.title = vis ? hideLab : showLab;
+        })
+        .catch(function () {})
+        .finally(function () {
+          btn.disabled = false;
+        });
+    });
+  });
+
   var tb = document.getElementById('os-types-sortable');
   if (!tb || typeof Sortable === 'undefined') return;
   var rows = tb.querySelectorAll('tr[data-os-id]');

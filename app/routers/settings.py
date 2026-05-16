@@ -324,14 +324,22 @@ async def os_types_reorder(
 
 @router.post("/os-types/{os_id}/toggle-dashboard")
 async def os_type_toggle_dashboard(os_id: int, request: Request, db: Session = Depends(get_db)):
+    wants_json = "application/json" in (request.headers.get("accept") or "").lower()
     redir = _auth(request)
     if redir:
+        if wants_json:
+            return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
         return redir
     ot = db.query(OsType).get(os_id)
     if not ot:
+        if wants_json:
+            return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
         raise HTTPException(status_code=404)
     ot.show_on_dashboard = not bool(getattr(ot, "show_on_dashboard", True))
     db.commit()
+    vis = bool(ot.show_on_dashboard)
+    if wants_json:
+        return JSONResponse({"ok": True, "show_on_dashboard": vis})
     return RedirectResponse("/settings", status_code=302)
 
 
