@@ -6,6 +6,8 @@ Celery background jobs:
 """
 import json
 import logging
+import re
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -14,6 +16,42 @@ from app.database import SessionLocal
 from app.models.models import IsoVersion, BootEntry, Upload
 
 logger = logging.getLogger(__name__)
+
+# Upstream iPXE désactive CONSOLE_CMD / CONSOLE_FRAMEBUFFER sur pcbios (undionly) via #undef ;
+# sans ça, « colour », « console » et PNG de fond ne sont pas disponibles en boot BIOS classique.
+
+
+def _patch_ipxe_graphical_console_headers(src_dir: Path, logs: list[str]) -> None:
+    """Retire les #undef qui coupent console / couleur / framebuffer en build BIOS."""
+    general = src_dir / "src" / "config" / "general.h"
+    console = src_dir / "src" / "config" / "console.h"
+    if not general.is_file() or not console.is_file():
+        raise RuntimeError(
+            f"Sources iPXE incomplètes (config manquante) : {general=} {console=}"
+        )
+
+    g = general.read_text(encoding="utf-8", errors="replace")
+    g_new = re.sub(r"^[ \t]*#undef CONSOLE_CMD[ \t]*\r?\n", "", g, flags=re.MULTILINE)
+    if g_new != g:
+        general.write_text(g_new, encoding="utf-8")
+        logs.append(
+            "config/general.h : retrait de #undef CONSOLE_CMD (console / colour / cpair en BIOS)."
+        )
+
+    c = console.read_text(encoding="utf-8", errors="replace")
+    c_new = re.sub(
+        r"^[ \t]*#undef CONSOLE_FRAMEBUFFER[ \t]*\r?\n", "", c, flags=re.MULTILINE
+    )
+    if c_new != c:
+        console.write_text(c_new, encoding="utf-8")
+        logs.append(
+            "config/console.h : retrait de #undef CONSOLE_FRAMEBUFFER (fond PNG / mode graphique)."
+        )
+
+    if g_new == g and c_new == c:
+        logs.append(
+            "Aucun #undef CONSOLE_CMD / CONSOLE_FRAMEBUFFER trouvé (déjà patché ou sources inattendues)."
+        )
 
 
 @celery.task(bind=True, name="extract_iso")
@@ -139,15 +177,14 @@ def regenerate_menus_task():
 )
 def compile_ipxe_task(self, menu_url: str):
     """
-    Clone (ou pull) le dépôt iPXE officiel, génère embed.ipxe avec un
-    chainload vers menu_url, compile undionly.kpxe et ipxe.efi puis
-    copie les binaires dans le répertoire TFTP.
+    Clone (ou pull) le dépôt iPXE officiel, patche la config pour console couleur
+    et fond PNG en build BIOS, génère embed.ipxe avec un chainload vers menu_url,
+    compile undionly.kpxe et les EFI puis copie les binaires dans le TFTP.
 
     Retourne un dict avec les paths des fichiers produits et les logs.
     """
     import subprocess
     import shutil
-    from pathlib import Path
     from app.config import settings
 
     logs: list[str] = []
@@ -232,6 +269,15 @@ def compile_ipxe_task(self, menu_url: str):
         logs.append(f"embed.ipxe généré :\n{embed_content}")
         completed_steps.append("embed")
         make_dir = src_dir / "src"
+
+        # ── 3b. Activer console / couleur / fond PNG sur build BIOS (undionly) ──
+        logs.append("Patch config iPXE (CONSOLE_CMD + CONSOLE_FRAMEBUFFER pour pcbios)…")
+        self.update_state(
+            state="PROGRESS",
+            meta={"step": "patch_ipxe_config", "completed_steps": list(completed_steps), "logs": logs},
+        )
+        _patch_ipxe_graphical_console_headers(src_dir, logs)
+        completed_steps.append("patch_ipxe_config")
 
         # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
         logs.append("Compilation undionly.kpxe (BIOS)…")
