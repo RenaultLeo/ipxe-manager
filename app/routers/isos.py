@@ -1,6 +1,6 @@
 import json
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
@@ -24,6 +24,40 @@ def _auth(request: Request):
         from fastapi.responses import RedirectResponse
         return RedirectResponse("/login", status_code=302)
     return None
+
+
+def _extract_search_terms_for_ot(ot: OsType) -> list[str]:
+    """Noms ou motifs configurés dans ``extract_paths_json`` (affichage upload)."""
+    out: list[str] = []
+    try:
+        raw = json.loads(getattr(ot, "extract_paths_json", None) or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return out
+    if not isinstance(raw, list):
+        return out
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        fn = str(row.get("filename") or row.get("name") or "").strip()
+        pat = str(row.get("pattern") or "").strip()
+        if fn:
+            bn = PurePosixPath(fn.replace("\\", "/")).name
+            if bn:
+                out.append(bn)
+        elif pat:
+            out.append(pat)
+    return out
+
+
+def _os_extract_meta_for_upload(os_types: list[OsType]) -> dict[str, dict]:
+    meta: dict[str, dict] = {}
+    for ot in os_types:
+        meta[str(ot.id)] = {
+            "slug": ot.slug,
+            "extract_full": bool(getattr(ot, "extract_full_iso", False)),
+            "search_terms": _extract_search_terms_for_ot(ot),
+        }
+    return meta
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
@@ -54,9 +88,14 @@ async def upload_form(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
     os_types = sort_os_types_for_ui(db.query(OsType).all())
+    os_extract_meta = _os_extract_meta_for_upload(os_types)
     return templates.TemplateResponse(
         "isos/upload.html",
-        template_context(request, os_types=os_types),
+        template_context(
+            request,
+            os_types=os_types,
+            os_extract_meta=os_extract_meta,
+        ),
     )
 
 

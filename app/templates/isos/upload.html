@@ -84,11 +84,21 @@
                 {{ t('iso.upload.ubuntu_notice') }}
               </div>
 
+              <div id="extract-plan-banner" class="alert alert-secondary small py-3 d-none mb-3">
+                <div class="mb-1">{{ t('iso.upload.extract_plan_intro') }}</div>
+                <div id="extract-plan-badges-wrap" class="d-none mb-2">
+                  <strong class="me-1">{{ t('iso.upload.extract_plan_badges') }}</strong>
+                  <span id="extract-plan-badges" class="d-inline-flex flex-wrap gap-1 align-middle"></span>
+                </div>
+                <div id="extract-plan-full-hint" class="small text-muted d-none">{{ t('iso.upload.extract_plan_full_hint') }}</div>
+                <div id="extract-plan-auto" class="small text-muted d-none">{{ t('iso.upload.extract_plan_auto') }}</div>
+              </div>
+
               <div class="card border-info mb-3">
                 <div class="card-header text-info small">
                   <i class="bi bi-terminal me-1"></i>{{ t('iso.upload.linux_card_title') }}
                   <span class="text-muted ms-2">— {{ t('iso.upload.linux_expected') }}</span>
-                  <span id="distro-hint" class="badge bg-secondary ms-1 small"></span>
+                  <span id="distro-hint" class="badge bg-secondary ms-1 small d-none"></span>
                 </div>
                 <div class="card-body">
                   <div class="row g-3" id="linux-manual-fields">
@@ -174,6 +184,7 @@
 {% block scripts %}
 <script>
 const UBUNTU_HINT = {{ t('iso.upload.hint_ubuntu_full')|tojson }};
+const OS_EXTRACT_META = {{ os_extract_meta|tojson }};
 const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows']);
 
 const DISTRO_HINTS = {
@@ -191,16 +202,61 @@ function updateLinuxFields() {
   const sel   = document.getElementById('os-select');
   const opt   = sel.options[sel.selectedIndex];
   const slug  = opt.value ? (opt.dataset.slug || '') : '';
+  const id    = sel.value || '';
+  const meta  = (id && OS_EXTRACT_META[id]) ? OS_EXTRACT_META[id] : {};
+  const terms = Array.isArray(meta.search_terms) ? meta.search_terms : [];
+  const metaFull = !!meta.extract_full;
   const info  = DISTRO_HINTS[slug] || {};
-  const isFull = !!info.fullExtract;
+  const isUbuntuStyle = !!info.fullExtract || FULL_EXTRACT_SLUGS.has(slug);
 
-  document.getElementById('ubuntu-notice').classList.toggle('d-none', !isFull);
+  document.getElementById('ubuntu-notice').classList.toggle('d-none', !info.fullExtract);
   const hasIso = !!document.getElementById('iso-file').value;
-  document.getElementById('linux-manual-fields').style.opacity = (isFull && hasIso) ? '0.4' : '1';
+  document.getElementById('linux-manual-fields').style.opacity = (hasIso && (isUbuntuStyle || metaFull)) ? '0.45' : '1';
 
-  document.getElementById('lbl-kernel').textContent = info.kernel || 'vmlinuz';
-  document.getElementById('lbl-initrd').textContent = info.initrd || 'initrd';
-  document.getElementById('distro-hint').textContent = info.hint || '';
+  const banner = document.getElementById('extract-plan-banner');
+  const badgesWrap = document.getElementById('extract-plan-badges-wrap');
+  const badges = document.getElementById('extract-plan-badges');
+  const fullHint = document.getElementById('extract-plan-full-hint');
+  const autoTxt = document.getElementById('extract-plan-auto');
+  const distroBadge = document.getElementById('distro-hint');
+
+  banner.classList.remove('d-none');
+  badges.innerHTML = '';
+  badgesWrap.classList.add('d-none');
+  fullHint.classList.add('d-none');
+  autoTxt.classList.add('d-none');
+  distroBadge.textContent = '';
+  distroBadge.classList.add('d-none');
+
+  if (terms.length > 0) {
+    badgesWrap.classList.remove('d-none');
+    terms.forEach(t => {
+      const b = document.createElement('span');
+      b.className = 'badge bg-dark border border-secondary font-monospace';
+      b.textContent = t;
+      badges.appendChild(b);
+    });
+  }
+  if (metaFull && terms.length > 0) {
+    fullHint.classList.remove('d-none');
+  }
+  if (terms.length === 0) {
+    if (!info.fullExtract) {
+      autoTxt.classList.remove('d-none');
+    }
+    if (info.hint) {
+      distroBadge.textContent = info.hint;
+      distroBadge.classList.remove('d-none');
+    }
+  }
+
+  let kLbl = info.kernel || 'vmlinuz';
+  let iLbl = info.initrd || 'initrd';
+  if (terms.length >= 1) kLbl = terms[0];
+  if (terms.length >= 2) iLbl = terms[1];
+
+  document.getElementById('lbl-kernel').textContent = kLbl;
+  document.getElementById('lbl-initrd').textContent = iLbl;
   document.getElementById('field-modloop').style.display = info.modloop ? '' : 'none';
 }
 

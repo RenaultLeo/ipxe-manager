@@ -356,6 +356,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "sett.ot_err_boot_type": "Type de boot invalide.",
         "sett.ot_err_duplicate": "Ce slug existe déjà.",
         "sett.ot_err_patterns": "Cochez l'extraction complète ou ajoutez au moins un nom de fichier (ou motif legacy).",
+        "iso.upload.extract_plan_intro": "Pour une ISO, l'extraction suit la fiche « Extraction depuis l'ISO » du type choisi ci-dessus (Paramètres).",
+        "iso.upload.extract_plan_badges": "Fichiers recherchés :",
+        "iso.upload.extract_plan_auto": "Aucune entrée liste sur ce type : détection automatique ; ajoutez des noms sous Paramètres si besoin.",
+        "iso.upload.extract_plan_full_hint": "Extraction complète activée : tout le contenu de l'ISO est décompressé, puis ces noms sont repérés dans l'arbre.",
     },
     "en": {
         "nav.dashboard": "Dashboard",
@@ -687,6 +691,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "sett.ot_err_boot_type": "Invalid boot type.",
         "sett.ot_err_duplicate": "This slug is already taken.",
         "sett.ot_err_patterns": "Enable full extraction or add at least one filename (or legacy pattern).",
+        "iso.upload.extract_plan_intro": "With an ISO, extraction follows this OS type’s “ISO extraction” settings (under Settings).",
+        "iso.upload.extract_plan_badges": "Filenames searched in the ISO:",
+        "iso.upload.extract_plan_auto": "No entries on this OS type yet: automatic detection; add names under Settings if needed.",
+        "iso.upload.extract_plan_full_hint": "Full ISO extraction is enabled: everything is unpacked, then these names are located in the tree.",
     },
 }
 
