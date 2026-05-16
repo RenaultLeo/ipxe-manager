@@ -492,6 +492,19 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     mboot_rel = _esxi_rel_from_dest(dest, mboot_path)
     modules_json = json.dumps(preload_rels, separators=(",", ":"))
 
+    efi_boot_pool = iso_lower.get("bootx64.efi", [])
+    esxi_efi_boot_http: str | None = None
+    if efi_boot_pool:
+        efi_chosen = _esxi_pick_preferred_path(efi_boot_pool, dest)
+        if efi_chosen.is_file():
+            efi_rel = _esxi_rel_from_dest(dest, efi_chosen)
+            esxi_efi_boot_http = f"{base}/{efi_rel}"
+            logger.info("ESXi : chargeur UEFI — %s", efi_rel)
+        else:
+            logger.warning("ESXi : bootx64.efi indexé mais fichier illisible — UEFI menu désactivé.")
+    else:
+        logger.warning("ESXi : bootx64.efi introuvable sur l'ISO — entrée menu UEFI absente.")
+
     logger.info(
         "ESXi extraction complète — mboot=%s kernel_payload=%s modules_iPXE=%d",
         mboot_rel,
@@ -499,11 +512,14 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
         len(preload_rels),
     )
 
-    return {
+    out_paths: dict = {
         "kernel_path": f"{base}/{mboot_rel}",
         "esxi_boot_cfg_path": f"{base}/ipxe-boot.cfg",
         "esxi_modules": modules_json,
     }
+    if esxi_efi_boot_http:
+        out_paths["esxi_efi_boot_path"] = esxi_efi_boot_http
+    return out_paths
 
 
 def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:

@@ -43,6 +43,7 @@ def _migrate_columns():
     _add_column_if_missing("boot_entries", "custom_ipxe_path",   "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "extra_linux_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("boot_entries", "esxi_boot_cfg_path", "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "esxi_efi_boot_path", "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "esxi_modules",       "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "meta_data_content",  "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "ubuntu_cloud_slug",  "VARCHAR(128)")

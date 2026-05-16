@@ -162,6 +162,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             }
             for ac in v.autoconfigs
         ],
+        "ipxe_item_tag": f"v{v.id}",
     }
 
 
@@ -302,8 +303,46 @@ def regenerate_all(db: Session) -> list[str]:
                 entry = _build_entry(v, os_type, cfg)
                 if entry["custom_ipxe"]:
                     custom_entries.append(entry)
-                else:
-                    standard_entries.append(entry)
+                    continue
+
+                slug_l = (os_type.slug or "").lower()
+                bt_l = (os_type.boot_type or "linux").lower()
+                is_esxi = slug_l == "esxi" or bt_l == "esxi"
+
+                if is_esxi and v.boot_entry:
+                    be = v.boot_entry
+                    efi_rel = (getattr(be, "esxi_efi_boot_path", None) or "").strip()
+                    has_leg = bool(be.kernel_path and str(be.kernel_path).strip())
+                    rows: list[dict] = []
+                    if efi_rel:
+                        kb = efi_rel.replace("\\", "/").rstrip("/").split("/")[-1]
+                        rows.append(
+                            {
+                                **entry,
+                                "label": f"{entry['label']} [UEFI]",
+                                "kernel": _http(efi_rel, cfg),
+                                "esxi_mboot_basename": kb,
+                                "ipxe_item_tag": f"v{v.id}_uefi",
+                            }
+                        )
+                    if has_leg:
+                        kp = be.kernel_path or ""
+                        kb = kp.replace("\\", "/").rstrip("/").split("/")[-1]
+                        leg_suffix = " [Legacy]" if efi_rel else ""
+                        rows.append(
+                            {
+                                **entry,
+                                "label": f"{entry['label']}{leg_suffix}",
+                                "kernel": _http(kp, cfg),
+                                "esxi_mboot_basename": kb,
+                                "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
+                            }
+                        )
+                    if rows:
+                        standard_entries.extend(rows)
+                        continue
+
+                standard_entries.append(entry)
 
             has_autres = len(custom_entries) > 0
             base = cfg.server_base_url.rstrip("/")

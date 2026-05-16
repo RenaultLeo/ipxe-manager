@@ -1,17 +1,16 @@
 #!ipxe
 
 ########################################
-# Sous-menu {{ os_type.label }} (mboot.c32 + boot.cfg) — généré automatiquement
-# « kernel » = URL vers mboot (COM32) ; « imgargs » 1er mot = même basename que ce fichier pour iPXE.
-# « module » suivants = artefacts boot.cfg --- … en taille importante ; la 1re entrée doit
-# être le fichier VMware « kernel= » (.b00, etc.), obligatoire pour que mboot démarre après les OK.
+# Sous-menu {{ os_type.label }} — UEFI : bootx64.efi ; Legacy : mboot.c32 + ipxe-boot.cfg
+# « kernel » = URL du chargeur ; « imgargs » 1er mot = basename de ce fichier ; « module » = mêmes
+# artefacts que boot.cfg ; la 1re entrée = fichier VMware « kernel= » (.b00, etc.).
 ########################################
 
 :start
 {% include '_theme.inc.j2' %}
 menu === {{ os_type.label }} — Choisissez une version ===
 {% for e in entries %}
-item v{{ e.id }} {{ e.label }}{% if e.autoconfigs %} [+kickstart/conf]{% endif %}
+item {{ e.ipxe_item_tag }} {{ e.label }}{% if e.autoconfigs %} [+kickstart/conf]{% endif %}
 
 {% endfor %}
 item --gap
@@ -23,7 +22,7 @@ choose selected || goto back
 goto ${selected}
 
 {% for e in entries %}
-:v{{ e.id }}
+:{{ e.ipxe_item_tag }}
 {% set mbasename = e.esxi_mboot_basename or 'mboot.c32' %}
 {% if e.autoconfigs %}
   menu {{ e.label }} — Fichier d'installation automatique
@@ -31,7 +30,7 @@ goto ${selected}
   item ac{{ ac.id }} {{ ac.label }}
   {% endfor %}
   item --gap
-  item manual_{{ e.id }} Installation manuelle (sans kickstart / args supplémentaires)
+  item manual_{{ e.ipxe_item_tag }} Installation manuelle (sans kickstart / args supplémentaires)
   item back_v Retour
   choose conf || goto back_v
   goto ${conf}
@@ -47,7 +46,7 @@ goto ${selected}
     boot
   {% endfor %}
 
-  :manual_{{ e.id }}
+  :manual_{{ e.ipxe_item_tag }}
 {% endif %}
   kernel {{ e.kernel }}
   imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}

@@ -76,9 +76,13 @@
         {% set is_esxi = (version.os_type.slug == 'esxi') or (version.os_type.boot_type == 'esxi') %}
         <dl class="row mb-0">
           {% if is_esxi %}
-          {# ESXi / iPXE : « kernel » = mboot.c32 ; VMkernel (.b00) livré comme modules — affichage clair #}
+          {# ESXi : Legacy = mboot.c32 ; UEFI = bootx64.efi ; ipxe-boot.cfg commun #}
+          {% if be.esxi_efi_boot_path %}
+          <dt class="col-4 text-muted">Chargeur UEFI (bootx64.efi)</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.esxi_efi_boot_path }}</dd>
+          {% endif %}
           {% if be.kernel_path %}
-          <dt class="col-4 text-muted">Chargeur VMware (mboot)</dt>
+          <dt class="col-4 text-muted">Chargeur Legacy (mboot.c32)</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
           {% endif %}
           {% if be.esxi_boot_cfg_path %}

@@ -73,8 +73,9 @@
           {% endfor %}
         {% elif v.os_type.slug == 'esxi' or v.os_type.boot_type == 'esxi' %}
           {% for label_esxi, path_esxi in [
-              ('Chargeur VMware (mboot)', be.kernel_path),
-              ('boot.cfg',               be.esxi_boot_cfg_path),
+              ('Chargeur UEFI (bootx64.efi)', be.esxi_efi_boot_path),
+              ('Chargeur Legacy (mboot.c32)', be.kernel_path),
+              ('ipxe-boot.cfg',               be.esxi_boot_cfg_path),
           ] %}
             {% if path_esxi %}
             <div class="col-md-6">
