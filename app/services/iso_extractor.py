@@ -55,23 +55,23 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd":  ["initrd", "initrd.gz", "initrd.lz", "initrd.lz4"],
         "extra":   {},
     },
-    # CentOS / AlmaLinux / Fedora — vmlinuz + initrd.img (extraction partielle)
+    # CentOS / Fedora — vmlinuz + initrd.img (extraction partielle)
     "centos": {
         "type":    "linux",
         "kernel":  ["vmlinuz"],
         "initrd":  ["initrd.img"],
         "extra":   {},
     },
-    # Rocky Linux — extraction complète (BaseOS / AppStream / images/install.img sur HTTP,
-    # inst.repo= ajouté à la génération des menus).
+    # Rocky Linux — extraction complète (Anaconda : inst.repo= en génération de menus)
     "rocky": {
         "type":    "rocky",
         "kernel":  ["vmlinuz"],
         "initrd":  ["initrd.img"],
         "extra":   {},
     },
+    # AlmaLinux — même schéma EL que Rocky (BaseOS, Appstream, images/pxeboot, .treeinfo)
     "alma": {
-        "type":    "linux",
+        "type":    "alma",
         "kernel":  ["vmlinuz"],
         "initrd":  ["initrd.img"],
         "extra":   {},
@@ -182,11 +182,11 @@ def extract_iso(
         logger.info("Extraction terminée : %s", paths)
         return paths
 
-    if rule["type"] in ("windows", "ubuntu", "rocky"):
+    if rule["type"] in ("windows", "ubuntu", "rocky", "alma"):
         # Extraction COMPLÈTE de l'ISO directement dans dest
         # Windows : tous les fichiers nécessaires pour setup.exe via Samba/HTTP
         # Ubuntu  : contenu ISO nécessaire pour cloud-init autoinstall via HTTP
-        # Rocky   : arbre DVD (BaseOS, AppStream, images/, .treeinfo) pour Anaconda (inst.repo)
+        # Rocky / Alma : arbre DVD (BaseOS, AppStream, images/, .treeinfo) pour Anaconda (inst.repo)
         logger.info("Extraction complète %s → %s", os_slug, dest)
         proc = subprocess.run(
             [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
@@ -203,7 +203,7 @@ def extract_iso(
         elif rule["type"] == "ubuntu":
             paths = _find_ubuntu_in_dest(dest, os_slug, version_slug, rule)
         else:
-            paths = _find_rocky_in_dest(dest, os_slug, version_slug, rule)
+            paths = _find_el_anaconda_iso_in_dest(dest, os_slug, version_slug, rule)
     else:
         # Linux : extraction dans un dossier temp, copie des fichiers de boot seulement
         with tempfile.TemporaryDirectory() as tmp:
@@ -637,12 +637,13 @@ def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
     return result
 
 
-def _find_rocky_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
+def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
     """
-    Après extraction complète de l'ISO Rocky (8/9) dans ``dest``,
+    Après extraction complète d'une ISO EL (Rocky, AlmaLinux, …) dans ``dest``,
     localise vmlinuz + initrd.img dans ``images/pxeboot/`` (ou équivalent).
-    Le reste de l'arbre (BaseOS, Appstream, .treeinfo, images/install.img) reste en place pour HTTP.
+    Le reste de l'arbre (BaseOS, Appstream, .treeinfo, images/install.img) reste servi via HTTP.
     """
+    label = os_slug.upper()
     result: dict = {}
     base = f"boot/{os_slug}/{version_slug}"
     kernel_names: list[str] = rule.get("kernel") or ["vmlinuz"]
@@ -655,9 +656,9 @@ def _find_rocky_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict)
     if kernel:
         rel = kernel.relative_to(dest)
         result["kernel_path"] = f"{base}/{rel.as_posix()}"
-        logger.info("Rocky kernel : %s", rel)
+        logger.info("%s kernel : %s", label, rel)
     else:
-        logger.warning("Rocky : kernel non trouvé dans l'ISO (cherché vmlinuz)")
+        logger.warning("%s : kernel non trouvé dans l'ISO (cherché vmlinuz)", label)
 
     initrd = _find_in_dest(
         dest, initrd_names, mode="initrd", preferred_parent_names=rhel_boot_pref
@@ -665,16 +666,17 @@ def _find_rocky_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict)
     if initrd:
         rel = initrd.relative_to(dest)
         result["initrd_path"] = f"{base}/{rel.as_posix()}"
-        logger.info("Rocky initrd : %s", rel)
+        logger.info("%s initrd : %s", label, rel)
     else:
-        logger.warning("Rocky : initrd non trouvé (cherché initrd.img)")
+        logger.warning("%s : initrd non trouvé (cherché initrd.img)", label)
 
     if not result:
         raise ExtractionError(
-            "Aucun fichier de boot Rocky (vmlinuz / initrd.img) trouvé dans l'ISO."
+            f"Aucun fichier de boot {os_slug} (vmlinuz / initrd.img) trouvé dans l'ISO."
         )
     logger.info(
-        "Extraction Rocky complète — kernel=%s initrd=%s",
+        "Extraction %s complète — kernel=%s initrd=%s",
+        os_slug,
         result.get("kernel_path"),
         result.get("initrd_path"),
     )
@@ -691,7 +693,7 @@ def _find_in_dest(
     """
     Comme _find_by_priority mais opère dans un dossier déjà extrait (dest).
     Par défaut favorise casper/ / isolinux/ (Ubuntu). Passer ``preferred_parent_names`` pour
-    d'autres layouts (ex. pxeboot/ pour Rocky).
+    d'autres layouts (ex. pxeboot/ pour Rocky / AlmaLinux EL).
     """
     if preferred_parent_names is not None:
         PREFERRED_DIRS = {x.lower() for x in preferred_parent_names}

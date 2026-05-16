@@ -127,7 +127,7 @@ Pour **Windows**, l’extraction est **complète** (toute l’arborescence ISO) 
 
 Pour **Ubuntu**, l’ISO est aussi extraite **en entier** (cas autoinstall / accès aux couches live) ; noyau et initrd sont résolus dans **`casper/`**.
 
-Pour **Rocky Linux**, l’ISO est extraite **en entier** (BaseOS, AppStream, `images/install.img`, `.treeinfo`, etc.). Les menus ajoutent **`inst.repo=`** (URL du dossier version sur ton HTTP) et **`ip=dhcp`** si besoin pour qu’Anaconda trouve le média d’installation en PXE.
+Pour **Rocky Linux** et **AlmaLinux**, l’ISO est extraite **en entier** (BaseOS, AppStream, `images/install.img`, `.treeinfo`, etc.). Les menus ajoutent **`inst.repo=`** (URL du dossier version sur ton HTTP) et **`ip=dhcp`** si besoin pour qu’Anaconda trouve le média d’installation en PXE.
 
 ### Fichiers Boot
 

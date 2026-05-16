@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
+# Rocky / AlmaLinux : ISO extraite en entier ; inst.repo= → boot/<slug>/<version>/
+_EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma"})
+
 MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 
 # Fichier embarqué (app/resources/default_menu_logo.png) si pas d’upload utilisateur.
@@ -391,8 +394,9 @@ def _build_kernel_args(
     ``netboot=nfs``, ``nfsroot=hôte:chemin``, et si besoin ``nfsopts=…`` (voir casper(7) —
     ne pas coller ``,vers=`` dans nfsroot).
 
-    Pour **Rocky** avec ISO extraite en entier : ajoute ``inst.repo=`` (URL du répertoire
-    racine servi par HTTP, avec ``.treeinfo``) et ``ip=dhcp`` si absent — requis par Anaconda/dracut.
+    Pour **Rocky** / **AlmaLinux** (ISO extraite en entier) : ajoute ``inst.repo=`` (URL du
+    répertoire racine servi par HTTP, avec ``.treeinfo``) et ``ip=dhcp`` si absent — requis
+    par Anaconda/dracut.
     """
     args = be.kernel_args if be and be.kernel_args else ""
 
@@ -404,8 +408,8 @@ def _build_kernel_args(
         if "modloop=" not in args:
             args = f"{args} modloop={modloop_url}".strip()
 
-    # Rocky (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
-    if os_slug == "rocky" and be:
+    # Rocky / AlmaLinux (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
+    if os_slug in _EL_ANACONDA_FULL_ISO_SLUGS and be:
         seg = _boot_os_version_segment(be, os_slug)
         if seg and "inst.repo=" not in args:
             repo_url = _http(f"boot/{os_slug}/{seg}/", cfg)
@@ -413,7 +417,9 @@ def _build_kernel_args(
                 args = f"{args} inst.repo={repo_url}".strip()
         elif not seg:
             logger.warning(
-                'Rocky : inst.repo non ajouté — chemin kernel/intrd inattendu (pas de dossier sous "boot/rocky/<version>/").',
+                '%s : inst.repo non ajouté — chemin kernel/initrd inattendu (pas de dossier sous "boot/%s/<version>/").',
+                os_slug,
+                os_slug,
             )
         if not _has_ip_kernel_arg(args):
             args = f"ip=dhcp {args}".strip()
