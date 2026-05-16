@@ -1,16 +1,16 @@
-{# menu-theme.png : fond bleu + logo en bas à droite (généré par Pillow si présent). #}
-{# Paires 0–3 : texte normal ; paire 7 : ligne sélectionnée (noir sur jaune, bien visible). #}
+{# menu-theme.png : fond bleu + logo (Pillow). Indice 4 = transparence sur l’image. #}
+{# iPXE : la ligne sélectionnée du menu utilise la paire 2 (CPAIR_SELECT), pas la 7. #}
 {% if has_menu_theme %}
 console --picture {{ server_url }}/menus/menu-theme.png --left 32 --right 280 --top 48 --bottom 40 --x 1280 --y 720
 cpair --foreground 15 --background 4 0
 cpair --foreground 15 --background 4 1
-cpair --foreground 15 --background 4 2
+cpair --foreground 0 --background 14 2
 cpair --foreground 7 --background 4 3
 cpair --foreground 0 --background 14 7
 {% else %}
 cpair --foreground 15 --background 1 0
 cpair --foreground 15 --background 1 1
-cpair --foreground 15 --background 1 2
+cpair --foreground 0 --background 14 2
 cpair --foreground 7 --background 1 3
 cpair --foreground 0 --background 14 7
 {% endif %}
