@@ -1,7 +1,7 @@
-{# Uniquement cpair + console (doc iPXE). Pas de « colour ». #}
-{# Avec image : fond PNG + marges pour ne pas passer sur le bas-droite (logo dans le fichier image). #}
-{% if has_menu_brand %}
-console --picture {{ server_url }}/menus/menu-brand.png --left 24 --right 260 --top 40 --bottom 120 --x 1280 --y 720
+{# menu-theme.png : fond bleu + logo en bas à droite (généré par Pillow si présent). #}
+{# Uniquement cpair + console — pas de « colour ». Indice 4 = transparence sur l’image. #}
+{% if has_menu_theme %}
+console --picture {{ server_url }}/menus/menu-theme.png --left 32 --right 280 --top 48 --bottom 40 --x 1280 --y 720
 cpair --foreground 15 --background 4 0
 cpair --foreground 15 --background 4 1
 cpair --foreground 15 --background 4 2

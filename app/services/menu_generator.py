@@ -4,7 +4,6 @@ Generates all .ipxe menu files from the database and Jinja2 templates.
 import json
 import logging
 import re
-import shutil
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
@@ -181,26 +180,70 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
 
 
+def _build_menu_theme_png(repo_root: Path, menus_dir: Path) -> bool:
+    """
+    Génère menus/menu-theme.png : fond bleu ardoise ; si image-ipxe.png existe,
+    la redimensionne et la colle en bas à droite (logo). Nécessite Pillow.
+    """
+    out_path = menus_dir / "menu-theme.png"
+    logo_src = repo_root / "image-ipxe.png"
+    for stale in (menus_dir / "menu-brand.png", menus_dir / "menu-background.png"):
+        if stale.is_file():
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+
+    try:
+        from PIL import Image
+    except ImportError:
+        if out_path.is_file():
+            try:
+                out_path.unlink()
+            except OSError:
+                pass
+        logger.warning("Pillow absent : menu-theme.png non généré (pip install pillow).")
+        return False
+
+    w, h = 1280, 720
+    bg_color = (22, 42, 74)
+    canvas = Image.new("RGB", (w, h), bg_color)
+
+    if logo_src.is_file():
+        try:
+            logo = Image.open(logo_src).convert("RGBA")
+            max_w = min(200, w // 4)
+            if logo.width > max_w:
+                ratio = max_w / logo.width
+                new_h = max(1, int(logo.height * ratio))
+                try:
+                    resample = Image.Resampling.LANCZOS
+                except AttributeError:
+                    resample = Image.LANCZOS  # type: ignore[attr-defined]
+                logo = logo.resize((max_w, new_h), resample)
+            pad = 28
+            x = w - logo.width - pad
+            y = h - logo.height - pad
+            canvas.paste(logo, (x, y), logo)
+        except OSError as e:
+            logger.warning("image-ipxe.png illisible (%s) — fond bleu seul.", e)
+
+    try:
+        canvas.save(out_path, "PNG", optimize=True)
+    except OSError as e:
+        logger.error("Écriture %s : %s", out_path, e)
+        return False
+
+    logger.info("menu-theme.png généré : %s", out_path)
+    return True
+
+
 def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
     cfg.menus_dir.mkdir(parents=True, exist_ok=True)
     repo_root = Path(__file__).resolve().parent.parent.parent
-    brand_src = repo_root / "image-ipxe.png"
-    brand_dest = cfg.menus_dir / "menu-brand.png"
-    for legacy in (cfg.menus_dir / "menu-theme.png", cfg.menus_dir / "menu-background.png"):
-        if legacy.is_file():
-            try:
-                legacy.unlink()
-            except OSError:
-                pass
-    has_menu_brand = False
-    if brand_src.is_file():
-        shutil.copy2(brand_src, brand_dest)
-        has_menu_brand = True
-        logger.info("Image menu (logo) : %s → %s", brand_src, brand_dest)
-    elif brand_dest.is_file():
-        brand_dest.unlink(missing_ok=True)
+    has_menu_theme = _build_menu_theme_png(repo_root, cfg.menus_dir)
 
     env = _jinja_env()
     written: list[str] = []
@@ -240,7 +283,7 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     has_autres=has_autres,
                     server_url=base,
-                    has_menu_brand=has_menu_brand,
+                    has_menu_theme=has_menu_theme,
                 )
                 out = cfg.menus_dir / f"{os_type.slug}.ipxe"
                 out.write_text(content, encoding="utf-8")
@@ -266,7 +309,7 @@ def regenerate_all(db: Session) -> list[str]:
                     entries=standard_entries,
                     has_autres=has_autres,
                     server_url=base,
-                    has_menu_brand=has_menu_brand,
+                    has_menu_theme=has_menu_theme,
                     ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
                     ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
                     ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
@@ -285,7 +328,7 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     entries=custom_entries,
                     server_url=base,
-                    has_menu_brand=has_menu_brand,
+                    has_menu_theme=has_menu_theme,
                     back_menu_url=autres_back_target,
                     back_item_label=autres_back_item,
                 )
@@ -308,7 +351,7 @@ def regenerate_all(db: Session) -> list[str]:
         os_types=os_types,
         server_url=cfg.server_base_url.rstrip("/"),
         remote_chains=remote_chains,
-        has_menu_brand=has_menu_brand,
+        has_menu_theme=has_menu_theme,
     )
     out = cfg.menus_dir / "menu.ipxe"
     out.write_text(content, encoding="utf-8")
