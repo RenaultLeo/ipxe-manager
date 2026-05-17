@@ -18,7 +18,8 @@
         <form method="post" action="/isos/upload" enctype="multipart/form-data" id="upload-form"
               data-msg-progress="{{ t('iso.upload.progress') }}"
               data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
-              data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
+              data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}"
+              data-msg-dup-submit="{{ t('iso.upload.iso_duplicate_submit') }}">
 
           <!-- OS Type + Version label -->
           <div class="row g-3 mb-4">
@@ -34,9 +35,9 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-6">
+          <div class="col-md-6">
               <label class="form-label">{{ t('iso.upload.version_label') }} <span class="text-danger">*</span></label>
-              <input type="text" name="version_label" class="form-control"
+              <input type="text" name="version_label" class="form-control" id="version-label-input"
                      placeholder="{{ t('iso.upload.version_ph') }}" required>
             </div>
           </div>
@@ -49,6 +50,10 @@
             <div class="card-body">
               <input type="file" name="file" class="form-control" accept=".iso,.img" id="iso-file">
               <div class="form-text">{{ t('iso.upload.iso_hint') }}</div>
+              <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                <span id="iso-dup-badge" class="badge bg-warning text-dark d-none">{{ t('iso.upload.iso_duplicate_badge') }}</span>
+                <span id="iso-dup-hint" class="small text-muted d-none">{{ t('iso.upload.iso_duplicate_hint') }}</span>
+              </div>
             </div>
           </div>
 
@@ -299,6 +304,7 @@ function updateLinuxFields() {
 
 document.getElementById('os-select').addEventListener('change', function() {
   syncOsSelectUi();
+  scheduleIsoDupCheck();
 });
 
 function syncOsSelectUi() {
@@ -311,15 +317,60 @@ function syncOsSelectUi() {
 }
 syncOsSelectUi();
 
+let isoDupTimer = null;
+function scheduleIsoDupCheck() {
+  clearTimeout(isoDupTimer);
+  isoDupTimer = setTimeout(runIsoDupCheck, 400);
+}
+
+async function runIsoDupCheck() {
+  const badge = document.getElementById('iso-dup-badge');
+  const hint = document.getElementById('iso-dup-hint');
+  const sel = document.getElementById('os-select');
+  const oid = sel.value;
+  const vl = document.getElementById('version-label-input').value.trim();
+  const finput = document.getElementById('iso-file');
+  const f = finput.files && finput.files[0];
+  if (!oid || !vl || !f) {
+    badge.classList.add('d-none');
+    hint.classList.add('d-none');
+    return;
+  }
+  const params = new URLSearchParams({
+    os_type_id: oid,
+    version_label: vl,
+    iso_filename: f.name,
+  });
+  try {
+    const r = await fetch('/isos/upload/check-iso-duplicate?' + params.toString(), { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const j = await r.json();
+    const dup = !!j.duplicate;
+    badge.classList.toggle('d-none', !dup);
+    hint.classList.toggle('d-none', !dup);
+  } catch (err) {
+    badge.classList.add('d-none');
+    hint.classList.add('d-none');
+  }
+}
+
 document.getElementById('iso-file').addEventListener('change', function() {
   const sel = document.getElementById('os-select');
   const opt = sel.options[sel.selectedIndex];
   if ((opt.dataset.boot || '') === 'linux') updateLinuxFields();
+  scheduleIsoDupCheck();
 });
+document.getElementById('version-label-input').addEventListener('input', scheduleIsoDupCheck);
 
 document.getElementById('upload-form').addEventListener('submit', function(e) {
   e.preventDefault();
   const form = this;
+  const dupBadge = document.getElementById('iso-dup-badge');
+  const msgDupSubmit = form.dataset.msgDupSubmit || '';
+  if (dupBadge && !dupBadge.classList.contains('d-none')) {
+    alert(msgDupSubmit);
+    return;
+  }
   const data = new FormData(form);
   const xhr  = new XMLHttpRequest();
   const bar  = document.getElementById('progress-bar');
@@ -347,12 +398,18 @@ document.getElementById('upload-form').addEventListener('submit', function(e) {
   xhr.addEventListener('load', () => {
     if (xhr.status >= 200 && xhr.status < 400) {
       window.location.href = xhr.responseURL || '/isos';
-    } else {
-      btn.disabled = false;
-      wrap.classList.add('d-none');
-      const detail = msgXhrStatus.replace('{status}', xhr.statusText || String(xhr.status));
-      alert(detail || msgXhr);
+      return;
     }
+    btn.disabled = false;
+    wrap.classList.add('d-none');
+    let detail = msgXhrStatus.replace('{status}', xhr.statusText || String(xhr.status));
+    try {
+      const j = JSON.parse(xhr.responseText || '{}');
+      if (j.detail !== undefined && j.detail !== null) {
+        detail = typeof j.detail === 'string' ? j.detail : String(j.detail);
+      }
+    } catch (err) {}
+    alert(detail || msgXhr);
   });
 
   xhr.open('POST', '/isos/upload');

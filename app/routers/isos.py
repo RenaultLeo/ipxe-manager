@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import is_authenticated
+from app.i18n import translate
 from app.models.models import OsType, IsoVersion, Upload, BootEntry
 from app.services.disk_info import fmt_size
 from app.services.os_type_order import sort_os_types_for_ui
@@ -107,6 +108,25 @@ async def upload_form(
     )
 
 
+@router.get("/upload/check-iso-duplicate")
+async def upload_check_iso_duplicate(
+    request: Request,
+    db: Session = Depends(get_db),
+    os_type_id: int = Query(..., ge=1),
+    version_label: str = Query(""),
+    iso_filename: str = Query(""),
+):
+    """Indique si un ISO avec ce nom existe déjà pour ce couple (type OS + label)."""
+    if not is_authenticated(request):
+        raise HTTPException(401)
+    vn = Path(iso_filename.replace("\\", "/")).name.strip()
+    vl = version_label.strip()
+    if not vn or not vl:
+        return JSONResponse({"duplicate": False})
+    dup = _iso_duplicate_label_and_filename(db, os_type_id, vl, vn)
+    return JSONResponse({"duplicate": dup})
+
+
 def _pick_upload_file(form, key: str):
     """Récupère un UploadFile non vide depuis un formulaire multipart, ou ``None``."""
     from starlette.datastructures import UploadFile
@@ -116,6 +136,31 @@ def _pick_upload_file(form, key: str):
         return None
     fn = (getattr(item, "filename", None) or "").strip()
     return item if fn else None
+
+
+def _iso_duplicate_label_and_filename(
+    db: Session,
+    os_type_id: int,
+    version_label: str,
+    iso_basename: str,
+    *,
+    exclude_version_id: int | None = None,
+) -> bool:
+    """Même OS + même label de version + même nom de fichier ISO (basename)."""
+    vl = version_label.casefold()
+    bn = iso_basename.casefold()
+    q = db.query(IsoVersion).filter(IsoVersion.os_type_id == os_type_id)
+    if exclude_version_id is not None:
+        q = q.filter(IsoVersion.id != exclude_version_id)
+    for row in q.all():
+        if row.version_label.casefold() != vl:
+            continue
+        ip = (row.iso_path or "").strip()
+        if not ip:
+            continue
+        if Path(ip).name.casefold() == bn:
+            return True
+    return False
 
 
 def _route_linux_manual_file(
@@ -164,6 +209,20 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if not os_type:
         raise HTTPException(404, "Type d'OS introuvable")
 
+    file_iso = _pick_upload_file(form, "file")
+    iso_safe_name = ""
+    if file_iso:
+        iso_safe_name = Path(file_iso.filename).name
+        ext = Path(iso_safe_name).suffix.lower()
+        if ext not in {".iso", ".img", ""}:
+            raise HTTPException(400, f"Extension non supportée : {ext}")
+        if _iso_duplicate_label_and_filename(db, os_type_id, version_label, iso_safe_name):
+            lang = getattr(request.state, "locale", "fr")
+            raise HTTPException(
+                status_code=409,
+                detail=translate(lang, "iso.upload.iso_duplicate_submit"),
+            )
+
     # ── Créer l'entrée en BDD d'abord ──────────────────────
     version = IsoVersion(
         os_type_id=os_type_id,
@@ -175,17 +234,11 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     db.add(version)
     db.flush()  # obtenir version.id
 
-    file_iso = _pick_upload_file(form, "file")
-    # ── ISO (optionnel) ────────────────────────────────────
+    # ── ISO (optionnel) — un dossier par id pour éviter collision entre versions ──
     if file_iso:
-        safe_name = Path(file_iso.filename).name
-        ext = Path(safe_name).suffix.lower()
-        if ext not in {".iso", ".img", ""}:
-            raise HTTPException(400, f"Extension non supportée : {ext}")
-
-        iso_dir = Path(settings.iso_root) / os_type.slug
-        iso_dir.mkdir(parents=True, exist_ok=True)
-        dest = iso_dir / safe_name
+        iso_version_dir = Path(settings.iso_root) / os_type.slug / str(version.id)
+        iso_version_dir.mkdir(parents=True, exist_ok=True)
+        dest = iso_version_dir / iso_safe_name
         size = 0
         with open(dest, "wb") as f:
             while chunk := await file_iso.read(1024 * 1024):
@@ -196,7 +249,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                     raise HTTPException(413, "Fichier trop volumineux")
         version.iso_path = str(dest)
         version.iso_size = size
-        db.add(Upload(filename=safe_name, file_type="iso", size=size, status="done"))
+        db.add(Upload(filename=iso_safe_name, file_type="iso", size=size, status="done"))
 
     # ── Fichiers boot manuels ──────────────────────────────
     from app.services.slugify import slugify
@@ -402,9 +455,14 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
     try:
         os_slug = version.os_type.slug
 
-        # 1. Supprimer le fichier ISO du disque
-        if version.iso_path:
-            Path(version.iso_path).unlink(missing_ok=True)
+        # 1. ISO : dossier dédié par version (/isos/<os>/<id>/…) ou ancien fichier plat
+        iso_slot = Path(settings.iso_root) / os_slug / str(version.id)
+        if iso_slot.is_dir():
+            shutil.rmtree(iso_slot, ignore_errors=True)
+        elif version.iso_path:
+            legacy = Path(version.iso_path)
+            if legacy.is_file():
+                legacy.unlink(missing_ok=True)
 
         # 2. Supprimer les fichiers boot (dossier slug ET dossier ID pour compat)
         from app.services.slugify import slugify

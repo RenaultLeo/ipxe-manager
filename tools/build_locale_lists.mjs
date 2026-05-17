@@ -140,6 +140,15 @@ const PAIRS_DE = [
   ],
   ["ISO size", "ISO-Größe"],
   ["If you provide the ISO, boot files will be extracted automatically.", "Wenn Sie die ISO angeben, werden Boot-Dateien automatisch extrahiert."],
+  ["File already exists", "Datei bereits vorhanden"],
+  [
+    "For this OS type, this label already has a release with an ISO of the same filename.",
+    "Für diesen Betriebssystemtyp hat diese Bezeichnung bereits eine Version mit einer ISO desselben Dateinamens.",
+  ],
+  [
+    "This OS type already has a release with this label and the same ISO filename. Change the label or pick another file.",
+    "Für diesen Betriebssystemtyp gibt es bereits eine Version mit dieser Bezeichnung und demselben ISO-Dateinamen. Ändern Sie die Bezeichnung oder wählen Sie eine andere Datei.",
+  ],
   ["Invalid password", "Ungültiges Passwort"],
   ["Kernel arguments", "Kernel-Parameter"],
   ["Kill", "Beenden"],
@@ -802,6 +811,15 @@ const PAIRS_ES = [
     "If you provide the ISO, boot files will be extracted automatically.",
     "Si proporciona la ISO, los archivos de arranque se extraerán automáticamente.",
   ],
+  ["File already exists", "Archivo ya existente"],
+  [
+    "For this OS type, this label already has a release with an ISO of the same filename.",
+    "Para este tipo de SO, esta etiqueta ya tiene una versión con una ISO con el mismo nombre de archivo.",
+  ],
+  [
+    "This OS type already has a release with this label and the same ISO filename. Change the label or pick another file.",
+    "Este tipo de SO ya tiene una versión con esta etiqueta y el mismo nombre de archivo ISO. Cambie la etiqueta o elija otro archivo.",
+  ],
   [
     "ISO image (optional — for automatic extraction)",
     "Imagen ISO (opcional — para extracción automática)",
@@ -1383,6 +1401,15 @@ const PAIRS_IT = [
   [
     "If you provide the ISO, boot files will be extracted automatically.",
     "Se fornite l'ISO, i file di avvio verranno estratti automaticamente.",
+  ],
+  ["File already exists", "File già presente"],
+  [
+    "For this OS type, this label already has a release with an ISO of the same filename.",
+    "Per questo tipo di sistema operativo, questa etichetta ha già una versione con una ISO con lo stesso nome file.",
+  ],
+  [
+    "This OS type already has a release with this label and the same ISO filename. Change the label or pick another file.",
+    "Questo tipo di sistema operativo ha già una versione con questa etichetta e lo stesso nome file ISO. Modifica l'etichetta o scegli un altro file.",
   ],
   [
     "ISO image (optional — for automatic extraction)",
@@ -1970,6 +1997,15 @@ const PAIRS_PT = [
   [
     "If you provide the ISO, boot files will be extracted automatically.",
     "Se indicar a ISO, os ficheiros de arranque serão extraídos automaticamente.",
+  ],
+  ["File already exists", "Ficheiro já existente"],
+  [
+    "For this OS type, this label already has a release with an ISO of the same filename.",
+    "Para este tipo de SO, esta etiqueta já tem uma versão com uma ISO com o mesmo nome de ficheiro.",
+  ],
+  [
+    "This OS type already has a release with this label and the same ISO filename. Change the label or pick another file.",
+    "Este tipo de SO já tem uma versão com esta etiqueta e o mesmo nome de ficheiro ISO. Altere a etiqueta ou escolha outro ficheiro.",
   ],
   [
     "ISO image (optional — for automatic extraction)",

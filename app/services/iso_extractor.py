@@ -23,32 +23,6 @@ class ExtractionError(Exception):
     pass
 
 
-def _resolve_iso_path_on_disk(iso_path: str | Path) -> Path:
-    """
-    Retourne le Path de l’ISO si le fichier existe.
-
-    Si la casse du chemin enregistré ne correspond pas au fichier réel (Linux ext4 +
-    libellé issu de Windows ou renommage), retente une correspondance dans le répertoire
-    parent via ``casefold()`` sur le nom de fichier.
-    """
-    p = Path(iso_path)
-    if p.is_file():
-        return p
-    parent = p.parent
-    want = p.name
-    if not want or not parent.is_dir():
-        raise ExtractionError(f"ISO introuvable : {iso_path}")
-    low = want.casefold()
-    try:
-        for child in parent.iterdir():
-            if child.is_file() and child.name.casefold() == low:
-                logger.info("ISO : casse du chemin corrigée (%s → %s)", iso_path, child)
-                return child
-    except OSError as exc:
-        logger.warning("ISO : impossible de lister %s — %s", parent, exc)
-    raise ExtractionError(f"ISO introuvable : {iso_path}")
-
-
 # ── Règles par distribution ────────────────────────────────────────────────────
 # Chaque entrée : liste de noms exacts OU préfixes (terminant par "*")
 
@@ -163,7 +137,9 @@ def extract_iso(
     from app.services.slugify import slugify
     version_slug = slugify(version_label) if version_label else str(version_id)
 
-    iso = _resolve_iso_path_on_disk(iso_path)
+    iso = Path(iso_path)
+    if not iso.exists():
+        raise ExtractionError(f"ISO introuvable : {iso_path}")
 
     seven_z = shutil.which("7z") or shutil.which("7za")
     if not seven_z:

@@ -23,7 +23,6 @@ from app.services.iso_extractor import (
     _find_in_dest,
     _find_windows_in_dest,
     _fix_permissions,
-    _resolve_iso_path_on_disk,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,7 +106,9 @@ def try_extract_with_plan(
 
     os_slug = ot.slug
     version_slug = slugify(version_label) if version_label else str(version_id)
-    iso = _resolve_iso_path_on_disk(iso_path)
+    iso = Path(iso_path)
+    if not iso.exists():
+        raise ExtractionError(f"ISO introuvable : {iso_path}")
 
     seven_z = shutil.which("7z") or shutil.which("7za")
     if not seven_z:
