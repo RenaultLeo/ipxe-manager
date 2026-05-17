@@ -2,8 +2,9 @@
 
 ########################################
 # Sous-menu {{ os_type.label }} — UEFI : mboot.efi (copie bootx64.efi, doc VMware) ; Legacy : mboot.c32
-# imgargs : basename chargeur ; -c URL ipxe-boot.cfg (identique UEFI / Legacy) ;
-# puis BOOTIF (${net0/mac:hexhyp}) ; les ``module`` suivent le JSON du profil (ordre VMware).
+# imgargs : basename chargeur ; -c URL ipxe-boot.cfg ;
+# Pas de BOOTIF par défaut : avec virtio sous QEMU/Proxmox, ESXi peut signaler « No NIC found » alors que la MAC iPXE est bonne.
+# Pour forcer une NIC : ajouter dans les options boot de la version (ex. BOOTIF=01-${net0/mac:hexhyp}) — préférer e1000/vmxnet3 si ça bloque encore.
 ########################################
 
 :start
@@ -24,7 +25,6 @@ goto ${selected}
 {% for e in entries %}
 :{{ e.ipxe_item_tag }}
 {% set mbasename = e.esxi_mboot_basename or 'mboot.c32' %}
-{% set esxi_bootif_arg = "BOOTIF=01-${net0/mac:hexhyp}" %}
 {% if e.autoconfigs %}
   menu {{ e.label }} — Fichier d'installation automatique
   {% for ac in e.autoconfigs %}
@@ -39,7 +39,7 @@ goto ${selected}
   {% for ac in e.autoconfigs %}
   :ac{{ ac.id }}
     kernel {{ e.kernel }}
-    imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
+    imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
 
     {% for u in e.esxi_module_urls %}
     module {{ u }}
@@ -50,7 +50,7 @@ goto ${selected}
   :manual_{{ e.ipxe_item_tag }}
 {% endif %}
   kernel {{ e.kernel }}
-  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
   {% for u in e.esxi_module_urls %}
   module {{ u }}
