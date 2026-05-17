@@ -64,6 +64,7 @@ def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:
         be.kernel_path,
         be.initrd_path,
         getattr(be, "esxi_boot_cfg_path", None),
+        getattr(be, "esxi_efi_boot_path", None),
     ):
         if not rel:
             continue
