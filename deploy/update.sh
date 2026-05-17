@@ -9,7 +9,7 @@ APP_DIR="/srv/ipxe/app"
 VENV="/srv/ipxe/venv"
 
 echo "==> Récupération des dernières modifications…"
-git -C "$APP_DIR" pull origin main
+git -C "$APP_DIR" pull --ff-only
 
 echo "==> Mise à jour des dépendances Python…"
 "$VENV/bin/pip" install -q --upgrade -r "$APP_DIR/requirements.txt"
@@ -26,6 +26,7 @@ cd "$APP_DIR"
 
 echo "==> Redémarrage des services…"
 systemctl restart ipxe-manager ipxe-celery tftpd-hpa
+systemctl reload nginx 2>/dev/null || true
 
 echo ""
 echo "Mise à jour terminée."

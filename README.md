@@ -84,8 +84,22 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 - Configure **Nginx** avec des alias pour `/menus/`, `/boot/`, **`/isos-ipxe/`** (ISO sous `ISO_ROOT`, sans entrer en conflit avec les routes UI `/isos`), etc., et des limites d’upload pour les grosses ISO.
 - Écrit **`/etc/default/tftpd-hpa`** et **redémarre `tftpd-hpa` à la fin** : pendant le script, le service peut démarrer avec une config encore incomplète ; le redémarrage final évite un TFTP qui ne lit qu’une partie des paramètres ou des répertoires.
 - Initialise la base avec **`deploy/seed_db.py`** (types d’OS par défaut : Windows, Ubuntu, Debian, Rocky, Alma, Fedora, Proxmox, ESXi, Alpine, etc.).
+- Au **premier démarrage** de l’appli (`uvicorn`), **`init_db()`** complète encore les migrations de schéma (colonnes SQLite ajoutées au fil des versions du code).
 - Après **`pip install`**, régénère sous **`app/locale_values/`** les fichiers **`_en.list.json`**, **`de|es|it|pt.list.json`** (traductions alignées sur `app/i18n.py` via Node : `extract_en_list.mjs` + `build_locale_lists.mjs`). **Node.js** est installé avec les paquets système pour que ce soit reproductible sur toute machine ; en cas d’échec, les fichiers déjà présents dans le dépôt Git sont utilisés.
 - Télécharge **`wimboot`** et, si besoin, des binaires iPXE **génériques** en secours dans TFTP (en attendant ta propre compilation depuis l’UI **Firmware**).
+
+### À vérifier sur une machine neuve
+
+- **`sudo`** : tout le flux `setup.sh` suppose un shell root ou `sudo bash …`.
+- **Accès réseau** pendant l’installation : téléchargements `apt`, `git clone`, `wget` (boot.ipxe.org / wimboot GitHub).
+- **Ports** après install : HTTP **80** (Nginx), TFTP **69/UDP**, **Redis** en local (**6379**), éventuellement **SMB** (**445**) et **NFS** (**2049** si `nfs-kernel-server` démarre). Ouvre/adapte le pare-feu sur la VM ou le VLAN.
+- **Branche Git** : le premier clonage tente `main`, puis `master`, puis clone par défaut — un `git pull` ultérieur suit la **branche suivie**. Si tu as un flux personnalisé, clone la bonne branche **avant** de lancer `setup.sh` dans ce répertoire (le script ne supprime alors pas le dossier tant que `.git` est présent).
+- **PostgreSQL** : le `.env` généré cible du **SQLite** sous `/srv/ipxe/app/` ; passer en Postgres se fait à la main en `.env`, sans script dédié.
+- **Ubuntu NFS** : si le service NFS passe vert, `setup.sh` force **`UBUNTU_NFS_ENABLED=true`** dans `.env` pour aligner menus et casper NFS ; désactive puis redémarre les services si tu ne veux pas d’export NFS tout de suite.
+
+### Référence `deploy/` (noms systemd)
+
+Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien.
 
 ### Première connexion
 
@@ -209,7 +223,7 @@ Depuis la machine de production :
 sudo bash /srv/ipxe/app/deploy/update.sh
 ```
 
-Le script enchaîne : **`git pull`**, mise à jour **`pip`**, régénération des **listes i18n** si **Node.js** est installé sur le serveur, exécution de **`deploy/seed_db.py`** (nouvelles colonnes / graines idempotentes), puis **redémarrage** de **`ipxe-manager`**, **`ipxe-celery`** et **`tftpd-hpa`**.
+Le script enchaîne : **`git pull --ff-only`** (branche suivie), mise à jour **`pip`**, régénération des **listes i18n** si **Node.js** est installé sur le serveur, exécution de **`deploy/seed_db.py`** (nouvelles colonnes / graines idempotentes), puis **redémarrage** de **`ipxe-manager`**, **`ipxe-celery`**, **`tftpd-hpa`** et **rechargement de Nginx** pour prendre en compte d’éventuels changements de config.
 
 Si tu ajoutes des champs en base et que le service ne les voit pas tout de suite, tu peux aussi lancer manuellement (en utilisateur adapté, selon ton déploiement) :
 

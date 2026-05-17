@@ -1,4 +1,6 @@
 [Unit]
+# Fichier de référence — l’installation standard installe aussi une unité similaire
+# via deploy/setup.sh (avec logs dans /var/log/ipxe-manager/).
 Description=iPXE Manager — FastAPI web application
 After=network.target redis-server.service
 Wants=redis-server.service

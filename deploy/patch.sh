@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================
-# patch.sh — Correctifs cumulatifs iPXE Manager
-# Usage : bash deploy/patch.sh
+# patch.sh — Anciens correctifs cumulés (SQLite + Samba ponctuel).
+#
+# ⚠ Déploiement neuf ou à jour : utiliser uniquement deploy/setup.sh puis
+#    deploy/update.sh ; init_db dans l’app gère déjà les colonnes manquantes.
+# Usage (si besoin) : sudo bash deploy/patch.sh
 # ============================================================
 set -euo pipefail
+
+echo "==> (patch.sh) ATTENTION — script historique ; préférez deploy/update.sh pour les mises à jour."
 
 APP_DIR="/srv/ipxe/app"
 VENV="/srv/ipxe/venv"
@@ -11,7 +16,7 @@ DB="/srv/ipxe/app/ipxe.db"
 
 echo "==> git pull…"
 cd "$APP_DIR"
-git pull
+git pull --ff-only || git pull --ff-only || git pull
 
 # ── Patch 1 : Samba ───────────────────────────────────────
 echo "==> Patch 1 : Samba"

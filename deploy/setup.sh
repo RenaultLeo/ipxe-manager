@@ -70,12 +70,19 @@ chmod -R 755 "$DATA_DIR/http"
 # ── 4. Clone du repo ──────────────────────────────────────────────────────────
 echo "[4/15] Récupération du code source…"
 if [ -d "$APP_DIR/.git" ]; then
-    echo "  Repo déjà présent — git pull…"
-    git -C "$APP_DIR" pull --ff-only origin main || echo "  ! git pull échoué — conserve la version actuelle."
+    echo "  Repo déjà présent — git pull (branche courante / upstream)…"
+    git -C "$APP_DIR" pull --ff-only || echo "  ! git pull échoué — conserve la version actuelle."
 else
     echo "  Clonage de $REPO_URL…"
+    mkdir -p "$(dirname "$APP_DIR")"
     rm -rf "$APP_DIR"
-    git clone "$REPO_URL" "$APP_DIR"
+    if git clone -b main --depth 1 "$REPO_URL" "$APP_DIR" 2>/dev/null; then
+        echo "  Branche « main » clonée."
+    elif git clone -b master --depth 1 "$REPO_URL" "$APP_DIR" 2>/dev/null; then
+        echo "  Branche « master » clonée."
+    else
+        git clone "$REPO_URL" "$APP_DIR"
+    fi
 fi
 
 # ── 5. Environnement Python ───────────────────────────────────────────────────
@@ -110,6 +117,8 @@ ISO_ROOT=/srv/ipxe/isos
 ISO_HTTP_ALIAS=isos-ipxe
 BUILD_DIR=/srv/ipxe/build
 MAX_UPLOAD_SIZE=53687091200
+# Marge disque min. (octets) avant upload ISO — défaut 256 Mo dans l’app si absent (voir UPLOAD_MIN_FREE_BYTES).
+# UPLOAD_MIN_FREE_BYTES=268435456
 EXTRACT_TIMEOUT=3600
 # Ubuntu ISO extraite : racine NFS = HTTP_ROOT/boot/ubuntu/<slug-version> (activer après export NFS)
 UBUNTU_NFS_ENABLED=false
@@ -122,6 +131,7 @@ else
     # S'assurer que BUILD_DIR est présent dans le .env existant
     grep -q "BUILD_DIR" "$APP_DIR/.env" || echo "BUILD_DIR=/srv/ipxe/build" >> "$APP_DIR/.env"
     grep -q "^ISO_HTTP_ALIAS" "$APP_DIR/.env" || echo "ISO_HTTP_ALIAS=isos-ipxe" >> "$APP_DIR/.env"
+    grep -q "UPLOAD_MIN_FREE_BYTES" "$APP_DIR/.env" || printf '\n# Upload ISO — marge disque minimale avant acceptation (défaut app : 268435456 = 256 Mo)\n# UPLOAD_MIN_FREE_BYTES=268435456\n' >> "$APP_DIR/.env"
     grep -q "^UBUNTU_NFS_ENABLED" "$APP_DIR/.env" || {
         printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
     }

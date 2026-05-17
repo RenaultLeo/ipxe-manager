@@ -1,4 +1,6 @@
 [Unit]
+# Fichier de référence — même logique mais autre nom de service sur le système réel :
+# après setup.sh : systemctl utilise « ipxe-celery », pas celery-worker.service.
 Description=iPXE Manager — Celery worker (ISO extraction / menu regeneration)
 After=network.target redis-server.service ipxe-manager.service
 Wants=redis-server.service
