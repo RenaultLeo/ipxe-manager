@@ -1,3 +1,5 @@
+// Rebuild app/locale_values/_en.list.json from app/i18n.py (same order as MESSAGES["en"]).
+// Then: node tools/build_locale_lists.mjs
 import fs from "fs";
 const t = fs.readFileSync("app/i18n.py", "utf8");
 const start = t.indexOf('"en": {');
