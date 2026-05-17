@@ -228,11 +228,11 @@ def extract_iso(
 
 _MODULES_SPLIT_RE = re.compile(r"\s*---\s*")
 # VMware / OEM : ``KERNEL=``, espaces autour de ``=``, BOM → détection tolérante pour tout passer en minuscules.
-_RE_ESXI_LINE_KERNEL = re.compile(r"^(?i)kernel\s*=\s*(.*)$")
-_RE_ESXI_LINE_MODULES = re.compile(r"^(?i)modules\s*=\s*(.*)$")
-_RE_ESXI_LINE_MODULE = re.compile(r"^(?i)module\s*=\s*(.*)$")
-_RE_ESXI_LINE_PREFIX = re.compile(r"^(?i)prefix\s*=")
-_RE_ESXI_LINE_KERNELOPT = re.compile(r"^(?i)kernelopt\s*=")
+_RE_ESXI_LINE_KERNEL = re.compile(r"^kernel\s*=\s*(.*)$", re.I)
+_RE_ESXI_LINE_MODULES = re.compile(r"^modules\s*=\s*(.*)$", re.I)
+_RE_ESXI_LINE_MODULE = re.compile(r"^module\s*=\s*(.*)$", re.I)
+_RE_ESXI_LINE_PREFIX = re.compile(r"^prefix\s*=", re.I)
+_RE_ESXI_LINE_KERNELOPT = re.compile(r"^kernelopt\s*=", re.I)
 
 
 def _esxi_merge_cfg_continuations(raw: str) -> str:
