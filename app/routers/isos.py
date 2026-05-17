@@ -23,6 +23,35 @@ router = APIRouter(prefix="/isos")
 TEMPLATES = templates
 logger = logging.getLogger(__name__)
 
+# Recontrôle disk_usage pendant les gros uploads (multipart sans taille fiable sinon).
+_UPLOAD_DISK_POLL_EVERY_BYTES = 64 * 1024 * 1024
+
+
+def _multipart_part_declared_bytes(upload: object) -> int | None:
+    """Taille annoncée d'un champ fichier (``.size`` Starlette ou en-tête part ``Content-Length``)."""
+    sz = getattr(upload, "size", None)
+    if isinstance(sz, int) and sz > 0:
+        return sz
+    headers = getattr(upload, "headers", None)
+    if headers is not None:
+        raw = headers.get("content-length")
+        if raw:
+            try:
+                n = int(raw)
+                if n > 0:
+                    return n
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _raise_if_free_space_below_reserve(reserve: int, lang: str) -> None:
+    if _minimum_free_near_upload_roots() <= reserve:
+        raise HTTPException(
+            status_code=507,
+            detail=translate(lang, "iso.upload.disk_low_reserve"),
+        )
+
 
 def _auth(request: Request):
     if not is_authenticated(request):
@@ -269,7 +298,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
             status_code=507,
             detail=translate(lang, "iso.upload.disk_low_reserve"),
         )
-    decl = getattr(file_iso, "size", None) if file_iso else None
+    decl = _multipart_part_declared_bytes(file_iso) if file_iso else None
     if isinstance(decl, int) and decl > 0 and mf <= decl + reserve:
         raise HTTPException(
             status_code=507,
@@ -298,9 +327,14 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
 
     async def save_boot_file(upload: StarletteUploadFile, fname: str) -> str:
         dest_p = boot_dir / fname
+        pending_poll = 0
         with open(dest_p, "wb") as f:
             while chunk := await upload.read(1024 * 1024):
                 f.write(chunk)
+                pending_poll += len(chunk)
+                if pending_poll >= _UPLOAD_DISK_POLL_EVERY_BYTES:
+                    pending_poll = 0
+                    _raise_if_free_space_below_reserve(reserve, lang)
         saved_boot_paths.append(dest_p)
         return f"boot/{os_type.slug}/{version_slug}/{fname}"
 
@@ -311,10 +345,15 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
             dest_iso = iso_pack_dir / iso_safe_name
             iso_written_path = dest_iso
             size_iso = 0
+            pending_poll = 0
             with open(dest_iso, "wb") as f:
                 while chunk := await file_iso.read(1024 * 1024):
                     f.write(chunk)
                     size_iso += len(chunk)
+                    pending_poll += len(chunk)
+                    if pending_poll >= _UPLOAD_DISK_POLL_EVERY_BYTES:
+                        pending_poll = 0
+                        _raise_if_free_space_below_reserve(reserve, lang)
                     if size_iso > settings.max_upload_size:
                         raise HTTPException(413, "Fichier trop volumineux")
             version.iso_path = str(dest_iso)
