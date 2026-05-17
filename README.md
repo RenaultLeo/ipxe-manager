@@ -69,6 +69,18 @@ sudo mkdir -p /srv/ipxe
 sudo git clone https://github.com/RenaultLeo/ipxe-manager.git /srv/ipxe/app
 ```
 
+### Installation en une ligne (sans cloner à la main)
+
+Le fichier **`deploy/script.sh`** clone (ou met à jour) le dépôt sous **`/srv/ipxe/app`**, puis lance **`deploy/setup.sh`** comme ci‑dessous.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RenaultLeo/ipxe-manager/main/deploy/script.sh | sudo bash -s -- 192.168.2.6
+```
+
+- Remplace **`192.168.2.6`** par l’**IP vue par les clients PXE**, ou omets **`--`** et l’argument : la valeur par défaut est la première IP locale (comme pour **`setup.sh` seul**).
+- **Important** : n’utilise pas **`curl -I`** ou **`-SI`** pour « installer » : **`-I`** interroge seulement les en‑têtes HTTP (**HEAD**) et **ne récupère pas le corps du script**. Il faut **`-fsSL`** (sans **`I`**) puis le passage à **`bash`**, comme ci‑dessus.
+- Variables facultatives avant la commande : **`IPXE_REPO_URL`**, **`IPXE_REPO_BRANCH`**, **`APP_DIR`** pour un fork ou un autre dossier que **`/srv/ipxe/app`** (voir en‑tête de **`deploy/script.sh`**).
+
 ### Lancer le script d’installation
 
 Le second argument est l’**IP du serveur** telle qu’elle sera annoncée aux clients (menus HTTP, embed, etc.) :
@@ -99,7 +111,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 ### Référence `deploy/` (noms systemd)
 
-Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien.
+Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/script.sh`** sert uniquement au **bootstrap** « curl | bash » (clone + **`setup.sh`**).
 
 ### Première connexion
 
@@ -229,6 +241,48 @@ Si tu ajoutes des champs en base et que le service ne les voit pas tout de suite
 
 ```bash
 sudo -u ipxe /srv/ipxe/venv/bin/python /srv/ipxe/app/deploy/seed_db.py
+```
+
+---
+
+## Vérification smoke + charge HTTP
+
+Le script **`scripts/ipxe_health_load.py`** permet de vérifier rapidement qu’un déploiement répond comme prévu **sans installer de dépendance** (stdlib Python uniquement).
+
+**Ce qu’il fait**
+
+1. **Smoke** — quelques requêtes ciblées : page de connexion (`/login`), redirection de la racine vers `/login` si non connecté, fichier statique CSS, tentative de POST login avec un mauvais mot de passe (attendu **401**), et optionnellement **`/menus/menu.ipxe`** (menu iPXE servi par Nginx en prod).
+2. **Charge optionnelle** — enchaîne un grand nombre de requêtes **GET** concurrentes vers une même URL (par défaut **`/login`**, léger côté app) pour estimer débit approximatif et latences (min, p50, p95, max).
+
+**À quelle URL passer `--base-url`**
+
+- En **production** : l’URL telle que les clients y accèdent, en général **`http://IP_DU_SERVEUR`** (flux **identique au navigateur**, via **Nginx** sur le port 80).
+- En **direct uvicorn** (port 8000) : même script avec **`--skip-menus`**, car le chemin **`/menus/`** est défini dans la config **Nginx** du `deploy/setup.sh`, pas sur l’app seule.
+
+**Contrôles supplémentaires (à lancer sur la machine où tournent les services)**
+
+- **`--check-redis`** : commande **`redis-cli ping`** si disponible.
+- **`--celery-inspect`** : **`celery inspect ping`** via le virtualenv **`/srv/ipxe/venv`**, pour confirmer qu’au moins un **worker Celery** est joignable (extractions ISO, firmware, menus).
+
+**Codes sortie**
+
+- **0** : tous les checks obligatoires sont passés ; la phase charge aussi, si elle est active, n’a eu aucune erreur HTTP.
+- **1** : au moins un échec (smoke, Redis/Celery si demandés, ou erreurs sous charge).
+
+Exemples :
+
+```bash
+# Via Nginx (comme les clients PXE — recommandé)
+python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP
+
+# Contrôles en plus sur le serveur : Redis et worker Celery
+python3 scripts/ipxe_health_load.py --base-url http://127.0.0.1 --check-redis --celery-inspect
+
+# Volume plus élevé (stress léger — la cible reste une page peu coûteuse par défaut)
+python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP --workers 50 --requests 2000
+
+# Smoke seulement, sans phase charge
+python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP --no-load
 ```
 
 ---
