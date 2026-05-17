@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     tftp_root: str = "/srv/ipxe/tftpboot"
     http_root: str = "/srv/ipxe/http"
     iso_root: str = "/srv/ipxe/isos"
+    # Segment d’URL Nginx pour servir ISO_ROOT (ex. location /isos-ipxe/ → alias ISO_ROOT).
+    # Évite tout chevauchement avec les routes web « /isos » de l’application.
+    iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
 
     max_upload_size: int = 53_687_091_200  # 50 GB
@@ -45,6 +48,25 @@ class Settings(BaseSettings):
     @property
     def configs_dir(self) -> Path:
         return Path(self.http_root) / "configs"
+
+    def iso_public_http_url(self, fs_path: str | Path | None) -> str:
+        """URL HTTP absolue pour un fichier sous ``iso_root`` (menus iPXE / scripts utilisateur)."""
+        if fs_path is None:
+            return ""
+        raw = str(fs_path).strip()
+        if not raw:
+            return ""
+        try:
+            abs_iso = Path(raw).expanduser().resolve()
+            root = Path(self.iso_root).expanduser().resolve()
+            rel = abs_iso.relative_to(root).as_posix()
+        except (ValueError, OSError):
+            return ""
+        seg = self.iso_http_alias.strip().strip("/")
+        if not seg:
+            return ""
+        base = self.server_base_url.rstrip("/")
+        return f"{base}/{seg}/{rel}"
 
     def ubuntu_nfs_server_hostname(self) -> str | None:
         """Hostname ou IP utilisé dans nfsroot= (côté client)."""

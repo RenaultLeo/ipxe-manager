@@ -107,6 +107,7 @@ REDIS_URL=redis://localhost:6379/0
 TFTP_ROOT=/srv/ipxe/tftpboot
 HTTP_ROOT=/srv/ipxe/http
 ISO_ROOT=/srv/ipxe/isos
+ISO_HTTP_ALIAS=isos-ipxe
 BUILD_DIR=/srv/ipxe/build
 MAX_UPLOAD_SIZE=53687091200
 EXTRACT_TIMEOUT=3600
@@ -120,6 +121,7 @@ else
     echo "  .env déjà présent — conservé."
     # S'assurer que BUILD_DIR est présent dans le .env existant
     grep -q "BUILD_DIR" "$APP_DIR/.env" || echo "BUILD_DIR=/srv/ipxe/build" >> "$APP_DIR/.env"
+    grep -q "^ISO_HTTP_ALIAS" "$APP_DIR/.env" || echo "ISO_HTTP_ALIAS=isos-ipxe" >> "$APP_DIR/.env"
     grep -q "^UBUNTU_NFS_ENABLED" "$APP_DIR/.env" || {
         printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
     }
@@ -212,6 +214,14 @@ server {
         expires -1;
     }
 
+    # ISO sous ISO_ROOT — préfixe dédié (pas « /isos/ » : évite tout conflit avec les routes UI FastAPI /isos).
+    location /isos-ipxe/ {
+        alias /srv/ipxe/isos/;
+        autoindex off;
+        sendfile on;
+        expires 1d;
+    }
+
     # wimboot — binaire pour le boot Windows PE
     location /wimboot {
         alias /srv/ipxe/http/wimboot;
@@ -251,7 +261,8 @@ echo "[11/15] Création des services systemd…"
 cat > /etc/systemd/system/ipxe-manager.service <<EOF
 [Unit]
 Description=iPXE Manager — FastAPI Web App
-After=network.target redis.service
+After=network.target redis-server.service
+Wants=redis-server.service
 
 [Service]
 Type=exec
@@ -272,7 +283,8 @@ EOF
 cat > /etc/systemd/system/ipxe-celery.service <<EOF
 [Unit]
 Description=iPXE Manager — Celery Worker (extraction ISO + compilation firmware)
-After=network.target redis.service
+After=network.target redis-server.service
+Wants=redis-server.service
 
 [Service]
 Type=exec
@@ -349,6 +361,7 @@ chmod 640 "$APP_DIR/.env"
 chmod -R o+rX "$DATA_DIR/http/boot" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/http/menus" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/http/configs" 2>/dev/null || true
+chmod -R o+rX "$DATA_DIR/isos" 2>/dev/null || true
 
 # ── 15. Démarrage de tous les services ────────────────────────────────────────
 echo "[15/15] Démarrage des services…"

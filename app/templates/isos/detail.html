@@ -33,7 +33,14 @@
         <dl class="row mb-0">
           <dt class="col-5 text-muted">ID</dt><dd class="col-7">{{ version.id }}</dd>
           <dt class="col-5 text-muted">Taille ISO</dt><dd class="col-7">{{ fmt_size(version.iso_size) }}</dd>
-          <dt class="col-5 text-muted">Chemin ISO</dt>
+          <dt class="col-5 text-muted">{{ t('iso.detail_iso_http_url') }}</dt>
+          <dd class="col-7 font-monospace small text-break">
+            {% set iso_u = iso_public_http_url(version.iso_path) %}
+            {% if iso_u %}
+              <a href="{{ iso_u }}" class="link-info">{{ iso_u }}</a>
+            {% else %}—{% endif %}
+          </dd>
+          <dt class="col-5 text-muted">{{ t('iso.detail_iso_fs_path') }}</dt>
           <dd class="col-7 font-monospace small text-break">{{ version.iso_path or '—' }}</dd>
           <dt class="col-5 text-muted">Ajouté le</dt>
           <dd class="col-7">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>

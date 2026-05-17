@@ -1,6 +1,7 @@
 [Unit]
 Description=iPXE Manager — Celery worker (ISO extraction / menu regeneration)
-After=network.target redis.service ipxe-manager.service
+After=network.target redis-server.service ipxe-manager.service
+Wants=redis-server.service
 
 [Service]
 Type=exec

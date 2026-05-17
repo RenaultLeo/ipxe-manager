@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
 from app.i18n import translate, SUPPORTED_LOCALES
+from app.config import settings
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -29,5 +30,6 @@ def template_context(request: Request, **extra):
         "t": t,
         "i18n_next": quote(raw_next, safe=""),
         "locale_choices": sorted(SUPPORTED_LOCALES),
+        "iso_public_http_url": settings.iso_public_http_url,
         **extra,
     }

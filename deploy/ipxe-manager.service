@@ -1,6 +1,7 @@
 [Unit]
 Description=iPXE Manager — FastAPI web application
-After=network.target redis.service
+After=network.target redis-server.service
+Wants=redis-server.service
 
 [Service]
 Type=exec

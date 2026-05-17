@@ -81,7 +81,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 - Installe les paquets : Nginx, tftpd-hpa, Redis, Python, p7zip, outils de build pour iPXE, Samba, etc.
 - Crée l’utilisateur système **`ipxe`**, les répertoires sous `/srv/ipxe/`, les unités **`ipxe-manager`** et **`ipxe-celery`**.
-- Configure **Nginx** avec des alias pour `/menus/`, `/boot/`, etc., et des limites d’upload pour les grosses ISO.
+- Configure **Nginx** avec des alias pour `/menus/`, `/boot/`, **`/isos-ipxe/`** (ISO sous `ISO_ROOT`, sans entrer en conflit avec les routes UI `/isos`), etc., et des limites d’upload pour les grosses ISO.
 - Écrit **`/etc/default/tftpd-hpa`** et **redémarre `tftpd-hpa` à la fin** : pendant le script, le service peut démarrer avec une config encore incomplète ; le redémarrage final évite un TFTP qui ne lit qu’une partie des paramètres ou des répertoires.
 - Initialise la base avec **`deploy/seed_db.py`** (types d’OS par défaut : Windows, Ubuntu, Debian, Rocky, Alma, Fedora, Proxmox, ESXi, Alpine, etc.).
 - Après **`pip install`**, régénère sous **`app/locale_values/`** les fichiers **`_en.list.json`**, **`de|es|it|pt.list.json`** (traductions alignées sur `app/i18n.py` via Node : `extract_en_list.mjs` + `build_locale_lists.mjs`). **Node.js** est installé avec les paquets système pour que ce soit reproductible sur toute machine ; en cas d’échec, les fichiers déjà présents dans le dépôt Git sont utilisés.
