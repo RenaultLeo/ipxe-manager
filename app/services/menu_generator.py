@@ -24,6 +24,9 @@ _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma"})
 
 MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 
+# VMware / OEM : parfois ``prefix-http=`` ou espaces ; sans ça la mise à jour pouvait tout ignorer (bug silencieux).
+_ESXI_IPXE_PREFIX_LINE_RE = re.compile(r"^\s*prefix(?:-http)?\s*=", re.I)
+
 # Fichier embarqué (app/resources/default_menu_logo.png) si pas d’upload utilisateur.
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
@@ -276,8 +279,11 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
 
 def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
     """
-    Réécrit ``prefix=`` dans ``ipxe-boot.cfg`` et ``ipxe-boot-legacy.cfg`` sous chaque version ESXi,
+    Réécrit ``prefix=`` dans ``ipxe-boot.cfg``, ``ipxe-boot-legacy.cfg`` et ``efi/boot/boot.cfg`` sous chaque version ESXi,
     pour refléter ``server_base_url`` sans ré-extraire l'ISO.
+
+    Réécrit aussi systématiquement ``kernel=`` / ``modules=`` / ``module=`` en minuscules ; avant,
+    si aucune ligne ``prefix`` n'était reconnue, le fichier n'était pas sauvé et les corrections étaient perdues.
     """
     esxi_root = cfg.boot_dir / "esxi"
     if not esxi_root.is_dir():
@@ -288,10 +294,15 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             continue
         ver = d.name
         new_line = f"prefix={base}/boot/esxi/{ver}/"
-        for fname in ("ipxe-boot.cfg", "ipxe-boot-legacy.cfg"):
-            path = d / fname
+        candidates = (
+            d / "ipxe-boot.cfg",
+            d / "ipxe-boot-legacy.cfg",
+            d / "efi" / "boot" / "boot.cfg",
+        )
+        for path in candidates:
             if not path.is_file():
                 continue
+            fname = path.relative_to(d).as_posix()
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
             except OSError as e:
@@ -300,15 +311,18 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             text = normalize_esxi_ipxe_boot_cfg_paths(text)
             lines = text.splitlines()
             out: list[str] = []
-            replaced = False
+            replaced_prefix = False
             for line in lines:
-                if line.strip().lower().startswith("prefix="):
+                if _ESXI_IPXE_PREFIX_LINE_RE.match(line):
                     out.append(new_line)
-                    replaced = True
+                    replaced_prefix = True
                 else:
                     out.append(line)
-            if not replaced:
-                continue
+            if not replaced_prefix:
+                insert_at = 0
+                while insert_at < len(out) and out[insert_at].strip().startswith("#"):
+                    insert_at += 1
+                out.insert(insert_at, new_line)
             try:
                 path.write_text("\n".join(out) + "\n", encoding="utf-8")
             except OSError as e:
