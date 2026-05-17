@@ -291,6 +291,7 @@ def _esxi_resolve_file(
     ref: str,
     *,
     iso_index_by_lower: dict[str, list[Path]] | None = None,
+    efi_profile: bool,
 ) -> Path | None:
     """Résout un chemin mentionné dans boot.cfg vers un fichier sur l'ISO extraite."""
     ref = _esxi_normalize_path(ref)
@@ -299,6 +300,8 @@ def _esxi_resolve_file(
     pref = prefix.strip().replace("\\", "/").strip("/")
     rel = ref.lstrip("/")
     candidates: list[Path] = []
+    # Références relatives au répertoire du boot.cfg (layout VMware courant sous EFI/BOOT/)
+    candidates.append(boot_cfg_dir / PurePosixPath(rel))
     if pref and not rel.lower().startswith(pref.lower() + "/") and rel != pref:
         candidates.append(iso_root / pref / rel)
         candidates.append(iso_root / pref / PurePosixPath(rel).name)
@@ -311,14 +314,24 @@ def _esxi_resolve_file(
         if key in seen:
             continue
         seen.add(key)
+        try:
+            c.resolve().relative_to(iso_root.resolve())
+        except ValueError:
+            continue
         if c.is_file():
             return _esxi_prefer_index_disk_path(c, iso_index_by_lower)
-    # Fallback : même basename, casse différente (Linux + ISO VMware en majuscules)
+    # Fallback : même basename, casse différente / doublons EFI vs Legacy (ISO OEM)
     basename = PurePosixPath(rel).name
     if basename and iso_index_by_lower:
         pool = iso_index_by_lower.get(basename.lower(), [])
         if pool:
-            return _esxi_pick_preferred_path(pool, iso_root)
+            return _esxi_disambiguate_same_basename_pool(
+                pool,
+                iso_root,
+                boot_cfg_dir,
+                prefix,
+                efi_profile=efi_profile,
+            )
     return None
 
 
@@ -348,6 +361,86 @@ def _esxi_pick_preferred_path(paths: list[Path], iso_root: Path) -> Path:
         return (depth, len(str(q)), str(q))
 
     return min(paths, key=sort_key)
+
+
+def _esxi_path_under_tree(path: Path, root: Path) -> bool:
+    if not root.is_dir():
+        return False
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _esxi_disambiguate_same_basename_pool(
+    pool: list[Path],
+    iso_root: Path,
+    boot_cfg_dir: Path,
+    prefix: str,
+    *,
+    efi_profile: bool,
+) -> Path:
+    """
+    Plusieurs fichiers peuvent partager le même nom sur une ISO (copie sous ``EFI/BOOT/``, racine,
+    bundles OEM). VMware sépare chargeur et ``boot.cfg`` : UEFI utilise ``efi/boot/boot.cfg`` avec
+    mboot EFI ; BIOS utilise souvent ``boot.cfg`` à la racine avec mboot.c32 (voir documentation
+    Broadcom « About the boot.cfg File » — ``prefix=`` pour kernel/modules).
+
+    On rattache la résolution au répertoire du ``boot.cfg`` source et au bit EFI vs Legacy pour ne
+    pas charger les modules de l'autre profil lorsque le fallback « même basename » est utilisé.
+    """
+    if len(pool) == 1:
+        return pool[0]
+
+    iso_r = iso_root.resolve()
+    cfg_r = boot_cfg_dir.resolve()
+    efi_root = iso_r / "EFI"
+
+    cfg_in_efi = _esxi_path_under_tree(cfg_r, efi_root) if efi_root.is_dir() else False
+
+    def under_efi_branch(p: Path) -> bool:
+        if not efi_root.is_dir():
+            return False
+        return _esxi_path_under_tree(p, efi_root)
+
+    narrowed = [p for p in pool if _esxi_path_under_tree(p, cfg_r)]
+    if narrowed:
+        pool = narrowed
+
+    pref = prefix.strip().replace("\\", "/").strip("/")
+    if pref:
+        pref_root = (iso_r / pref).resolve()
+        if pref_root.is_dir():
+            ph = [p for p in pool if _esxi_path_under_tree(p, pref_root)]
+            if ph:
+                pool = ph
+
+    under = [p for p in pool if under_efi_branch(p)]
+    not_under = [p for p in pool if not under_efi_branch(p)]
+
+    if cfg_in_efi and efi_profile:
+        if under:
+            pool = under
+    elif not cfg_in_efi and not efi_profile:
+        if not_under:
+            pool = not_under
+        elif under:
+            pool = under
+    elif efi_profile and under:
+        pool = under
+    elif not efi_profile and not_under:
+        pool = not_under
+
+    chosen = _esxi_pick_preferred_path(pool, iso_root)
+    if len(pool) > 1:
+        logger.info(
+            "ESXi : fichier même nom — profil %s, boot.cfg « %s » → « %s »",
+            "EFI" if efi_profile else "Legacy",
+            boot_cfg_dir.relative_to(iso_root),
+            chosen.relative_to(iso_root),
+        )
+    return chosen
 
 
 def _esxi_prefer_index_disk_path(
@@ -457,10 +550,24 @@ def _pick_esxi_boot_cfg_efi(iso_root: Path, idx: dict[str, list[Path]]) -> Path 
 
 
 def _pick_esxi_boot_cfg_legacy(iso_root: Path, idx: dict[str, list[Path]]) -> Path | None:
-    """Préfère un boot.cfg hors branche EFI (profil BIOS / mboot.c32)."""
+    """Préfère ``boot.cfg`` VMware BIOS : racine ISO puis ``boot/boot.cfg`` (voir doc installateur ESXi)."""
     pool = [p for p in idx.get("boot.cfg", []) if not _path_has_efi_segment(p, iso_root)]
     if not pool:
         return _pick_esxi_boot_cfg(iso_root, idx)
+
+    def legacy_site_rank(p: Path) -> tuple[int, str]:
+        try:
+            rel = p.relative_to(iso_root).as_posix().replace("\\", "/").lower().strip("/")
+        except ValueError:
+            return (99, "")
+        if rel == "boot.cfg":
+            return (0, rel)
+        if rel == "boot/boot.cfg":
+            return (1, rel)
+        return (10, rel)
+
+    best_site = min(legacy_site_rank(p)[0] for p in pool)
+    pool = [p for p in pool if legacy_site_rank(p)[0] == best_site]
     return _pick_best_esxi_boot_cfg_from_candidates(iso_root, pool)
 
 
@@ -617,6 +724,7 @@ def _esxi_boot_cfg_http_payload(
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
     cfg_dir = src_boot_cfg.parent
     old_prefix = (parsed.get("prefix") or "").strip()
+    efi_profile = _path_has_efi_segment(src_boot_cfg, dest)
 
     kernel_ref = (parsed.get("kernel") or "").strip()
     if not kernel_ref:
@@ -629,7 +737,14 @@ def _esxi_boot_cfg_http_payload(
             f"ESXi ({profile_label}) : aucun module (modules= / module=) dans « {src_boot_cfg.relative_to(dest)} »."
         )
 
-    k_path = _esxi_resolve_file(dest, cfg_dir, old_prefix, kernel_ref, iso_index_by_lower=iso_lower)
+    k_path = _esxi_resolve_file(
+        dest,
+        cfg_dir,
+        old_prefix,
+        kernel_ref,
+        iso_index_by_lower=iso_lower,
+        efi_profile=efi_profile,
+    )
     if not k_path or not k_path.is_file():
         raise ExtractionError(
             f"ESXi ({profile_label}) : fichier kernel « {kernel_ref} » introuvable "
@@ -638,7 +753,14 @@ def _esxi_boot_cfg_http_payload(
 
     mod_paths: list[Path] = []
     for ref in mod_refs:
-        p = _esxi_resolve_file(dest, cfg_dir, old_prefix, ref, iso_index_by_lower=iso_lower)
+        p = _esxi_resolve_file(
+            dest,
+            cfg_dir,
+            old_prefix,
+            ref,
+            iso_index_by_lower=iso_lower,
+            efi_profile=efi_profile,
+        )
         if not p or not p.is_file():
             raise ExtractionError(f"ESXi ({profile_label}) : module « {ref} » introuvable.")
         mod_paths.append(p)
@@ -672,9 +794,11 @@ def _esxi_boot_cfg_http_payload(
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z complète dans ``dest`` :
-    - ``ipxe-boot.cfg`` depuis le boot.cfg profil EFI (préf. sous EFI/)
-    - ``ipxe-boot-legacy.cfg`` depuis le boot.cfg profil BIOS (hors EFI/), sinon copie EFI
-    - ``mboot.efi`` : copie de bootx64.efi (doc VMware) ; ``esxi_efi_boot_path`` → mboot.efi
+    - ``ipxe-boot.cfg`` : ``boot.cfg`` du **profil UEFI** (typiquement ``EFI/BOOT/boot.cfg``, mboot EFI).
+    - ``ipxe-boot-legacy.cfg`` : ``boot.cfg`` **BIOS** (souvent ``boot.cfg`` à la racine ou ``boot/boot.cfg``, mboot.c32).
+    - Chemins kernel/modules résolus séparément par profil pour éviter les fichiers homonymes sous ``EFI/`` vs racine.
+
+    Référence : VMware « About the boot.cfg File » — ``prefix=``, chemins kernel/modules, chargeurs mboot.c32 / EFI.
     """
     base = f"boot/{os_slug}/{version_slug}"
     iso_lower = _esxi_index_files_casefold(dest)

@@ -334,7 +334,7 @@ async function runIsoDupCheck() {
   if (!oid || !vl || !f) {
     badge.classList.add('d-none');
     hint.classList.add('d-none');
-    return;
+    return false;
   }
   const params = new URLSearchParams({
     os_type_id: oid,
@@ -343,14 +343,16 @@ async function runIsoDupCheck() {
   });
   try {
     const r = await fetch('/isos/upload/check-iso-duplicate?' + params.toString(), { credentials: 'same-origin' });
-    if (!r.ok) return;
+    if (!r.ok) return false;
     const j = await r.json();
     const dup = !!j.duplicate;
     badge.classList.toggle('d-none', !dup);
     hint.classList.toggle('d-none', !dup);
+    return dup;
   } catch (err) {
     badge.classList.add('d-none');
     hint.classList.add('d-none');
+    return false;
   }
 }
 
@@ -362,7 +364,7 @@ document.getElementById('iso-file').addEventListener('change', function() {
 });
 document.getElementById('version-label-input').addEventListener('input', scheduleIsoDupCheck);
 
-document.getElementById('upload-form').addEventListener('submit', function(e) {
+document.getElementById('upload-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const form = this;
   const dupBadge = document.getElementById('iso-dup-badge');
@@ -371,6 +373,16 @@ document.getElementById('upload-form').addEventListener('submit', function(e) {
     alert(msgDupSubmit);
     return;
   }
+  const isoInput = document.getElementById('iso-file');
+  const hasIso = !!(isoInput.files && isoInput.files[0]);
+  if (hasIso) {
+    const duplicate = await runIsoDupCheck();
+    if (duplicate) {
+      alert(msgDupSubmit);
+      return;
+    }
+  }
+
   const data = new FormData(form);
   const xhr  = new XMLHttpRequest();
   const bar  = document.getElementById('progress-bar');
