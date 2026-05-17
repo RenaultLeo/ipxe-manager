@@ -2,7 +2,10 @@
 # ============================================================
 # iPXE Manager — Installation complète
 # Debian 12 / Ubuntu 24.04
-# Usage : sudo bash setup.sh [IP_DU_SERVEUR]
+# Usage :
+#   sudo bash setup.sh [IP_DU_SERVEUR]
+#   curl -fsSL https://raw.githubusercontent.com/RenaultLeo/ipxe-manager/main/deploy/setup.sh | sudo bash -s -- IP
+#   (l’étape [4] clone le dépôt sous APP_DIR avant pip install — le pipe fonctionne ainsi.)
 # ============================================================
 set -euo pipefail
 

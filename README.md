@@ -71,15 +71,15 @@ sudo git clone https://github.com/RenaultLeo/ipxe-manager.git /srv/ipxe/app
 
 ### Installation en une ligne (sans cloner à la main)
 
-Le fichier **`deploy/script.sh`** clone (ou met à jour) le dépôt sous **`/srv/ipxe/app`**, puis lance **`deploy/setup.sh`** comme ci‑dessous.
+Télécharge **`deploy/setup.sh`** brut depuis GitHub et exécute‑le : l’**étape [4]** du script clone (ou met à jour) le dépôt sous **`/srv/ipxe/app`** avant **`pip install`**, donc ce flux est cohérent même quand le script est lu depuis **stdin** (pipe).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/RenaultLeo/ipxe-manager/main/deploy/script.sh | sudo bash -s -- 192.168.2.6
+curl -fsSL https://raw.githubusercontent.com/RenaultLeo/ipxe-manager/main/deploy/setup.sh | sudo bash -s -- 192.168.2.6
 ```
 
 - Remplace **`192.168.2.6`** par l’**IP vue par les clients PXE**, ou omets **`--`** et l’argument : la valeur par défaut est la première IP locale (comme pour **`setup.sh` seul**).
 - **Important** : n’utilise pas **`curl -I`** ou **`-SI`** pour « installer » : **`-I`** interroge seulement les en‑têtes HTTP (**HEAD**) et **ne récupère pas le corps du script**. Il faut **`-fsSL`** (sans **`I`**) puis le passage à **`bash`**, comme ci‑dessus.
-- Variables facultatives avant la commande : **`IPXE_REPO_URL`**, **`IPXE_REPO_BRANCH`**, **`APP_DIR`** pour un fork ou un autre dossier que **`/srv/ipxe/app`** (voir en‑tête de **`deploy/script.sh`**).
+- **Fork ou autre URL / dossier** : modifie les constantes **`REPO_URL`** et **`APP_DIR`** en début de **`deploy/setup.sh`**, ou clone le dépôt à la main sous **`APP_DIR`** avant de lancer le script depuis le système de fichiers.
 
 ### Lancer le script d’installation
 
@@ -111,7 +111,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 ### Référence `deploy/` (noms systemd)
 
-Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/script.sh`** sert uniquement au **bootstrap** « curl | bash » (clone + **`setup.sh`**).
+Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/setup.sh`** est aussi exposé brut sur GitHub pour un **bootstrap** « **curl \| bash** » (voir Installation en une ligne).
 
 ### Première connexion
 
