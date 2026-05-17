@@ -312,7 +312,7 @@ def _esxi_resolve_file(
             continue
         seen.add(key)
         if c.is_file():
-            return c
+            return _esxi_prefer_index_disk_path(c, iso_index_by_lower)
     # Fallback : même basename, casse différente (Linux + ISO VMware en majuscules)
     basename = PurePosixPath(rel).name
     if basename and iso_index_by_lower:
@@ -348,6 +348,32 @@ def _esxi_pick_preferred_path(paths: list[Path], iso_root: Path) -> Path:
         return (depth, len(str(q)), str(q))
 
     return min(paths, key=sort_key)
+
+
+def _esxi_prefer_index_disk_path(
+    found: Path,
+    iso_index_by_lower: dict[str, list[Path]] | None,
+) -> Path:
+    """
+    Quand ``found`` vient du boot.cfg VMware (casse ISO9660 / UEFI souvent en majuscules),
+    le même fichier peut être résolu via des candidats construits depuis ces références alors
+    que le parcours disque exposé par ``rglob`` reflète la casse réelle des entrées.
+
+    Si un fichier du même inode existe dans l’index ``iso_index_by_lower``, retourne ce Path ;
+    sinon ``found``.
+    """
+    if not iso_index_by_lower:
+        return found
+    pool = iso_index_by_lower.get(found.name.lower(), [])
+    if not pool:
+        return found
+    for q in pool:
+        try:
+            if q.samefile(found):
+                return q
+        except OSError:
+            continue
+    return found
 
 
 def _path_has_efi_segment(path: Path, iso_root: Path) -> bool:
@@ -529,7 +555,21 @@ def _rewrite_esxi_boot_cfg_http(
 
 
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
-    return file_path.resolve().relative_to(dest.resolve()).as_posix()
+    """
+    Chemin relatif POSIX sous la racine version ; préserve la casse des segments de ``file_path``.
+
+    Évite ``Path.resolve()`` sur le fichier lorsque ``relative_to`` suffit : sous Windows,
+    la résolution peut conserver une casse issue du boot.cfg VMware au lieu de celle réellement
+    listée sur disque après extraction.
+    """
+    dest_r = dest.resolve()
+    fp = file_path if file_path.is_absolute() else (dest_r / file_path)
+    fp_abs = fp.absolute()
+    try:
+        rel = fp_abs.relative_to(dest_r)
+    except ValueError:
+        rel = fp_abs.resolve().relative_to(dest_r)
+    return PurePosixPath(*rel.parts).as_posix()
 
 
 def _esxi_boot_cfg_http_payload(
