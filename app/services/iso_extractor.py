@@ -284,71 +284,6 @@ def _esxi_normalize_path(ref: str) -> str:
     return ref.replace("\\", "/")
 
 
-def _esxi_boot_cfg_basename_from_ref(cfg_ref: str) -> str:
-    """Basename tel que cité dans boot.cfg VMware (casse conservée)."""
-    norm = _esxi_normalize_path(cfg_ref).strip("/").replace("\\", "/")
-    if not norm:
-        return ""
-    return PurePosixPath(norm).name
-
-
-def _esxi_rename_resolved_to_boot_cfg_ref(
-    resolved: Path,
-    cfg_ref: str,
-    *,
-    ctx: str,
-    rename_casefold: bool = True,
-) -> Path:
-    """Si le fichier résolu diffère du basename VMware (ex. ``B.B00`` vs ``b.b00``), renomme sur disque.
-
-    Les refs VMware sont souvent en minuscules alors que l’ISO/extraction laisse des majuscules ;
-    sous Linux + HTTP sensible à la casse, mboot/iPXE peuvent alors charger une mauvaise URL ou échouer.
-
-    ``rename_casefold=False`` (profil Legacy après EFI) : si le fichier existe déjà sous une autre
-    casse pour le même nom logique, on ne renverse pas le renommage appliqué par le profil EFI.
-    """
-    want_name = _esxi_boot_cfg_basename_from_ref(cfg_ref)
-    if not want_name or resolved.name == want_name:
-        return resolved
-    if (
-        not rename_casefold
-        and resolved.name.casefold() == want_name.casefold()
-    ):
-        return resolved
-    dest = resolved.parent / want_name
-    if dest.exists():
-        try:
-            if dest.samefile(resolved):
-                return dest
-        except OSError:
-            pass
-        raise ExtractionError(
-            f"ESXi ({ctx}) : alignement casse « {resolved.name} » → « {want_name} » impossible, "
-            f"« {dest} » existe déjà."
-        )
-    old_name = resolved.name
-    try:
-        resolved.rename(dest)
-    except OSError:
-        tmp = resolved.parent / ".ipxe-esxi-rename.tmp"
-        try:
-            if tmp.exists():
-                tmp.unlink()
-            resolved.rename(tmp)
-            tmp.rename(dest)
-        except OSError as exc:
-            raise ExtractionError(
-                f"ESXi ({ctx}) : échec renommage casse « {old_name} » → « {want_name} » ({exc})."
-            ) from exc
-    logger.info(
-        "ESXi : casse fichier alignée sur boot.cfg (%s) — %s → %s",
-        ctx,
-        old_name,
-        want_name,
-    )
-    return dest
-
-
 def _esxi_resolve_file(
     iso_root: Path,
     boot_cfg_dir: Path,
@@ -552,16 +487,9 @@ def _esxi_boot_cfg_http_payload(
     Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
     + liste ordonnée des chemins relatifs pour préchargement iPXE.
 
-    Les chemins relatifs écrits suivent les noms cités dans boot.cfg (casse comprise) :
-    après résolution sur disque, les fichiers sont renommés si besoin pour coller à ces noms,
-    afin que les URLs HTTP fonctionnent sous systèmes de fichiers sensibles à la casse.
-
-    Pour le profil Legacy après EFI : si le fichier existe déjà sous une casse différente mais
-    équivalente (même nom logique), on ne renverse pas les renommages du profil EFI.
+    Aucun renommage sur disque : les chemins ``kernel=`` et ``modules=`` reflètent les fichiers
+    réellement présents après extraction (résolution insensible à la casse vers le Path trouvé).
     """
-    legacy_profile = profile_label.strip().lower() == "legacy"
-    rename_casefold = not legacy_profile
-
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
     cfg_dir = src_boot_cfg.parent
@@ -584,12 +512,6 @@ def _esxi_boot_cfg_http_payload(
             f"ESXi ({profile_label}) : fichier kernel « {kernel_ref} » introuvable "
             f"(boot.cfg « {src_boot_cfg.relative_to(dest)} »)."
         )
-    k_path = _esxi_rename_resolved_to_boot_cfg_ref(
-        k_path,
-        kernel_ref,
-        ctx=f"{profile_label}, kernel",
-        rename_casefold=rename_casefold,
-    )
 
     mod_refs_dedup: list[str] = []
     seen_r: set[str] = set()
@@ -603,9 +525,6 @@ def _esxi_boot_cfg_http_payload(
         p = _esxi_resolve_file(dest, cfg_dir, old_prefix, ref, iso_index_by_lower=iso_lower)
         if not p or not p.is_file():
             raise ExtractionError(f"ESXi ({profile_label}) : module « {ref} » introuvable.")
-        p = _esxi_rename_resolved_to_boot_cfg_ref(
-            p, ref, ctx=f"{profile_label}, module", rename_casefold=rename_casefold
-        )
         mod_paths.append(p)
 
     kernel_rel = _esxi_rel_from_dest(dest, k_path)
@@ -669,11 +588,6 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
         "ESXi : ipxe-boot.cfg — source %s",
         src_efi_cfg.relative_to(dest),
     )
-
-    # Ré-indexer après renommages éventuels (casse kernel/modules EFI). Sinon le dict
-    # ``iso_lower`` pointe encore vers d'anciens chemins invalides et le profil Legacy
-    # peut échouer sur kernel=/B.B00 alors que le fichier est déjà devenu b.b00.
-    iso_lower = _esxi_index_files_casefold(dest)
 
     if src_legacy_cfg.resolve() == src_efi_cfg.resolve():
         managed_legacy = managed_efi
