@@ -359,27 +359,59 @@ def _path_has_efi_segment(path: Path, iso_root: Path) -> bool:
 
 
 def _pick_best_esxi_boot_cfg_from_candidates(iso_root: Path, candidates: list[Path]) -> Path | None:
-    """Choisit le boot.cfg VMware le plus pertinent parmi une liste (score kernel/modules/kernelopt)."""
+    """Choisit le boot.cfg VMware le plus pertinent (score VMware + préférence installateur).
+
+    Plusieurs ``boot.cfg`` sous EFI peuvent coexister ; un fichier minimal ou hors ``EFI/BOOT``
+    peut avoir le même score ``kernel/modules`` mais une liste de modules incomplète ou dans
+    un ordre incompatible — ce qui mène à des PSOD du type « Unexpected early boot module … ».
+    On préfère donc ``EFI/BOOT/boot.cfg`` puis les chemins sous ``EFI/BOOT/``.
+    Hors EFI : préfère ``boot.cfg`` à la racine puis ``…/boot/boot.cfg``.
+    """
     if not candidates:
         return None
-    ordered = sorted(candidates, key=lambda p: (len(p.relative_to(iso_root).parts), str(p)))
-    best: tuple[int, Path] | None = None
-    for p in ordered:
+    best: tuple[tuple[int, int, int, str], Path] | None = None
+    for p in candidates:
         try:
             txt = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        low = txt.lower()
-        score = 0
-        if "kernel=" in low:
-            score += 2
-        if "modules=" in low or re.search(r"(?m)^module\s*=", txt):
-            score += 2
-        if "kernelopt=" in low:
-            score += 1
-        if score and (best is None or score > best[0]):
-            best = (score, p)
+        rank = _esxi_boot_cfg_rank(iso_root, p, txt)
+        if rank[0] == 0:
+            continue
+        if best is None or rank > best[0]:
+            best = (rank, p)
     return best[1] if best else None
+
+
+def _esxi_boot_cfg_rank(iso_root: Path, p: Path, txt: str) -> tuple[int, int, int, str]:
+    """Clé de tri décroissante : score contenu, nombre de modules parsés, tier installateur."""
+    low = txt.lower()
+    score = 0
+    if "kernel=" in low:
+        score += 2
+    if "modules=" in low or re.search(r"(?m)^module\s*=", txt):
+        score += 2
+    if "kernelopt=" in low:
+        score += 1
+    _, mod_list = _parse_esxi_boot_cfg_text(txt)
+    mod_count = len(mod_list)
+    try:
+        rel = p.relative_to(iso_root).as_posix().lower().strip("/")
+    except ValueError:
+        rel = ""
+    parts = rel.split("/") if rel else []
+    tier = 0
+    if len(parts) >= 3 and parts[0] == "efi" and parts[1] == "boot" and parts[-1] == "boot.cfg":
+        tier = 100
+    elif len(parts) >= 2 and parts[0] == "efi" and parts[1] == "boot":
+        tier = 50
+    elif "efi" in parts:
+        tier = 10
+    elif rel == "boot.cfg":
+        tier = 80
+    elif len(parts) >= 2 and parts[-1] == "boot.cfg" and parts[-2] == "boot":
+        tier = 60
+    return (score, mod_count, tier, rel)
 
 
 def _pick_esxi_boot_cfg(iso_root: Path, idx: dict[str, list[Path]]) -> Path | None:
