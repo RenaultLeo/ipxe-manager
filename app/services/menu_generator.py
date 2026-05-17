@@ -13,6 +13,7 @@ from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
+from app.services.iso_extractor import normalize_esxi_ipxe_boot_cfg_paths
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +297,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             except OSError as e:
                 logger.warning("ESXi %s illisible %s : %s", fname, path, e)
                 continue
+            text = normalize_esxi_ipxe_boot_cfg_paths(text)
             lines = text.splitlines()
             out: list[str] = []
             replaced = False

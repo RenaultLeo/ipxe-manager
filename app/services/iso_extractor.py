@@ -608,6 +608,43 @@ def _esxi_lowercase_posix_rel(rel: str) -> str:
     return "/".join(seg.lower() for seg in rel.split("/"))
 
 
+def normalize_esxi_ipxe_boot_cfg_paths(text: str) -> str:
+    """
+    Met en minuscules les segments des chemins dans ``kernel=``, ``modules=`` et ``module=``.
+    Répare les ``ipxe-boot*.cfg`` déjà déployés (ancienne extraction) lors d'une régénération menus :
+    évite les 404 nginx/ext4 sensible à la casse sans ré-extraire l'ISO.
+    """
+    lines_out: list[str] = []
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            lines_out.append("")
+            continue
+        if stripped.startswith("#"):
+            lines_out.append(raw_line.rstrip("\r"))
+            continue
+        if "=" not in stripped:
+            lines_out.append(raw_line.rstrip("\r"))
+            continue
+        key, _, val = stripped.partition("=")
+        kl = key.strip().lower()
+        val_s = val.strip()
+        if kl == "kernel":
+            lines_out.append(f"kernel={_esxi_lowercase_posix_rel(val_s)}")
+        elif kl == "modules":
+            parts = [p.strip() for p in _MODULES_SPLIT_RE.split(val_s) if p.strip()]
+            lines_out.append(
+                "modules=" + " --- ".join(_esxi_lowercase_posix_rel(p) for p in parts)
+            )
+        elif kl == "module":
+            lines_out.append(
+                "module=" if not val_s else f"module={_esxi_lowercase_posix_rel(val_s)}"
+            )
+        else:
+            lines_out.append(raw_line.rstrip("\r"))
+    return "\n".join(lines_out) + "\n"
+
+
 def _esxi_ensure_lowercase_http_mirrors(dest: Path, files: Iterable[Path]) -> None:
     """Pour chaque fichier sous ``dest``, garantit un second chemin dont chaque segment est en minuscules,
     lien dur (ou copie) vers le même contenu — nginx/ext4 sensible à la casse."""
