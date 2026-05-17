@@ -1,10 +1,9 @@
 #!ipxe
 
 ########################################
-# Sous-menu {{ os_type.label }} — UEFI : bootx64.efi ; Legacy : mboot.c32 + ipxe-boot.cfg
-# « kernel » = URL du chargeur ; « imgargs » 1er mot = basename de ce fichier ; « module » = mêmes
-# artefacts que boot.cfg ; la 1re entrée = fichier VMware « kernel= » (.b00, etc.).
-# BOOTIF : évite « Network boot: MAC address not found » (iPXE/gPXE) — MAC de l’interface iPXE (net0).
+# Sous-menu {{ os_type.label }} — UEFI : mboot.efi (copie bootx64.efi, doc VMware) ; Legacy : mboot.c32
+# imgargs : basename chargeur ; -c URL ipxe-boot.cfg (UEFI) ou ipxe-boot-legacy.cfg (Legacy) ;
+# puis BOOTIF (${net0/mac:hexhyp}) ; les ``module`` suivent le JSON du profil (ordre VMware).
 ########################################
 
 :start

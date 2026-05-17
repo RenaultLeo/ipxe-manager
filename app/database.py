@@ -43,8 +43,10 @@ def _migrate_columns():
     _add_column_if_missing("boot_entries", "custom_ipxe_path",   "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "extra_linux_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("boot_entries", "esxi_boot_cfg_path", "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "esxi_boot_cfg_legacy_path", "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "esxi_efi_boot_path", "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "esxi_modules",       "TEXT DEFAULT ''")
+    _add_column_if_missing("boot_entries", "esxi_modules_legacy", "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "meta_data_content",  "TEXT DEFAULT ''")
     _add_column_if_missing("autoconfigs",  "ubuntu_cloud_slug",  "VARCHAR(128)")
     _add_column_if_missing("iso_versions", "iso_was_extracted", "BOOLEAN DEFAULT 0")
@@ -128,6 +130,7 @@ def _backfill_iso_was_extracted() -> None:
                            OR COALESCE(initrd_path, '') <> ''
                            OR COALESCE(boot_wim_path, '') <> ''
                            OR COALESCE(esxi_boot_cfg_path, '') <> ''
+                           OR COALESCE(esxi_boot_cfg_legacy_path, '') <> ''
                            OR TRIM(COALESCE(esxi_modules, '')) <> ''
                            OR COALESCE(modloop_path, '') <> ''
                       )

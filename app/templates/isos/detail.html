@@ -76,9 +76,9 @@
         {% set is_esxi = (version.os_type.slug == 'esxi') or (version.os_type.boot_type == 'esxi') %}
         <dl class="row mb-0">
           {% if is_esxi %}
-          {# ESXi : Legacy = mboot.c32 ; UEFI = bootx64.efi ; ipxe-boot.cfg commun #}
+          {# ESXi : UEFI = mboot.efi ; Legacy = mboot.c32 ; deux ipxe-boot*.cfg si ISO distincts #}
           {% if be.esxi_efi_boot_path %}
-          <dt class="col-4 text-muted">Chargeur UEFI (bootx64.efi)</dt>
+          <dt class="col-4 text-muted">Chargeur UEFI (mboot.efi)</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_efi_boot_path }}</dd>
           {% endif %}
           {% if be.kernel_path %}
@@ -86,12 +86,20 @@
           <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
           {% endif %}
           {% if be.esxi_boot_cfg_path %}
-          <dt class="col-4 text-muted">boot.cfg</dt>
+          <dt class="col-4 text-muted">ipxe-boot.cfg (UEFI)</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_path }}</dd>
           {% endif %}
+          {% if be.esxi_boot_cfg_legacy_path %}
+          <dt class="col-4 text-muted">ipxe-boot-legacy.cfg</dt>
+          <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_legacy_path }}</dd>
+          {% endif %}
           {% if be.esxi_modules %}
-          <dt class="col-4 text-muted">Artefacts ESXi</dt>
-          <dd class="col-8 font-monospace small text-muted text-break" title="Noyau VMware + modules (iPXE « module »)">{{ be.esxi_modules }}</dd>
+          <dt class="col-4 text-muted">Modules iPXE (UEFI)</dt>
+          <dd class="col-8 font-monospace small text-muted text-break" title="Ordre précharge iPXE — profil EFI">{{ be.esxi_modules }}</dd>
+          {% endif %}
+          {% if be.esxi_modules_legacy %}
+          <dt class="col-4 text-muted">Modules iPXE (Legacy)</dt>
+          <dd class="col-8 font-monospace small text-muted text-break" title="Ordre précharge iPXE — profil Legacy">{{ be.esxi_modules_legacy }}</dd>
           {% endif %}
           {% elif be.kernel_path %}
           <dt class="col-4 text-muted">{{ be.kernel_path.split('/')[-1] }}</dt>
