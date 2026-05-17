@@ -160,6 +160,34 @@ async def upload_check_iso_duplicate(
     return JSONResponse({"duplicate": dup})
 
 
+@router.get("/upload/precheck")
+async def upload_precheck(
+    request: Request,
+    total_bytes: int = Query(
+        0,
+        ge=0,
+        le=1_099_511_627_776,  # 1 TiB plafond sur le query param (évite abus URL)
+        description="Somme des tailles des fichiers choisis dans le formulaire (approximatif multipart).",
+    ),
+):
+    """
+    Vérification avant le POST multipart : espace vs réserve + taille cumulée, sans recevoir les octets fichiers.
+    Le JS appelle cet endpoint puis n’affiche la barre de progression que si ``ok``.
+    """
+    if not is_authenticated(request):
+        raise HTTPException(401)
+    lang = getattr(request.state, "locale", "fr")
+    mf = _minimum_free_near_upload_roots()
+    reserve = settings.upload_min_free_bytes
+    if mf <= reserve:
+        return JSONResponse({"ok": False, "detail": translate(lang, "iso.upload.disk_low_reserve")})
+    if total_bytes > settings.max_upload_size:
+        return JSONResponse({"ok": False, "detail": translate(lang, "iso.upload.too_large")})
+    if total_bytes > 0 and mf <= total_bytes + reserve:
+        return JSONResponse({"ok": False, "detail": translate(lang, "iso.upload.disk_low_reserve")})
+    return JSONResponse({"ok": True})
+
+
 def _pick_upload_file(form, key: str):
     """Récupère un UploadFile non vide depuis un formulaire multipart, ou ``None``."""
     from starlette.datastructures import UploadFile

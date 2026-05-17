@@ -364,6 +364,18 @@ document.getElementById('iso-file').addEventListener('change', function() {
 });
 document.getElementById('version-label-input').addEventListener('input', scheduleIsoDupCheck);
 
+function sumChosenFileSizes(formEl) {
+  let n = 0;
+  for (const inp of formEl.querySelectorAll('input[type="file"]')) {
+    if (inp.files) {
+      for (let i = 0; i < inp.files.length; i++) {
+        n += inp.files[i].size || 0;
+      }
+    }
+  }
+  return n;
+}
+
 document.getElementById('upload-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const form = this;
@@ -383,6 +395,39 @@ document.getElementById('upload-form').addEventListener('submit', async function
     }
   }
 
+  const msgProgress = form.dataset.msgProgress || '…';
+  const msgXhr = form.dataset.msgXhr || 'Error';
+  const msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
+
+  const totalBytes = sumChosenFileSizes(form);
+  try {
+    const pu = '/isos/upload/precheck?total_bytes=' + encodeURIComponent(totalBytes);
+    const pr = await fetch(pu, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (pr.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    let pre = null;
+    try {
+      pre = await pr.json();
+    } catch (err) {}
+    if (!pre || typeof pre !== 'object') {
+      alert(msgXhrStatus.replace('{status}', pr.statusText || String(pr.status)));
+      return;
+    }
+    if (pre.ok === false && pre.detail) {
+      alert(typeof pre.detail === 'string' ? pre.detail : String(pre.detail));
+      return;
+    }
+    if (pre.ok !== true) {
+      alert(msgXhr);
+      return;
+    }
+  } catch (err) {
+    alert(msgXhr);
+    return;
+  }
+
   const data = new FormData(form);
   const xhr  = new XMLHttpRequest();
   const bar  = document.getElementById('progress-bar');
@@ -390,10 +435,6 @@ document.getElementById('upload-form').addEventListener('submit', async function
   const wrap = document.getElementById('progress-wrap');
   const btn  = document.getElementById('submit-btn');
   const plab = document.getElementById('progress-label');
-
-  const msgProgress = form.dataset.msgProgress || '…';
-  const msgXhr = form.dataset.msgXhr || 'Error';
-  const msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
 
   if (plab) plab.textContent = msgProgress;
   wrap.classList.remove('d-none');
