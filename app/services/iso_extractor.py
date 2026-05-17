@@ -508,10 +508,10 @@ def _esxi_boot_cfg_http_payload(
 ) -> tuple[str, list[str]]:
     """
     Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
-    + liste ordonnée des chemins relatifs pour préchargement iPXE.
+    + liste ordonnée des chemins relatifs pour préchargement iPXE (**sans dédoublonnage**, ordre VMware inchangé).
 
-    Les chemins ``kernel=`` et ``modules=`` sont dérivés des ``Path`` résolus puis de
-    ``_esxi_rel_from_dest`` — alignés sur les fichiers réels extraits de l’ISO.
+    Les chemins ``kernel=`` et ``modules=`` suivent les fichiers résolus sur l’ISO.
+    Profil EFI : si ``crypto64.efi`` est présent mais pas dans la liste VMware, il est préfixé avant le noyau installateur.
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
@@ -565,18 +565,27 @@ def _esxi_boot_cfg_http_payload(
         module_rels=mod_rels,
     )
 
+    # Ordre strict comme dans boot.cfg (pas de dédoublonnage iPXE : deux entrées identiques décalerait la suite).
     preload_rels: list[str] = []
-    seen_low: set[str] = set()
-
-    def add_rel(rp: str) -> None:
-        low = rp.lower()
-        if low not in seen_low:
-            seen_low.add(low)
-            preload_rels.append(rp)
-
-    add_rel(kernel_rel)
-    for p in mod_paths:
-        add_rel(_esxi_rel_from_dest(dest, p))
+    if profile_label == "EFI":
+        crypto_pool = iso_lower.get("crypto64.efi")
+        if crypto_pool:
+            crypto_path = _esxi_pick_preferred_path(crypto_pool, dest)
+            if crypto_path.is_file():
+                try:
+                    dup = crypto_path.samefile(k_path) or any(
+                        crypto_path.samefile(mp) for mp in mod_paths
+                    )
+                except OSError:
+                    dup = False
+                if not dup:
+                    preload_rels.append(_esxi_rel_from_dest(dest, crypto_path))
+                    logger.info(
+                        "ESXi (%s) : crypto64.efi inclus dans le préchargement iPXE avant le noyau installateur.",
+                        profile_label,
+                    )
+    preload_rels.append(kernel_rel)
+    preload_rels.extend(mod_rels)
 
     return managed, preload_rels
 
