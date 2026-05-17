@@ -9,6 +9,7 @@ import json
 import logging
 import subprocess
 import shutil
+import sys
 import tempfile
 import re
 from pathlib import PurePosixPath, Path
@@ -395,12 +396,23 @@ def _esxi_disambiguate_same_basename_pool(
 
     iso_r = iso_root.resolve()
     cfg_r = boot_cfg_dir.resolve()
-    efi_root = iso_r / "EFI"
+    efi_root: Path | None = None
+    try:
+        for cand in iso_r.iterdir():
+            if cand.is_dir() and cand.name.casefold() == "efi":
+                efi_root = cand.resolve()
+                break
+    except OSError:
+        pass
 
-    cfg_in_efi = _esxi_path_under_tree(cfg_r, efi_root) if efi_root.is_dir() else False
+    cfg_in_efi = (
+        _esxi_path_under_tree(cfg_r, efi_root)
+        if efi_root is not None and efi_root.is_dir()
+        else False
+    )
 
     def under_efi_branch(p: Path) -> bool:
-        if not efi_root.is_dir():
+        if efi_root is None or not efi_root.is_dir():
             return False
         return _esxi_path_under_tree(p, efi_root)
 
@@ -475,6 +487,23 @@ def _path_has_efi_segment(path: Path, iso_root: Path) -> bool:
     except ValueError:
         return False
     return any(part.lower() == "efi" for part in rel.parts)
+
+
+def _esxi_pick_mboot_c32_legacy(iso_root: Path, iso_lower: dict[str, list[Path]]) -> Path:
+    """Préfère ``mboot.c32`` hors de la branche EFI (chargeur BIOS / chaîne Legacy).
+
+    Certaines ISO dupliquent ``mboot.c32`` sous ``efi/…`` et à la racine : le menu Legacy doit
+    pointer vers la copie alignée avec ``ipxe-boot-legacy.cfg``, pas le variant EFI.
+    """
+    pool = iso_lower.get("mboot.c32", [])
+    if not pool:
+        raise ExtractionError("ESXi : mboot.c32 introuvable dans l'ISO.")
+    outside = [p for p in pool if not _path_has_efi_segment(p, iso_root)]
+    chosen_pool = outside if outside else pool
+    picked = _esxi_pick_preferred_path(chosen_pool, iso_root)
+    if not picked.is_file():
+        raise ExtractionError("ESXi : mboot.c32 introuvable.")
+    return picked
 
 
 def _pick_best_esxi_boot_cfg_from_candidates(iso_root: Path, candidates: list[Path]) -> Path | None:
@@ -583,7 +612,8 @@ def _rewrite_esxi_boot_cfg_http(
     ``module=`` séparées ou une ligne ``modules= … --- …`` comme dans le fichier d’origine).
 
     ``prefix`` est fixé à l’URL HTTP de la racine version ; ``kernel`` / ``modules`` /
-    ``module`` utilisent les chemins relatifs réels après résolution sur l’arborescence
+    ``module`` utilisent des chemins relatifs **canoniques minuscules** (convention VMware /
+    Broadcom pour le déploiement HTTP sous nginx/Linux), après résolution sur l’arborescence
     extraite ; ``kernelopt`` est repris sans ``cdromBoot``.
     """
     merged_body = _esxi_merge_cfg_continuations(raw_cfg)
@@ -663,12 +693,13 @@ def _rewrite_esxi_boot_cfg_http(
 
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
     """
-    Chemin relatif POSIX depuis ``dest`` vers ``file_path``.
+    Chemin relatif POSIX **HTTP canonique** depuis ``dest`` vers ``file_path``.
 
-    À chaque niveau on reprend le nom exact tel que ``iterdir()`` le liste sur le système de
-    fichiers (comparaison ``casefold()`` avec le segment résolu). Ainsi les URLs dans
-    ``ipxe-boot.cfg``, le JSON ``esxi_modules`` et ``kernel_path`` (mboot.c32) correspondent à ce
-    que nginx/Linux expose réellement — indépendamment de la casse VMware dans ``boot.cfg``.
+    La résolution suit le disque (``casefold()`` sur ``iterdir()``), mais la chaîne produite
+    utilise **chaque segment en minuscules**, comme les chemins relatifs dans la documentation
+    VMware / Broadcom pour ``boot.cfg`` servi en HTTP — alignée avec nginx sensible à la casse.
+
+    Les fichiers sous Linux doivent correspondre (normalisation après extraction sur POSIX).
     """
     dest_r = dest.resolve()
     fp = file_path if file_path.is_absolute() else (dest_r / file_path)
@@ -686,8 +717,13 @@ def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
         try:
             entries = list(cur.iterdir())
         except OSError as exc:
-            logger.warning("ESXi : lecture répertoire %s impossible (%s), casse VMware conservée.", cur, exc)
-            return PurePosixPath(*(parts_out + list(rel.parts[len(parts_out) :]))).as_posix()
+            logger.warning(
+                "ESXi : lecture répertoire %s impossible (%s) — suffixe du chemin en minuscules.",
+                cur,
+                exc,
+            )
+            si = len(parts_out)
+            return PurePosixPath(*(parts_out + [s.lower() for s in rel.parts[si:]])).as_posix()
         chosen: Path | None = None
         for ch in entries:
             if ch.name.casefold() == seg.casefold():
@@ -695,12 +731,13 @@ def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
                 break
         if chosen is None:
             logger.warning(
-                "ESXi : segment « %s » introuvable sous %s — casse résolue brute pour la suite.",
+                "ESXi : segment « %s » introuvable sous %s — suffixe du chemin en minuscules.",
                 seg,
                 cur,
             )
-            return PurePosixPath(*(parts_out + list(rel.parts[len(parts_out) :]))).as_posix()
-        parts_out.append(chosen.name)
+            si = len(parts_out)
+            return PurePosixPath(*(parts_out + [s.lower() for s in rel.parts[si:]])).as_posix()
+        parts_out.append(chosen.name.lower())
         cur = chosen
     return PurePosixPath(*parts_out).as_posix()
 
@@ -717,8 +754,9 @@ def _esxi_boot_cfg_http_payload(
     Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
     + liste ordonnée des chemins relatifs pour préchargement iPXE.
 
-    Aucun renommage sur disque : les chemins ``kernel=`` et ``modules=`` reflètent les fichiers
-    réellement présents après extraction (résolution insensible à la casse vers le Path trouvé).
+    Les chemins ``kernel=`` et ``modules=`` sont les chemins HTTP canoniques (segments minuscules)
+    pour les fichiers résolus ; sur POSIX ceux-ci correspondent au disque après normalisation de
+    l’extracteur.
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
@@ -791,16 +829,77 @@ def _esxi_boot_cfg_http_payload(
     return managed, preload_rels
 
 
+def _esxi_normalize_extracted_tree_lowercase(dest: Path) -> None:
+    """Renomme tous les fichiers sous ``dest`` pour une arborescence HTTP POSIX minuscule.
+
+    Les dossiers résiduels en majuscules sont retirés une fois vidés. Sous Windows le système de
+    fichiers est en général insensible à la casse : la fonction est ignorée pour éviter collisions
+    ou échecs de renommage.
+    """
+    if sys.platform == "win32":
+        logger.debug("ESXi : normalisation arborescence minuscules ignorée sous Windows.")
+        return
+
+    root = dest.resolve()
+    if not root.is_dir():
+        return
+
+    files = [p for p in root.rglob("*") if p.is_file()]
+    for p in sorted(files, key=lambda x: (-len(x.parts), str(x))):
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            continue
+        target = root.joinpath(*[seg.lower() for seg in rel.parts])
+        if p.resolve() == target.resolve():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            logger.warning(
+                "ESXi : collision lors de la normalisation casse — « %s » existe, « %s » ignoré.",
+                target,
+                p,
+            )
+            continue
+        try:
+            shutil.move(str(p), str(target))
+        except OSError as exc:
+            logger.warning(
+                "ESXi : impossible déplacer « %s » vers « %s » — %s",
+                p,
+                target,
+                exc,
+            )
+
+    for d in sorted(
+        [p for p in root.rglob("*") if p.is_dir()],
+        key=lambda x: (-len(x.parts), str(x)),
+    ):
+        if d == root:
+            continue
+        try:
+            if not any(d.iterdir()):
+                d.rmdir()
+        except OSError:
+            pass
+
+
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z complète dans ``dest`` :
-    - ``ipxe-boot.cfg`` : ``boot.cfg`` du **profil UEFI** (typiquement ``EFI/BOOT/boot.cfg``, mboot EFI).
+    - Sur Linux/POSIX : fichiers déplacés vers une arborescence **minuscule** pour URLs HTTP alignées
+      nginx (chemins dans ``ipxe-boot.cfg``, JSON modules, menus).
+    - ``ipxe-boot.cfg`` : ``boot.cfg`` du **profil UEFI** (typiquement ``efi/boot/boot.cfg``, mboot EFI).
     - ``ipxe-boot-legacy.cfg`` : ``boot.cfg`` **BIOS** (souvent ``boot.cfg`` à la racine ou ``boot/boot.cfg``, mboot.c32).
-    - Chemins kernel/modules résolus séparément par profil pour éviter les fichiers homonymes sous ``EFI/`` vs racine.
+    - Chemins kernel/modules résolus séparément par profil pour éviter les fichiers homonymes sous ``efi/`` vs racine.
 
     Référence : VMware « About the boot.cfg File » — ``prefix=``, chemins kernel/modules, chargeurs mboot.c32 / EFI.
     """
     base = f"boot/{os_slug}/{version_slug}"
+    try:
+        _esxi_normalize_extracted_tree_lowercase(dest)
+    except Exception as exc:
+        logger.warning("ESXi : normalisation minuscules impossible — %s", exc)
     iso_lower = _esxi_index_files_casefold(dest)
 
     src_efi_cfg = _pick_esxi_boot_cfg_efi(dest, iso_lower)
@@ -811,12 +910,7 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     if not src_legacy_cfg:
         src_legacy_cfg = src_efi_cfg
 
-    mboot_pool = iso_lower.get("mboot.c32", [])
-    if not mboot_pool:
-        raise ExtractionError("ESXi : mboot.c32 introuvable dans l'ISO.")
-    mboot_path = _esxi_pick_preferred_path(mboot_pool, dest)
-    if not mboot_path.is_file():
-        raise ExtractionError("ESXi : mboot.c32 introuvable.")
+    mboot_path = _esxi_pick_mboot_c32_legacy(dest, iso_lower)
 
     http_prefix = settings.server_base_url.rstrip("/") + f"/{base}/"
 
