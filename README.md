@@ -285,6 +285,24 @@ python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP --workers 50 --re
 python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP --no-load
 ```
 
+### Audit exhaustif (pages, menus, session)
+
+Le script **`scripts/ipxe_exhaustive_check.py`** (stdlib uniquement) va plus loin :
+
+- **Sans mot de passe** : toutes les redirections « non connecté », statiques, **POST /login** invalide (**401**), **`/jobs/kill-all`** (GET public → racine), **`/set-language`** (cookie + redirection), et analyse de **`/menus/menu.ipxe`** (statut + contenu **#!ipxe** / directives **menu** / **item**) ;
+- **Avec mot de passe admin** (`--password` ou variable d’environnement **`IPXE_AUDIT_PASSWORD`**) : création de session, contrôle **HTTP 200** et présence de **`<html`** sur le tableau de bord, **ISO**, **upload**, **boot-files**, **configs**, **menus iPXE**, **firmware**, **paramètres**, **JSON** **`/isos/upload/precheck`**, menu brut **`/ipxe-menus/menu.ipxe/raw`**, logo PNG intégré, puis **logout** et nouvelle redirection vers **/login** ;
+- **Options** : **`--strict-menus`** (échoue si le menu Nginx est absent), **`--include-openapi`** (**/openapi.json**, **/docs** — souvent absents derrière Nginx seul), **`--check-redis`**, **`--celery-inspect`**, **`--systemd`** (liste par défaut ci‑dessous), **`--systemd-unit nom`** (répétable : ne contrôle que ces unités, même sans **`--systemd`**).
+
+**Codes sortie** : **0** OK · **1** échec sur un contrôle · **2** arguments invalides ou impossible de se connecter (**POST /login** sans **302** ou sans cookie).
+
+```bash
+python3 scripts/ipxe_exhaustive_check.py --base-url http://VOTRE_IP --password VOTRE_MDP --strict-menus
+
+# Sur la machine serveur (services locaux)
+python3 scripts/ipxe_exhaustive_check.py --base-url http://127.0.0.1 \
+  --password "$IPXE_ADMIN_PW" --systemd --check-redis --celery-inspect
+```
+
 ---
 
 ## Développement local
