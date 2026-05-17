@@ -12,6 +12,7 @@ import subprocess
 import shutil
 import tempfile
 import re
+from collections.abc import Iterable
 from pathlib import PurePosixPath, Path
 from urllib.parse import unquote, urlparse
 
@@ -356,37 +357,56 @@ def _esxi_ensure_crypto64_lowercase_http_alias(
     iso_lower: dict[str, list[Path]],
     iso_root: Path,
 ) -> None:
-    """mboot récupère ``crypto64.efi`` en minuscules ; l’ISO livre souvent ``CRYPTO64.EFI``.
-    Ajoute ``crypto64.efi`` comme lien dur (ou copie) vers le fichier réel pour nginx/ext4."""
+    """mboot demande souvent ``prefix/crypto64.efi`` en minuscules alors que l’ISO a ``CRYPTO64.EFI``.
+
+    - lien ``crypto64.efi`` dans le même répertoire que le binaire VMware ;
+    - lien à la **racine** du dépôt HTTP (``prefix/crypto64.efi``), pointant vers le même fichier.
+    """
     pool = iso_lower.get("crypto64.efi")
     if not pool:
         return
-    src = _esxi_pick_preferred_path(pool, iso_root)
+    src = _esxi_pick_preferred_path(pool, iso_root).resolve()
     if not src.is_file():
         return
-    if src.name == "crypto64.efi":
-        return
-    alias = src.parent / "crypto64.efi"
-    if alias.is_file():
+
+    if src.name != "crypto64.efi":
+        alias = src.parent / "crypto64.efi"
+        if not alias.is_file():
+            try:
+                os.link(src, alias)
+                logger.info("ESXi : crypto64.efi → lien dur dans %s", src.parent)
+            except OSError:
+                try:
+                    shutil.copy2(src, alias)
+                    logger.info("ESXi : crypto64.efi → copie dans %s", src.parent)
+                except OSError as exc:
+                    logger.warning("ESXi : crypto64.efi dans dossier VMware impossible (%s)", exc)
+
+    root_alias = (iso_root / "crypto64.efi").resolve()
+    try:
+        if root_alias.samefile(src):
+            return
+    except OSError:
+        pass
+    if root_alias.is_file():
         try:
-            if alias.samefile(src):
+            if root_alias.samefile(src):
                 return
         except OSError:
             pass
         logger.warning(
-            "ESXi : « crypto64.efi » existe déjà et ne correspond pas à %s — alias ignoré.",
-            src.name,
+            "ESXi : « crypto64.efi » existe déjà à la racine HTTP et ne pointe pas vers le crypto VMware — ignoré.",
         )
         return
     try:
-        os.link(src, alias)
-        logger.info("ESXi : alias HTTP crypto64.efi → lien dur vers %s", src.name)
+        os.link(src, root_alias)
+        logger.info("ESXi : crypto64.efi lien à la racine HTTP")
     except OSError:
         try:
-            shutil.copy2(src, alias)
-            logger.info("ESXi : alias HTTP crypto64.efi → copie depuis %s", src.name)
+            shutil.copy2(src, root_alias)
+            logger.info("ESXi : crypto64.efi copie à la racine HTTP")
         except OSError as exc:
-            logger.warning("ESXi : impossible créer crypto64.efi (%s)", exc)
+            logger.warning("ESXi : crypto64.efi racine HTTP impossible (%s)", exc)
 
 
 def _esxi_crypto64_path_for_http(crypto_path: Path) -> Path:
@@ -456,9 +476,8 @@ def _rewrite_esxi_boot_cfg_http(
     (ordre des lignes, métadonnées ``bootstate`` / ``timeout`` / ``build`` / …, lignes
     ``module=`` séparées ou une ligne ``modules= … --- …`` comme dans le fichier d’origine).
 
-    ``prefix`` est fixé à l’URL HTTP de la racine version ; ``kernel`` / ``modules`` /
-    ``module`` utilisent les chemins relatifs **tels que sur le disque après extraction 7z**
-    (même casse que l’ISO VMware) ; ``kernelopt`` est repris sans ``cdromBoot``.
+    ``prefix`` est fixé à l’URL HTTP de la racine version ; les chemins ``kernel`` / ``modules`` /
+    ``module`` sont ceux fournis par l’appelant (profil EFI : segments **minuscules**, forme canonique mboot/HTTP).
     """
     merged_body = _esxi_merge_cfg_continuations(raw_cfg)
     http_prefix = http_prefix.rstrip("/") + "/"
@@ -535,6 +554,50 @@ def _rewrite_esxi_boot_cfg_http(
     return "\n".join(lines_out) + "\n"
 
 
+def _esxi_lowercase_posix_rel(rel: str) -> str:
+    """Forme canonique mboot / URLs HTTP VMware : tous les segments du chemin relatif en minuscules."""
+    rel = rel.strip().replace("\\", "/").strip("/")
+    if not rel:
+        return rel
+    return "/".join(seg.lower() for seg in rel.split("/"))
+
+
+def _esxi_ensure_lowercase_http_mirrors(dest: Path, files: Iterable[Path]) -> None:
+    """Pour chaque fichier sous ``dest``, garantit un second chemin dont chaque segment est en minuscules,
+    lien dur (ou copie) vers le même contenu — nginx/ext4 sensible à la casse."""
+    dest_r = dest.resolve()
+    seen: set[str] = set()
+    for fp in files:
+        fp_r = fp.resolve()
+        try:
+            rel = fp_r.relative_to(dest_r)
+        except ValueError:
+            continue
+        sk = str(fp_r)
+        if sk in seen:
+            continue
+        seen.add(sk)
+        mirror = dest_r.joinpath(*[seg.lower() for seg in rel.parts])
+        if fp_r == mirror:
+            continue
+        mirror.parent.mkdir(parents=True, exist_ok=True)
+        if mirror.is_file():
+            try:
+                if mirror.samefile(fp_r):
+                    continue
+            except OSError:
+                pass
+            logger.warning("ESXi EFI : collision miroir minuscules « %s » — ignoré.", mirror)
+            continue
+        try:
+            os.link(fp_r, mirror)
+        except OSError:
+            try:
+                shutil.copy2(fp_r, mirror)
+            except OSError as exc:
+                logger.warning("ESXi EFI : miroir « %s » impossible (%s)", mirror, exc)
+
+
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
     """Chemin relatif POSIX depuis ``dest`` vers ``file_path`` (casse identique au disque après 7z)."""
     dest_r = dest.resolve()
@@ -560,8 +623,11 @@ def _esxi_boot_cfg_http_payload(
     Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
     + liste ordonnée des chemins relatifs pour préchargement iPXE (**sans dédoublonnage**, ordre VMware inchangé).
 
-    Les chemins ``kernel=`` et ``modules=`` suivent les fichiers résolus sur l’ISO.
-    Profil EFI : si ``crypto64.efi`` est présent mais pas dans la liste VMware, il est préfixé avant le noyau installateur.
+    Les chemins **profil EFI** : mboot utilise la **forme canonique HTTP minuscule** ; on écrit donc
+    ``kernel=`` / ``modules=`` et les précharges iPXE en minuscules et on crée des **miroirs** (lien dur)
+    vers les fichiers extraits pour nginx/ext4. **Legacy** : chemins inchangés (casse ISO).
+
+    Si ``crypto64.efi`` est présent hors liste VMware, il est préfixé au préchargement iPXE EFI.
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
@@ -605,8 +671,24 @@ def _esxi_boot_cfg_http_payload(
             raise ExtractionError(f"ESXi ({profile_label}) : module « {ref} » introuvable.")
         mod_paths.append(p)
 
-    kernel_rel = _esxi_rel_from_dest(dest, k_path)
-    mod_rels = [_esxi_rel_from_dest(dest, p) for p in mod_paths]
+    crypto_path_opt: Path | None = None
+    if profile_label == "EFI":
+        crypto_pool = iso_lower.get("crypto64.efi")
+        if crypto_pool:
+            cp = _esxi_crypto64_path_for_http(_esxi_pick_preferred_path(crypto_pool, dest))
+            if cp.is_file():
+                crypto_path_opt = cp
+
+    if profile_label == "EFI":
+        mirror_paths = [k_path] + mod_paths
+        if crypto_path_opt is not None:
+            mirror_paths.append(crypto_path_opt)
+        _esxi_ensure_lowercase_http_mirrors(dest, mirror_paths)
+        kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
+        mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
+    else:
+        kernel_rel = _esxi_rel_from_dest(dest, k_path)
+        mod_rels = [_esxi_rel_from_dest(dest, p) for p in mod_paths]
 
     managed = _rewrite_esxi_boot_cfg_http(
         raw_cfg=raw_cfg,
@@ -615,29 +697,28 @@ def _esxi_boot_cfg_http_payload(
         module_rels=mod_rels,
     )
 
-    # Ordre strict comme dans boot.cfg (pas de dédoublonnage iPXE : deux entrées identiques décalerait la suite).
     preload_rels: list[str] = []
     if profile_label == "EFI":
-        crypto_pool = iso_lower.get("crypto64.efi")
-        if crypto_pool:
-            crypto_path = _esxi_crypto64_path_for_http(
-                _esxi_pick_preferred_path(crypto_pool, dest)
-            )
-            if crypto_path.is_file():
-                try:
-                    dup = crypto_path.samefile(k_path) or any(
-                        crypto_path.samefile(mp) for mp in mod_paths
-                    )
-                except OSError:
-                    dup = False
-                if not dup:
-                    preload_rels.append(_esxi_rel_from_dest(dest, crypto_path))
-                    logger.info(
-                        "ESXi (%s) : crypto64.efi inclus dans le préchargement iPXE avant le noyau installateur.",
-                        profile_label,
-                    )
-    preload_rels.append(kernel_rel)
-    preload_rels.extend(mod_rels)
+        if crypto_path_opt is not None:
+            try:
+                dup = crypto_path_opt.samefile(k_path) or any(
+                    crypto_path_opt.samefile(mp) for mp in mod_paths
+                )
+            except OSError:
+                dup = False
+            if not dup:
+                preload_rels.append(
+                    _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, crypto_path_opt))
+                )
+                logger.info(
+                    "ESXi (%s) : crypto64.efi en tête du préchargement iPXE (HTTP minuscules).",
+                    profile_label,
+                )
+        preload_rels.append(kernel_rel)
+        preload_rels.extend(mod_rels)
+    else:
+        preload_rels.append(kernel_rel)
+        preload_rels.extend(mod_rels)
 
     return managed, preload_rels
 
@@ -645,8 +726,9 @@ def _esxi_boot_cfg_http_payload(
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z dans ``dest`` (arborescence ISO inchangée) :
-    ajoute si besoin ``crypto64.efi`` en alias du fichier VMware en majuscules (mboot le demande en minuscules),
-    puis écrit ``ipxe-boot.cfg`` / ``ipxe-boot-legacy.cfg`` et les JSON modules iPXE.
+    profil **EFI** : ``ipxe-boot.cfg`` et le JSON modules utilisent des chemins HTTP **minuscules** (mboot) ;
+    miroirs lien dur depuis l’ISO extraite ; ``crypto64.efi`` à la racine HTTP si besoin.
+    **Legacy** : ``ipxe-boot-legacy.cfg`` garde la casse des fichiers sur disque.
     """
     base = f"boot/{os_slug}/{version_slug}"
     iso_lower = _esxi_index_files_casefold(dest)
@@ -695,7 +777,10 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
         if efi_chosen.is_file():
             mboot_dest = efi_chosen.parent / "mboot.efi"
             shutil.copy2(efi_chosen, mboot_dest)
-            esxi_efi_boot_http = f"{base}/{_esxi_rel_from_dest(dest, mboot_dest)}"
+            _esxi_ensure_lowercase_http_mirrors(dest, [mboot_dest])
+            esxi_efi_boot_http = (
+                f"{base}/{_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, mboot_dest))}"
+            )
         else:
             logger.warning("ESXi : bootx64.efi illisible — entrée menu UEFI absente.")
     else:
