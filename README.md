@@ -285,22 +285,37 @@ python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP --workers 50 --re
 python3 scripts/ipxe_health_load.py --base-url http://VOTRE_IP --no-load
 ```
 
-### Audit exhaustif (pages, menus, session)
+### Audit exhaustif (HTTP, données, SMB, NFS, disque…)
 
-Le script **`scripts/ipxe_exhaustive_check.py`** (stdlib uniquement) va plus loin :
+Le script **`scripts/ipxe_exhaustive_check.py`** (**stdlib uniquement**, dont **`sqlite3`**) vérifie l’ensemble des briques fonctionnelles habituelles.
 
-- **Sans mot de passe** : toutes les redirections « non connecté », statiques, **POST /login** invalide (**401**), **`/jobs/kill-all`** (GET public → racine), **`/set-language`** (cookie + redirection), et analyse de **`/menus/menu.ipxe`** (statut + contenu **#!ipxe** / directives **menu** / **item**) ;
-- **Avec mot de passe admin** (`--password` ou variable d’environnement **`IPXE_AUDIT_PASSWORD`**) : création de session, contrôle **HTTP 200** et présence de **`<html`** sur le tableau de bord, **ISO**, **upload**, **boot-files**, **configs**, **menus iPXE**, **firmware**, **paramètres**, **JSON** **`/isos/upload/precheck`**, menu brut **`/ipxe-menus/menu.ipxe/raw`**, logo PNG intégré, puis **logout** et nouvelle redirection vers **/login** ;
-- **Options** : **`--strict-menus`** (échoue si le menu Nginx est absent), **`--include-openapi`** (**/openapi.json**, **/docs** — souvent absents derrière Nginx seul), **`--check-redis`**, **`--celery-inspect`**, **`--systemd`** (liste par défaut ci‑dessous), **`--systemd-unit nom`** (répétable : ne contrôle que ces unités, même sans **`--systemd`**).
+**À distance (depuis ta machine)**
 
-**Codes sortie** : **0** OK · **1** échec sur un contrôle · **2** arguments invalides ou impossible de se connecter (**POST /login** sans **302** ou sans cookie).
+- **`--base-url`** : tout le périmètre HTTP décrit précédemment (pages publiques, menus **`/menus/*.ipxe`**, session admin avec **`--password`**, etc.).
+- Une bannière d’avertissement s’affiche si tu actives aussi des audits **« locaux »** sans passer par **`http://127.0.0.1`** : plusieurs tests (ports **`127.0.0.1`**, **`smbclient`**, **`exportfs`**) s’exécutent sur **la machine où tourne le script**, pas sur l’IP de **`--base-url`**.
+
+**Sur le serveur iPXE (SSH, répertoire applicatif sous `--app-dir` / défaut `/srv/ipxe/app`)**
+
+- **`--full-local`** : active **`--check-db`**, **`--check-fs`**, **`--check-listen`**, **`--check-smb-shares`**, **`--check-nfs-export`**, **`--probe-static-http`**, **`--check-testparm`**.
+  - **`--check-db`** : lecture de **`DATABASE_URL`** dans **`.env`** — SQLite (**`PRAGMA integrity_check`**, **`foreign_key_check`**, présence des tables **`os_types` … `remote_chains`**, **`COUNT(os_types)`** ≥ 1) ou **`pg_isready`** si Postgres.
+  - **`--check-fs`** : dossiers **`TFTP_ROOT`**, **`HTTP_ROOT`**, **`ISO_ROOT`**, **`BUILD_DIR`**, puis **`menus/`**, **`boot/`**, **`configs/`**, **`menus/menu.ipxe`**, **`undionly.kpxe`** préconisés.
+  - **`--check-listen`** : **`TCP :445`** (SMB **`smbd`**), **`TCP :6379`** (Redis), **UDP :69** (TFTP **`tftpd-hpa`**) sur **localhost** ; information sur **`TCP :2049`** (NFS).
+  - **`--check-smb-shares`** : **`smbclient -g -L localhost -N`** attend les volumes **`disk`** **`boot`** et **`isos`** (comme dans **`deploy/setup.sh`**).
+  - **`--check-nfs-export`** : **`exportfs -v`** doit refléter l’arborescence **Ubuntu nfsroot** (**`/srv/ipxe/http/boot/ubuntu`**) lorsque NFS est utilisé ; sinon ce n’est qu’informé.
+  - **`--check-testparm`** : **`testparm -s`** (syntaxe **`smb.conf`**).
+  - **`--probe-static-http`** : sondes **`/menus/menu-theme.png`** et **`/wimboot`** sur **`--base-url`**.
+- **`--systemd`** : unités **`nginx`**, **`redis-server`**, **`tftpd-hpa`**, **`ipxe-manager`**, **`ipxe-celery`** ; avec **`--full-local`**, **`smbd`** et **`nmbd`** sont ajoutées automatiquement.
+
+**Réutilisation avec le smoke léger**
+
+- **`--strict-menus`**, **`--include-openapi`**, **`--check-redis`**, **`--celery-inspect`**, **`--systemd-unit`** restent disponibles comme avant.
+
+À la fin du run, un encadré **`Bilan par catégorie`** résume pour chaque famille de tests : **État** (OK, OK avec avertissements, KO), **contrôles réussis**, **nombre d’échecs** et **nombre d’avertissements**, puis les **totaux globaux**.
 
 ```bash
-python3 scripts/ipxe_exhaustive_check.py --base-url http://VOTRE_IP --password VOTRE_MDP --strict-menus
-
-# Sur la machine serveur (services locaux)
-python3 scripts/ipxe_exhaustive_check.py --base-url http://127.0.0.1 \
-  --password "$IPXE_ADMIN_PW" --systemd --check-redis --celery-inspect
+# Sur le SERVEUR (diagnostic maximal — adapter le mot de passe)
+python3 scripts/ipxe_exhaustive_check.py --base-url http://127.0.0.1 --password "$IPXE_ADMIN_PW" \
+  --full-local --systemd --strict-menus --check-redis --celery-inspect
 ```
 
 ---
