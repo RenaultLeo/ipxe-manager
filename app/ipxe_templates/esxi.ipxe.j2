@@ -4,6 +4,7 @@
 # Sous-menu {{ os_type.label }} — UEFI : bootx64.efi ; Legacy : mboot.c32 + ipxe-boot.cfg
 # « kernel » = URL du chargeur ; « imgargs » 1er mot = basename de ce fichier ; « module » = mêmes
 # artefacts que boot.cfg ; la 1re entrée = fichier VMware « kernel= » (.b00, etc.).
+# BOOTIF : évite « Network boot: MAC address not found » (iPXE/gPXE) — MAC de l’interface iPXE (net0).
 ########################################
 
 :start
@@ -24,6 +25,7 @@ goto ${selected}
 {% for e in entries %}
 :{{ e.ipxe_item_tag }}
 {% set mbasename = e.esxi_mboot_basename or 'mboot.c32' %}
+{% set esxi_bootif_arg = "BOOTIF=01-${net0/mac:hexhyp}" %}
 {% if e.autoconfigs %}
   menu {{ e.label }} — Fichier d'installation automatique
   {% for ac in e.autoconfigs %}
@@ -38,7 +40,7 @@ goto ${selected}
   {% for ac in e.autoconfigs %}
   :ac{{ ac.id }}
     kernel {{ e.kernel }}
-    imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
+    imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}{% if ac.boot_arg %} {{ ac.boot_arg }}{% endif %}
 
     {% for u in e.esxi_module_urls %}
     module {{ u }}
@@ -49,7 +51,7 @@ goto ${selected}
   :manual_{{ e.ipxe_item_tag }}
 {% endif %}
   kernel {{ e.kernel }}
-  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
   {% for u in e.esxi_module_urls %}
   module {{ u }}
