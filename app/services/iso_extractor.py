@@ -14,7 +14,7 @@ import tempfile
 import re
 from collections.abc import Iterable
 from pathlib import PurePosixPath, Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 from app.config import settings
 
@@ -465,6 +465,50 @@ def _pick_esxi_boot_cfg_legacy(iso_root: Path, idx: dict[str, list[Path]]) -> Pa
     return _pick_esxi_boot_cfg_any(iso_root, idx)
 
 
+def _esxi_lowercase_http_url_path(url: str) -> str:
+    """Segments du chemin d’une URL HTTP(S) en minuscules (hôte/query inchangés)."""
+    try:
+        pr = urlparse(url)
+        path = unquote(pr.path or "")
+        if "/" not in path:
+            return url
+        low_segments = [seg.lower() for seg in path.split("/")]
+        new_path = "/".join(low_segments)
+        return urlunparse(pr._replace(path=new_path))
+    except ValueError:
+        return url
+
+
+def _esxi_boot_cfg_lowercase_if_path_like(val: str) -> str:
+    """Pour valeurs boot.cfg hors kernel/modules : URL ou chemin avec « / » → segments minuscules."""
+    t = val.strip()
+    if not t:
+        return t
+    tl = t.lower()
+    if tl.startswith(("http://", "https://")):
+        return _esxi_lowercase_http_url_path(t)
+    uni = t.replace("\\", "/")
+    if "/" in uni:
+        # éviter les libellés « foo / bar » (pas un chemin fichier VMware)
+        if any(ch.isspace() for ch in uni):
+            return t
+        return _esxi_lowercase_posix_rel(uni)
+    return t
+
+
+def _esxi_boot_cfg_lowercase_kernelopt_token(tok: str) -> str:
+    """Un jeton kernelopt : préserve ``clé=valeur`` ; valeur mise en minuscules si chemin/URL."""
+    t = tok.strip()
+    if not t:
+        return t
+    if t.lower().startswith(("http://", "https://")):
+        return _esxi_boot_cfg_lowercase_if_path_like(t)
+    if "=" in t:
+        pk, _, pv = t.partition("=")
+        return f"{pk}={_esxi_boot_cfg_lowercase_if_path_like(pv)}"
+    return _esxi_boot_cfg_lowercase_if_path_like(t)
+
+
 def _rewrite_esxi_boot_cfg_http(
     raw_cfg: str,
     http_prefix: str,
@@ -476,8 +520,10 @@ def _rewrite_esxi_boot_cfg_http(
     (ordre des lignes, métadonnées ``bootstate`` / ``timeout`` / ``build`` / …, lignes
     ``module=`` séparées ou une ligne ``modules= … --- …`` comme dans le fichier d’origine).
 
-    ``prefix`` est fixé à l’URL HTTP de la racine version ; les chemins ``kernel`` / ``modules`` /
-    ``module`` sont ceux fournis par l’appelant (profil EFI : segments **minuscules**, forme canonique mboot/HTTP).
+    ``prefix`` est fixé à l’URL HTTP de la racine version ; ``kernel`` / ``modules`` /
+    ``module`` : chemins relatifs fournis par l’appelant (segments **minuscules**, mboot / nginx).
+    Les lignes ``#`` du fichier VMware source sont ignorées pour éviter des mentions obsolètes en majuscules.
+    Les autres clés VMware sont conservées ; si leur valeur ressemble à un chemin ou une URL HTTP, les segments sont mis en minuscules (souvent présent dans le ``boot.cfg`` EFI, absent du Legacy).
     """
     merged_body = _esxi_merge_cfg_continuations(raw_cfg)
     http_prefix = http_prefix.rstrip("/") + "/"
@@ -494,7 +540,6 @@ def _rewrite_esxi_boot_cfg_http(
         if not stripped:
             continue
         if stripped.startswith("#"):
-            lines_out.append(stripped)
             continue
         if "=" not in stripped:
             continue
@@ -514,6 +559,7 @@ def _rewrite_esxi_boot_cfg_http(
             if kopt:
                 kopt = re.sub(r"\bcdromBoot\b", "", kopt, flags=re.I)
                 kopt = re.sub(r"\s+", " ", kopt).strip()
+                kopt = " ".join(_esxi_boot_cfg_lowercase_kernelopt_token(tok) for tok in kopt.split(" "))
             lines_out.append(f"kernelopt={kopt}" if kopt else "kernelopt=")
             continue
         if kl == "modules":
@@ -540,7 +586,7 @@ def _rewrite_esxi_boot_cfg_http(
             qi += 1
             continue
 
-        lines_out.append(stripped)
+        lines_out.append(f"{key.strip()}={_esxi_boot_cfg_lowercase_if_path_like(val_s)}")
 
     if not wrote_prefix:
         lines_out.insert(1, f"prefix={http_prefix}")
@@ -623,11 +669,8 @@ def _esxi_boot_cfg_http_payload(
     Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
     + liste ordonnée des chemins relatifs pour préchargement iPXE (**sans dédoublonnage**, ordre VMware inchangé).
 
-    Les chemins **profil EFI** : mboot utilise la **forme canonique HTTP minuscule** ; on écrit donc
-    ``kernel=`` / ``modules=`` et les précharges iPXE en minuscules et on crée des **miroirs** (lien dur)
-    vers les fichiers extraits pour nginx/ext4. **Legacy** : chemins inchangés (casse ISO).
-
-    Si ``crypto64.efi`` est présent hors liste VMware, il est préfixé au préchargement iPXE EFI.
+    Les chemins ``kernel=`` / ``modules=`` sont toujours en **minuscules** (HTTP mboot), avec **miroirs** lien dur sur disque.
+    La ligne ``crypto64.efi`` optionnelle en tête du JSON iPXE est réservée au profil **EFI**.
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
@@ -672,23 +715,20 @@ def _esxi_boot_cfg_http_payload(
         mod_paths.append(p)
 
     crypto_path_opt: Path | None = None
-    if profile_label == "EFI":
+    if profile_label.casefold() == "efi":
         crypto_pool = iso_lower.get("crypto64.efi")
         if crypto_pool:
             cp = _esxi_crypto64_path_for_http(_esxi_pick_preferred_path(crypto_pool, dest))
             if cp.is_file():
                 crypto_path_opt = cp
 
-    if profile_label == "EFI":
-        mirror_paths = [k_path] + mod_paths
-        if crypto_path_opt is not None:
-            mirror_paths.append(crypto_path_opt)
-        _esxi_ensure_lowercase_http_mirrors(dest, mirror_paths)
-        kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
-        mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
-    else:
-        kernel_rel = _esxi_rel_from_dest(dest, k_path)
-        mod_rels = [_esxi_rel_from_dest(dest, p) for p in mod_paths]
+    mirror_paths = [k_path] + mod_paths
+    if crypto_path_opt is not None:
+        mirror_paths.append(crypto_path_opt)
+    _esxi_ensure_lowercase_http_mirrors(dest, mirror_paths)
+
+    kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
+    mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
 
     managed = _rewrite_esxi_boot_cfg_http(
         raw_cfg=raw_cfg,
@@ -698,7 +738,7 @@ def _esxi_boot_cfg_http_payload(
     )
 
     preload_rels: list[str] = []
-    if profile_label == "EFI":
+    if profile_label.casefold() == "efi":
         if crypto_path_opt is not None:
             try:
                 dup = crypto_path_opt.samefile(k_path) or any(
@@ -714,11 +754,8 @@ def _esxi_boot_cfg_http_payload(
                     "ESXi (%s) : crypto64.efi en tête du préchargement iPXE (HTTP minuscules).",
                     profile_label,
                 )
-        preload_rels.append(kernel_rel)
-        preload_rels.extend(mod_rels)
-    else:
-        preload_rels.append(kernel_rel)
-        preload_rels.extend(mod_rels)
+    preload_rels.append(kernel_rel)
+    preload_rels.extend(mod_rels)
 
     return managed, preload_rels
 
@@ -726,9 +763,8 @@ def _esxi_boot_cfg_http_payload(
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z dans ``dest`` (arborescence ISO inchangée) :
-    profil **EFI** : ``ipxe-boot.cfg`` et le JSON modules utilisent des chemins HTTP **minuscules** (mboot) ;
-    miroirs lien dur depuis l’ISO extraite ; ``crypto64.efi`` à la racine HTTP si besoin.
-    **Legacy** : ``ipxe-boot-legacy.cfg`` garde la casse des fichiers sur disque.
+    profil **EFI** et **Legacy** : ``ipxe-boot.cfg`` / ``ipxe-boot-legacy.cfg`` et JSON modules avec chemins HTTP **minuscules**
+    et **miroirs** lien dur ; précharge ``crypto64.efi`` réservée au profil EFI ; alias ``crypto64.efi`` racine HTTP conservé.
     """
     base = f"boot/{os_slug}/{version_slug}"
     iso_lower = _esxi_index_files_casefold(dest)
@@ -748,6 +784,7 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     mboot_path = _esxi_pick_preferred_path(mboot_pool, dest)
     if not mboot_path.is_file():
         raise ExtractionError("ESXi : mboot.c32 introuvable.")
+    _esxi_ensure_lowercase_http_mirrors(dest, [mboot_path])
 
     http_prefix = settings.server_base_url.rstrip("/") + f"/{base}/"
 
@@ -768,7 +805,7 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     modules_json = json.dumps(preload_efi, separators=(",", ":"))
     modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))
 
-    mboot_rel = _esxi_rel_from_dest(dest, mboot_path)
+    mboot_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, mboot_path))
 
     efi_boot_pool = iso_lower.get("bootx64.efi", [])
     esxi_efi_boot_http: str | None = None
