@@ -55,26 +55,44 @@
   <!-- Boot entry -->
   <div class="col-md-7">
     <div class="card border-secondary h-100">
-      <div class="card-header d-flex justify-content-between">
-        <span><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
-        <div class="d-flex gap-2">
+      <div class="card-header">
+        <div class="d-flex flex-column flex-xl-row gap-2 justify-content-between align-items-xl-center">
+          <span class="fw-medium"><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
+          <div class="d-flex flex-wrap align-items-center gap-2 justify-content-xl-end">
           {% if version.iso_path and version.status != 'extracting' %}
-          <form method="post" action="/isos/{{ version.id }}/extract" class="d-inline"
-                {% if version.iso_was_extracted %}
-                data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
-                onsubmit="return confirm(this.dataset.confirmReextract)"
-                {% endif %}>
-            <button class="btn btn-warning btn-sm">
-              <i class="bi bi-box-arrow-in-down me-1"></i>Extraire depuis l'ISO
-            </button>
-          </form>
+            <form method="post" action="/isos/{{ version.id }}/extract" class="d-inline"
+                  {% if version.iso_was_extracted %}
+                  data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
+                  onsubmit="return confirm(this.dataset.confirmReextract)"
+                  {% endif %}>
+              <button class="btn btn-warning btn-sm"
+                      {% if not iso_file_exists %}type="button" disabled title="{{ t('iso.extract_missing_iso') }}"{% else %}type="submit"{% endif %}>
+                <i class="bi bi-box-arrow-in-down me-1"></i>Extraire depuis l'ISO
+              </button>
+            </form>
+            <div id="purge-iso-opt"
+                 class="d-flex align-items-center gap-2 rounded border border-secondary px-2 py-1{% if not iso_file_exists %} user-select-none opacity-50{% endif %}"
+                 {% if not iso_file_exists %}title="{{ t('iso.purge_iso_toggle_unavailable') }}"{% endif %}
+                 data-version-id="{{ version.id }}"
+                 data-confirm-msg="{{ t('iso.purge_iso_toggle_confirm')|e }}"
+                 data-save-err="{{ t('iso.purge_iso_pref_save_error')|e }}"
+                 {% if iso_file_exists %}data-can-save="1"{% endif %}>
+              <label class="small mb-0" for="purgeIsoSwitch" style="max-width:260px;line-height:1.2;cursor:pointer">{{ t('iso.purge_iso_toggle_label') }}</label>
+              <div class="form-check form-switch m-0 flex-shrink-0">
+                <input class="form-check-input purge-iso-cb mt-0" type="checkbox" role="switch"
+                       id="purgeIsoSwitch"
+                       {% if version.delete_iso_after_next_extract %}checked{% endif %}
+                       {% if not iso_file_exists %}disabled{% endif %}>
+              </div>
+            </div>
           {% endif %}
           {% if version.os_type.boot_type == 'windows' %}
-          <button class="btn btn-outline-info btn-sm"
+          <button class="btn btn-outline-info btn-sm" type="button"
                   onclick="document.getElementById('wim-replace-form').classList.toggle('d-none')">
             <i class="bi bi-recycle me-1"></i>Remplacer boot.wim
           </button>
           {% endif %}
+          </div>
         </div>
       </div>
       <div class="card-body">
@@ -286,4 +304,62 @@
     </button>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .purge-iso-cb:focus { box-shadow: 0 0 0 .2rem rgba(25,135,84,.35); }
+  .purge-iso-cb:checked {
+    background-color: #198754;
+    border-color: #198754;
+  }
+</style>
+<script>
+(function () {
+  var root = document.getElementById('purge-iso-opt');
+  if (!root || root.dataset.canSave !== '1') return;
+  var cb = document.getElementById('purgeIsoSwitch');
+  if (!cb) return;
+  var vid = root.dataset.versionId;
+  var confirmMsg = root.dataset.confirmMsg || '';
+  var saveErrFallback = root.dataset.saveErr || 'Error';
+
+  async function persist(on) {
+    var res = await fetch('/isos/' + encodeURIComponent(vid) + '/purge-iso-preference', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ enabled: !!on }),
+    });
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return false;
+    }
+    if (!res.ok) {
+      var msg = saveErrFallback;
+      try {
+        var j = await res.json();
+        var d = j.detail;
+        if (typeof d === 'string') msg = d;
+        else if (Array.isArray(d) && d.length && d[0].msg) msg = d[0].msg;
+      } catch (e) { /* ignore */ }
+      window.alert(msg);
+      return false;
+    }
+    return true;
+  }
+
+  cb.addEventListener('change', async function () {
+    if (!cb.checked) {
+      if (!await persist(false)) cb.checked = true;
+      return;
+    }
+    if (!window.confirm(confirmMsg)) {
+      cb.checked = false;
+      return;
+    }
+    if (!await persist(true)) cb.checked = false;
+  });
+})();
+</script>
 {% endblock %}

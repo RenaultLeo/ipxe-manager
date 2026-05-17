@@ -43,6 +43,7 @@ class IsoVersion(Base):
     iso_size = Column(BigInteger, default=0)
     notes = Column(Text, default="")
     iso_was_extracted = Column(Boolean, default=False)  # True après au moins une extraction ISO réussie
+    delete_iso_after_next_extract = Column(Boolean, default=False)  # purge disque après prochain extract OK
     extract_basename_report_json = Column(Text, default="")  # dernier rapport recherche par nom { "init": ["a/b",…] }
     created_at = Column(DateTime, default=datetime.utcnow)
 

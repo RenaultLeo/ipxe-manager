@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.auth import is_authenticated
@@ -20,11 +21,41 @@ from app.templating import templates, template_context
 from app.config import settings
 
 router = APIRouter(prefix="/isos")
-TEMPLATES = templates
 logger = logging.getLogger(__name__)
+
+
+class PurgeIsoPreferenceBody(BaseModel):
+    enabled: bool
 
 # Recontrôle disk_usage pendant les gros uploads (multipart sans taille fiable sinon).
 _UPLOAD_DISK_POLL_EVERY_BYTES = 64 * 1024 * 1024
+
+
+def _multipart_upload_blocked(
+    lang: str,
+    *,
+    mf: int | None = None,
+    expected_file_bytes: int = 0,
+    multipart_total_upper: int | None = None,
+) -> tuple[int, str] | None:
+    """
+    Règle unique espace vs réserve + taille cumulée (fichiers / corps POST si connu).
+    Retourne ``(status_code, detail traduit)`` ou ``None``.
+    """
+    frees = mf if mf is not None else _minimum_free_near_upload_roots()
+    reserve = settings.upload_min_free_bytes
+    mx = settings.max_upload_size
+    merged_need = expected_file_bytes
+    if multipart_total_upper is not None and multipart_total_upper > 0:
+        merged_need = max(merged_need, multipart_total_upper)
+
+    if frees <= reserve:
+        return (507, translate(lang, "iso.upload.disk_low_reserve"))
+    if merged_need > mx:
+        return (413, translate(lang, "iso.upload.too_large"))
+    if merged_need > 0 and frees <= merged_need + reserve:
+        return (507, translate(lang, "iso.upload.disk_low_reserve"))
+    return None
 
 
 def _multipart_part_declared_bytes(upload: object) -> int | None:
@@ -45,17 +76,14 @@ def _multipart_part_declared_bytes(upload: object) -> int | None:
     return None
 
 
-def _raise_if_free_space_below_reserve(reserve: int, lang: str) -> None:
-    if _minimum_free_near_upload_roots() <= reserve:
-        raise HTTPException(
-            status_code=507,
-            detail=translate(lang, "iso.upload.disk_low_reserve"),
-        )
+def _raise_if_free_space_below_reserve(lang: str) -> None:
+    blocked = _multipart_upload_blocked(lang)
+    if blocked:
+        raise HTTPException(status_code=blocked[0], detail=blocked[1])
 
 
 def _auth(request: Request):
     if not is_authenticated(request):
-        from fastapi.responses import RedirectResponse
         return RedirectResponse("/login", status_code=302)
     return None
 
@@ -177,14 +205,10 @@ async def upload_precheck(
     if not is_authenticated(request):
         raise HTTPException(401)
     lang = getattr(request.state, "locale", "fr")
-    mf = _minimum_free_near_upload_roots()
-    reserve = settings.upload_min_free_bytes
-    if mf <= reserve:
-        return JSONResponse({"ok": False, "detail": translate(lang, "iso.upload.disk_low_reserve")})
-    if total_bytes > settings.max_upload_size:
-        return JSONResponse({"ok": False, "detail": translate(lang, "iso.upload.too_large")})
-    if total_bytes > 0 and mf <= total_bytes + reserve:
-        return JSONResponse({"ok": False, "detail": translate(lang, "iso.upload.disk_low_reserve")})
+    blocked = _multipart_upload_blocked(lang, mf=None, expected_file_bytes=total_bytes)
+    if blocked:
+        _, detail = blocked
+        return JSONResponse({"ok": False, "detail": detail})
     return JSONResponse({"ok": True})
 
 
@@ -289,27 +313,26 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         return redir
 
     lang = getattr(request.state, "locale", "fr")
-    # Avant multipart : sinon ``await request.form()`` consomme tout le corps (barre progression)
-    # avant que les garde‑fous tournent.
+    # Avant ``await request.form()`` : évite consommer tout le corps avant garde‑fous.
     mf0 = _minimum_free_near_upload_roots()
-    reserve0 = settings.upload_min_free_bytes
-    if mf0 <= reserve0:
-        raise HTTPException(
-            status_code=507,
-            detail=translate(lang, "iso.upload.disk_low_reserve"),
-        )
+    posted_ul: int | None = None
     raw_cl = request.headers.get("content-length")
     if raw_cl:
         try:
-            posted = int(raw_cl)
-            # Corps ≈ fichier(s) multipart ; pessimiste mais évite tout le flux avant refus.
-            if posted > 0 and mf0 <= posted + reserve0:
-                raise HTTPException(
-                    status_code=507,
-                    detail=translate(lang, "iso.upload.disk_low_reserve"),
-                )
+            n = int(raw_cl)
+            if n > 0:
+                posted_ul = n
         except ValueError:
             pass
+
+    blocked0 = _multipart_upload_blocked(
+        lang,
+        mf=mf0,
+        expected_file_bytes=0,
+        multipart_total_upper=posted_ul,
+    )
+    if blocked0:
+        raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
 
     form = await request.form()
     try:
@@ -341,19 +364,12 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                 detail=translate(lang, "iso.upload.iso_duplicate_submit"),
             )
 
-    mf = _minimum_free_near_upload_roots()
-    reserve = settings.upload_min_free_bytes
-    if mf <= reserve:
-        raise HTTPException(
-            status_code=507,
-            detail=translate(lang, "iso.upload.disk_low_reserve"),
-        )
+    mf1 = _minimum_free_near_upload_roots()
     decl = _multipart_part_declared_bytes(file_iso) if file_iso else None
-    if isinstance(decl, int) and decl > 0 and mf <= decl + reserve:
-        raise HTTPException(
-            status_code=507,
-            detail=translate(lang, "iso.upload.disk_low_reserve"),
-        )
+    decl_need = decl if isinstance(decl, int) and decl > 0 else 0
+    blocked1 = _multipart_upload_blocked(lang, mf=mf1, expected_file_bytes=decl_need)
+    if blocked1:
+        raise HTTPException(status_code=blocked1[0], detail=blocked1[1])
 
     version = IsoVersion(
         os_type_id=os_type_id,
@@ -384,7 +400,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                 pending_poll += len(chunk)
                 if pending_poll >= _UPLOAD_DISK_POLL_EVERY_BYTES:
                     pending_poll = 0
-                    _raise_if_free_space_below_reserve(reserve, lang)
+                    _raise_if_free_space_below_reserve(lang)
         saved_boot_paths.append(dest_p)
         return f"boot/{os_type.slug}/{version_slug}/{fname}"
 
@@ -403,7 +419,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                     pending_poll += len(chunk)
                     if pending_poll >= _UPLOAD_DISK_POLL_EVERY_BYTES:
                         pending_poll = 0
-                        _raise_if_free_space_below_reserve(reserve, lang)
+                        _raise_if_free_space_below_reserve(lang)
                     if size_iso > settings.max_upload_size:
                         raise HTTPException(413, "Fichier trop volumineux")
             version.iso_path = str(dest_iso)
@@ -565,6 +581,13 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
                     boot_extra_linux = [x for x in plist if isinstance(x, dict) and x.get("path")]
             except (json.JSONDecodeError, TypeError):
                 boot_extra_linux = []
+    iso_raw = (version.iso_path or "").strip()
+    iso_file_exists = bool(iso_raw and Path(iso_raw).is_file())
+    if not iso_file_exists and getattr(version, "delete_iso_after_next_extract", False):
+        version.delete_iso_after_next_extract = False
+        db.add(version)
+        db.commit()
+
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
@@ -574,8 +597,35 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             basename_report=basename_report,
             basename_report_items=basename_report_items,
             boot_extra_linux=boot_extra_linux,
+            iso_file_exists=iso_file_exists,
         ),
     )
+
+
+@router.post("/{version_id}/purge-iso-preference")
+async def set_purge_iso_preference(
+    version_id: int,
+    request: Request,
+    body: PurgeIsoPreferenceBody,
+    db: Session = Depends(get_db),
+):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    lang = getattr(request.state, "locale", "fr")
+    version = db.query(IsoVersion).get(version_id)
+    if not version:
+        raise HTTPException(status_code=404)
+    if body.enabled:
+        iso_p = Path((version.iso_path or "").strip())
+        if not iso_p.is_file():
+            raise HTTPException(
+                status_code=400,
+                detail=translate(lang, "iso.purge_iso_toggle_unavailable"),
+            )
+    version.delete_iso_after_next_extract = body.enabled
+    db.add(version)
+    db.commit()
+    return JSONResponse({"ok": True, "enabled": body.enabled})
 
 
 # ── Extract ───────────────────────────────────────────────────────────────────
@@ -585,12 +635,20 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
     redir = _auth(request)
     if redir:
         return redir
+    lang = getattr(request.state, "locale", "fr")
     version = db.query(IsoVersion).get(version_id)
     if not version:
         raise HTTPException(404)
 
+    iso_p = Path((version.iso_path or "").strip())
+    if not iso_p.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail=translate(lang, "iso.extract_missing_iso"),
+        )
+
     upload_log = Upload(
-        filename=Path(version.iso_path).name,
+        filename=iso_p.name,
         file_type="extraction",
         size=version.iso_size,
         status="pending",

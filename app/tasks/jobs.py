@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -118,6 +119,31 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         version.iso_was_extracted = True
         if upload:
             upload.status = "done"
+
+        if getattr(version, "delete_iso_after_next_extract", False) and version.iso_path:
+            iso_to_remove = Path(version.iso_path)
+            removed_ok = False
+            if iso_to_remove.is_file():
+                try:
+                    iso_to_remove.unlink(missing_ok=True)
+                    removed_ok = True
+                except OSError as ex:
+                    logger.warning(
+                        "delete_iso_after_next_extract : suppression impossible pour %s (%s)",
+                        iso_to_remove,
+                        ex,
+                    )
+            if removed_ok:
+                version.iso_path = ""
+                version.iso_size = 0
+                parent = iso_to_remove.parent
+                try:
+                    if parent.is_dir() and not any(parent.iterdir()):
+                        parent.rmdir()
+                except OSError:
+                    pass
+            version.delete_iso_after_next_extract = False
+
         db.commit()
 
         # Regenerate menus so this version appears immediately
