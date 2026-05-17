@@ -316,8 +316,8 @@ const PAIRS_DE = [
     "ISO-Abbild (optional — für automatische Extraktion)",
   ],
   [
-    "BCD and boot.sdi are extracted automatically from the ISO. You may supply a custom boot.wim (custom WinPE); otherwise the one from the ISO is used.",
-    "BCD und boot.sdi werden automatisch aus der ISO extrahiert. Sie können eine eigene boot.wim (WinPE) angeben; sonst wird die aus der ISO verwendet.",
+    "BCD and boot.sdi are extracted automatically from the ISO. boot.wim comes from the ISO; replace it later from this release's page (« Replace boot.wim »).",
+    "BCD und boot.sdi werden automatisch aus der ISO extrahiert. boot.wim stammt aus der ISO; Sie können sie später auf der Versionsseite ersetzen („boot.wim ersetzen“).",
   ],
   [
     "Ubuntu: the ISO is extracted fully (like Windows) so autoinstall cloud-init can reach packages over HTTP. vmlinuz and initrd are auto-detected in casper/. user-data / meta-data are created under Auto configs.",
@@ -631,6 +631,33 @@ const PAIRS_DE = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow ist auf dem Server nicht installiert (pip install pillow in der venv).",
   ],
+  [
+    "Not enough disk space on the server for this upload (file size vs safety reserve). Free space then try again.",
+    "Zu wenig Speicherplatz auf dem Server für diesen Upload (Dateigröße vs. Sicherheitsreserve). Geben Sie Speicher frei und versuchen Sie es erneut.",
+  ],
+  [
+    "Server ran out of disk space during upload. The upload was aborted and partial files removed.",
+    "Der Server ist beim Upload ohne Speicherplatz gelaufen. Der Upload wurde abgebrochen und teilweise erzeugte Dateien wurden entfernt.",
+  ],
+  [
+    "Server write failed during upload. Please retry; partial files were removed.",
+    "Schreibfehler auf dem Server während des Uploads. Bitte erneut versuchen – teilweise Dateien wurden entfernt.",
+  ],
+  [
+    "Total size of chosen files exceeds the server MAX_UPLOAD_SIZE limit.",
+    "Die Gesamtgröße der ausgewählten Dateien überschreitet das Limit MAX_UPLOAD_SIZE des Servers.",
+  ],
+  ["Delete ISO after next extraction", "ISO nach der nächsten Extraktion löschen"],
+  [
+    "Are you sure? The associated ISO file on the server will be permanently deleted after the next successful extraction, to save disk space.",
+    "Sind Sie sicher? Die ISO-Datei auf dem Server wird nach der nächsten erfolgreichen Extraktion dauerhaft gelöscht, um Speicherplatz freizugeben.",
+  ],
+  [
+    "ISO file missing on disk — option unavailable.",
+    "ISO-Datei auf dem Datenträger fehlt — Option nicht verfügbar.",
+  ],
+  ["Could not save this setting.", "Diese Einstellung konnte nicht gespeichert werden."],
+  ["Cannot extract: no ISO file on the server.", "Extraktion nicht möglich: keine ISO-Datei auf dem Server."],
   ["Hide preview", "Vorschau ausblenden"],
 ];
 
@@ -937,8 +964,8 @@ const PAIRS_ES = [
     "Dos opciones: subir una ISO completa (extracción automática de archivos de arranque) o indicar los archivos directamente (boot.wim, vmlinuz, etc.) sin ISO.",
   ],
   [
-    "BCD and boot.sdi are extracted automatically from the ISO. You may supply a custom boot.wim (custom WinPE); otherwise the one from the ISO is used.",
-    "BCD y boot.sdi se extraen automáticamente de la ISO. Puede usar una boot.wim personalizada (WinPE); si no, se usa la de la ISO.",
+    "BCD and boot.sdi are extracted automatically from the ISO. boot.wim comes from the ISO; replace it later from this release's page (« Replace boot.wim »).",
+    "BCD y boot.sdi se extraen automáticamente de la ISO. boot.wim proviene de la ISO; sustitúyala después en la ficha de esta versión (« Reemplazar boot.wim »).",
   ],
   [
     "Ubuntu: the ISO is extracted fully (like Windows) so autoinstall cloud-init can reach packages over HTTP. vmlinuz and initrd are auto-detected in casper/. user-data / meta-data are created under Auto configs.",
@@ -1226,6 +1253,33 @@ const PAIRS_ES = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow no está instalado en el servidor (pip install pillow en el entorno virtual).",
   ],
+  [
+    "Not enough disk space on the server for this upload (file size vs safety reserve). Free space then try again.",
+    "Espacio insuficiente en el servidor para esta subida (tamaño del archivo frente a la reserva de seguridad). Libere espacio y vuelva a intentarlo.",
+  ],
+  [
+    "Server ran out of disk space during upload. The upload was aborted and partial files removed.",
+    "El servidor se quedó sin espacio durante la subida. La subida se canceló y se eliminaron los archivos parciales.",
+  ],
+  [
+    "Server write failed during upload. Please retry; partial files were removed.",
+    "Error de escritura en el servidor durante la subida. Inténtelo de nuevo; los archivos parciales se eliminaron.",
+  ],
+  [
+    "Total size of chosen files exceeds the server MAX_UPLOAD_SIZE limit.",
+    "El tamaño total de los archivos seleccionados supera el límite MAX_UPLOAD_SIZE del servidor.",
+  ],
+  ["Delete ISO after next extraction", "Eliminar la ISO tras la próxima extracción"],
+  [
+    "Are you sure? The associated ISO file on the server will be permanently deleted after the next successful extraction, to save disk space.",
+    "¿Está seguro? El archivo ISO asociado en el servidor se eliminará permanentemente después de la próxima extracción correcta para ahorrar espacio.",
+  ],
+  [
+    "ISO file missing on disk — option unavailable.",
+    "Falta el archivo ISO en el disco — opción no disponible.",
+  ],
+  ["Could not save this setting.", "No se pudo guardar esta configuración."],
+  ["Cannot extract: no ISO file on the server.", "No se puede extraer: no hay archivo ISO en el servidor."],
   ["Hide preview", "Ocultar vista previa"],
 ];
 
@@ -1522,8 +1576,8 @@ const PAIRS_IT = [
     "Due opzioni: caricare un'ISO completa (estrazione automatica dei file di avvio) oppure fornire direttamente i file (boot.wim, vmlinuz, ecc.) senza ISO.",
   ],
   [
-    "BCD and boot.sdi are extracted automatically from the ISO. You may supply a custom boot.wim (custom WinPE); otherwise the one from the ISO is used.",
-    "BCD e boot.sdi vengono estratti dall'ISO automaticamente. Potete fornire una boot.wim personalizzata (WinPE); altrimenti si usa quella dell'ISO.",
+    "BCD and boot.sdi are extracted automatically from the ISO. boot.wim comes from the ISO; replace it later from this release's page (« Replace boot.wim »).",
+    "BCD e boot.sdi vengono estratti automaticamente dall’ISO. boot.wim deriva dall’ISO; potete sostituirlo dopo dalla scheda di questa versione (« Sostituisci boot.wim »).",
   ],
   [
     "Ubuntu: the ISO is extracted fully (like Windows) so autoinstall cloud-init can reach packages over HTTP. vmlinuz and initrd are auto-detected in casper/. user-data / meta-data are created under Auto configs.",
@@ -1815,6 +1869,33 @@ const PAIRS_IT = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow non è installato sul server (pip install pillow nel venv).",
   ],
+  [
+    "Not enough disk space on the server for this upload (file size vs safety reserve). Free space then try again.",
+    "Spazio insufficiente sul server per questo caricamento (dimensione dei file rispetto alla riserva di sicurezza). Liberare spazio e riprovare.",
+  ],
+  [
+    "Server ran out of disk space during upload. The upload was aborted and partial files removed.",
+    "Lo spazio su disco sul server è esaurito durante il caricamento. Il caricamento è stato annullato e i file parziali sono stati rimossi.",
+  ],
+  [
+    "Server write failed during upload. Please retry; partial files were removed.",
+    "Scrittura sul server non riuscita durante il caricamento. Riprovare; i file parziali sono stati rimossi.",
+  ],
+  [
+    "Total size of chosen files exceeds the server MAX_UPLOAD_SIZE limit.",
+    "La dimensione totale dei file scelti supera il limite MAX_UPLOAD_SIZE del server.",
+  ],
+  ["Delete ISO after next extraction", "Elimina l’ISO dopo la prossima estrazione"],
+  [
+    "Are you sure? The associated ISO file on the server will be permanently deleted after the next successful extraction, to save disk space.",
+    "Confermare? Il file ISO associato sul server verrà eliminato definitivamente dopo la prossima estrazione riuscita per liberare spazio.",
+  ],
+  [
+    "ISO file missing on disk — option unavailable.",
+    "File ISO assente sul disco — opzione non disponibile.",
+  ],
+  ["Could not save this setting.", "Impossibile salvare questa impostazione."],
+  ["Cannot extract: no ISO file on the server.", "Impossibile estrarre: nessun file ISO sul server."],
   ["Hide preview", "Nascondi anteprima"],
 ];
 
@@ -2113,8 +2194,8 @@ const PAIRS_PT = [
     "Duas opções: carregar uma ISO completa (extração automática dos ficheiros de arranque) ou indicar diretamente os ficheiros (boot.wim, vmlinuz, etc.) sem ISO.",
   ],
   [
-    "BCD and boot.sdi are extracted automatically from the ISO. You may supply a custom boot.wim (custom WinPE); otherwise the one from the ISO is used.",
-    "BCD e boot.sdi são extraídos automaticamente da ISO. Pode indicar uma boot.wim personalizada (WinPE); caso contrário usa-se a da ISO.",
+    "BCD and boot.sdi are extracted automatically from the ISO. boot.wim comes from the ISO; replace it later from this release's page (« Replace boot.wim »).",
+    "BCD e boot.sdi são extraídos automaticamente da ISO. O boot.wim vem da ISO; substitua-o depois na ficha desta versão (« Substituir boot.wim »).",
   ],
   [
     "Ubuntu: the ISO is extracted fully (like Windows) so autoinstall cloud-init can reach packages over HTTP. vmlinuz and initrd are auto-detected in casper/. user-data / meta-data are created under Auto configs.",
@@ -2405,6 +2486,33 @@ const PAIRS_PT = [
     "Pillow is not installed on the server (pip install pillow in the venv).",
     "Pillow não está instalado no servidor (pip install pillow no venv).",
   ],
+  [
+    "Not enough disk space on the server for this upload (file size vs safety reserve). Free space then try again.",
+    "Espazo insuficiente no servidor para este envío (tamaño dos ficheiros vs. reserva de segurança). Libere espazo e ténteo de novo.",
+  ],
+  [
+    "Server ran out of disk space during upload. The upload was aborted and partial files removed.",
+    "O servidor ficou sen espazo durante o envío. Cancelouse o envío e elimináronse os ficheiros parciais.",
+  ],
+  [
+    "Server write failed during upload. Please retry; partial files were removed.",
+    "Fallo ao escribir no servidor durante o envío. Réintente; os ficheiros parciais foron eliminados.",
+  ],
+  [
+    "Total size of chosen files exceeds the server MAX_UPLOAD_SIZE limit.",
+    "O tamaño total dos ficheiros escollidos supera o límite MAX_UPLOAD_SIZE do servidor.",
+  ],
+  ["Delete ISO after next extraction", "Eliminar a ISO tras a próxima extración"],
+  [
+    "Are you sure? The associated ISO file on the server will be permanently deleted after the next successful extraction, to save disk space.",
+    "Está seguro? O ficheiro ISO asociado no servidor será eliminado permanentemente tras a próxima extración con éxito para liberar espazo.",
+  ],
+  [
+    "ISO file missing on disk — option unavailable.",
+    "Falta o ficheiro ISO no disco — opción non dispoñible.",
+  ],
+  ["Could not save this setting.", "Non foi posible gardar esta configuración."],
+  ["Cannot extract: no ISO file on the server.", "Non é posible extraer: non hai ficheiro ISO no servidor."],
   ["Hide preview", "Ocultar pré-visualização"],
 ];
 
