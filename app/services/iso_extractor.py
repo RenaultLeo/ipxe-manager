@@ -445,30 +445,87 @@ def _rewrite_esxi_boot_cfg_http(
     module_rels: list[str],
 ) -> str:
     """
-    boot.cfg pour HTTP avec arborescence ISO complète : prefix= URL de la racine version,
-    kernel= et modules= avec chemins relatifs (slash) à cette racine.
-    Conserve title / kernelopt (sans cdromBoot) ; ordre des modules = ISO VMware.
-    """
-    merged = _esxi_merge_cfg_continuations(raw_cfg)
-    http_prefix = http_prefix.rstrip("/") + "/"
-    parsed, _mods_ignore = _parse_esxi_boot_cfg_text(raw_cfg)
-    title = (parsed.get("title") or "ESXi Installer").strip()
-    kopt = (parsed.get("kernelopt") or "").strip()
-    if kopt:
-        kopt = re.sub(r"\bcdromBoot\b", "", kopt, flags=re.I)
-        kopt = re.sub(r"\s+", " ", kopt).strip()
+    Réécrit ``boot.cfg`` pour HTTP en **reprenant la structure du fichier VMware source**
+    (ordre des lignes, métadonnées ``bootstate`` / ``timeout`` / ``build`` / …, lignes
+    ``module=`` séparées ou une ligne ``modules= … --- …`` comme dans le fichier d’origine).
 
-    out: list[str] = [
+    ``prefix`` est fixé à l’URL HTTP de la racine version ; ``kernel`` / ``modules`` /
+    ``module`` utilisent les chemins relatifs réels après résolution sur l’arborescence
+    extraite ; ``kernelopt`` est repris sans ``cdromBoot``.
+    """
+    merged_body = _esxi_merge_cfg_continuations(raw_cfg)
+    http_prefix = http_prefix.rstrip("/") + "/"
+
+    lines_out: list[str] = [
         "# iPXE Manager — ISO ESXi extraite en entier ; prefix = racine HTTP de cette version.",
-        f"prefix={http_prefix}",
-        f"title={title}",
-        f"kernel={kernel_rel}",
     ]
-    if module_rels:
-        out.append("modules=" + " --- ".join(module_rels))
-    if kopt:
-        out.append(f"kernelopt={kopt}")
-    return "\n".join(out) + "\n"
+
+    qi = 0
+    wrote_prefix = False
+
+    for raw_line in merged_body.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            lines_out.append(stripped)
+            continue
+        if "=" not in stripped:
+            continue
+        key, _, val = stripped.partition("=")
+        kl = key.strip().lower()
+        val_s = val.strip()
+
+        if kl == "prefix":
+            lines_out.append(f"prefix={http_prefix}")
+            wrote_prefix = True
+            continue
+        if kl == "kernel":
+            lines_out.append(f"kernel={kernel_rel}")
+            continue
+        if kl == "kernelopt":
+            kopt = val_s
+            if kopt:
+                kopt = re.sub(r"\bcdromBoot\b", "", kopt, flags=re.I)
+                kopt = re.sub(r"\s+", " ", kopt).strip()
+            lines_out.append(f"kernelopt={kopt}" if kopt else "kernelopt=")
+            continue
+        if kl == "modules":
+            parts = [p.strip() for p in _MODULES_SPLIT_RE.split(val_s) if p.strip()]
+            n = len(parts)
+            chunk = module_rels[qi : qi + n]
+            if len(chunk) != n:
+                raise ExtractionError(
+                    "ESXi boot.cfg HTTP : incohérence « modules= » / fichiers résolus "
+                    f"(ligne prévoit {n} segment(s), il en reste {len(module_rels) - qi} à mapper)."
+                )
+            qi += n
+            lines_out.append("modules=" + " --- ".join(chunk))
+            continue
+        if kl == "module":
+            if not val_s:
+                lines_out.append(stripped)
+                continue
+            if qi >= len(module_rels):
+                raise ExtractionError(
+                    "ESXi boot.cfg HTTP : ligne « module= » en trop pour les fichiers résolus."
+                )
+            lines_out.append(f"module={module_rels[qi]}")
+            qi += 1
+            continue
+
+        lines_out.append(stripped)
+
+    if not wrote_prefix:
+        lines_out.insert(1, f"prefix={http_prefix}")
+
+    if qi != len(module_rels):
+        raise ExtractionError(
+            "ESXi boot.cfg HTTP : "
+            f"{len(module_rels) - qi} fichier(s) résolu(s) non référencé(s) dans le boot.cfg source."
+        )
+
+    return "\n".join(lines_out) + "\n"
 
 
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
@@ -513,15 +570,8 @@ def _esxi_boot_cfg_http_payload(
             f"(boot.cfg « {src_boot_cfg.relative_to(dest)} »)."
         )
 
-    mod_refs_dedup: list[str] = []
-    seen_r: set[str] = set()
-    for ref in mod_refs:
-        if ref not in seen_r:
-            seen_r.add(ref)
-            mod_refs_dedup.append(ref)
-
     mod_paths: list[Path] = []
-    for ref in mod_refs_dedup:
+    for ref in mod_refs:
         p = _esxi_resolve_file(dest, cfg_dir, old_prefix, ref, iso_index_by_lower=iso_lower)
         if not p or not p.is_file():
             raise ExtractionError(f"ESXi ({profile_label}) : module « {ref} » introuvable.")
