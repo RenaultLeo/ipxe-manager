@@ -261,6 +261,28 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         return redir
 
     lang = getattr(request.state, "locale", "fr")
+    # Avant multipart : sinon ``await request.form()`` consomme tout le corps (barre progression)
+    # avant que les garde‑fous tournent.
+    mf0 = _minimum_free_near_upload_roots()
+    reserve0 = settings.upload_min_free_bytes
+    if mf0 <= reserve0:
+        raise HTTPException(
+            status_code=507,
+            detail=translate(lang, "iso.upload.disk_low_reserve"),
+        )
+    raw_cl = request.headers.get("content-length")
+    if raw_cl:
+        try:
+            posted = int(raw_cl)
+            # Corps ≈ fichier(s) multipart ; pessimiste mais évite tout le flux avant refus.
+            if posted > 0 and mf0 <= posted + reserve0:
+                raise HTTPException(
+                    status_code=507,
+                    detail=translate(lang, "iso.upload.disk_low_reserve"),
+                )
+        except ValueError:
+            pass
+
     form = await request.form()
     try:
         os_type_id = int(form.get("os_type_id"))
@@ -484,7 +506,6 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
 
 
-# ── Detail ────────────────────────────────────────────────────────────────────
 # ── Detail ────────────────────────────────────────────────────────────────────
 
 @router.get("/{version_id}", response_class=HTMLResponse)
