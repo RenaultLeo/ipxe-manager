@@ -25,10 +25,9 @@
             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>{{ t('status.ready') }}</span>
           {% elif v.status == 'extracting' %}
             <span class="badge bg-warning text-dark"
-                  hx-get="/isos/{{ v.id }}/status"
+                  hx-get="/isos/{{ v.id }}/status-fragment"
                   hx-trigger="every 3s"
-                  hx-swap="outerHTML"
-                  hx-target="#row-{{ v.id }}">
+                  hx-swap="outerHTML">
               <i class="bi bi-arrow-repeat spin me-1"></i>{{ t('iso.status_extracting') }}
             </span>
           {% elif v.status == 'error' %}

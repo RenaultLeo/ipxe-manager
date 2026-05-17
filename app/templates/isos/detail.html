@@ -12,7 +12,7 @@
     <span class="badge bg-success ms-auto">Prêt</span>
   {% elif version.status == 'extracting' %}
     <span class="badge bg-warning text-dark ms-auto"
-          hx-get="/isos/{{ version.id }}/status"
+          hx-get="/isos/{{ version.id }}/status-fragment?align=end"
           hx-trigger="every 3s"
           hx-swap="outerHTML">
       <i class="bi bi-arrow-repeat spin me-1"></i>Extraction en cours…

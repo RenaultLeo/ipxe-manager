@@ -1,15 +1,17 @@
-{# Fragment HTMX retourné par /isos/{id}/status — remplace le badge de statut #}
+{# Fragment HTMX — remplace le badge de statut (réponse HTML, pas JSON) #}
+{% set bend = ' ms-auto' if pull_end else '' %}
+{% set frag_qs = '?align=end' if pull_end else '' %}
 {% if status == 'ready' %}
-<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Prêt</span>
+<span class="badge bg-success{{ bend }}"><i class="bi bi-check-circle me-1"></i>{{ t('status.ready') }}</span>
 {% elif status == 'extracting' %}
-<span class="badge bg-warning text-dark"
-      hx-get="/isos/{{ version_id }}/status-fragment"
+<span class="badge bg-warning text-dark{{ bend }}"
+      hx-get="/isos/{{ version_id }}/status-fragment{{ frag_qs }}"
       hx-trigger="every 3s"
       hx-swap="outerHTML">
-  <i class="bi bi-arrow-repeat spin me-1"></i>Extraction…
+  <i class="bi bi-arrow-repeat spin me-1"></i>{{ t('iso.status_extracting') }}
 </span>
 {% elif status == 'error' %}
-<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Erreur</span>
+<span class="badge bg-danger{{ bend }}"><i class="bi bi-x-circle me-1"></i>{{ t('iso.status_error') }}</span>
 {% else %}
-<span class="badge bg-secondary"><i class="bi bi-upload me-1"></i>Uploadé</span>
+<span class="badge bg-secondary{{ bend }}"><i class="bi bi-upload me-1"></i>{{ t('iso.status_uploaded') }}</span>
 {% endif %}

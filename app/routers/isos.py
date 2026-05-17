@@ -366,15 +366,24 @@ async def iso_status(version_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{version_id}/status-fragment", response_class=HTMLResponse)
-async def iso_status_fragment(version_id: int, request: Request, db: Session = Depends(get_db)):
+async def iso_status_fragment(
+    version_id: int,
+    request: Request,
+    align: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
     """HTMX endpoint — retourne uniquement le badge de statut HTML."""
     version = db.query(IsoVersion).get(version_id)
     if not version:
         raise HTTPException(404)
+    pull_end = align == "end"
     return templates.TemplateResponse(
         "isos/status_badge.html",
         template_context(
-            request, status=version.status, version_id=version_id
+            request,
+            status=version.status,
+            version_id=version_id,
+            pull_end=pull_end,
         ),
     )
 
