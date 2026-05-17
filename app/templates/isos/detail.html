@@ -78,28 +78,28 @@
           {% if is_esxi %}
           {# ESXi : UEFI = mboot.efi ; Legacy = mboot.c32 ; deux ipxe-boot*.cfg si ISO distincts #}
           {% if be.esxi_efi_boot_path %}
-          <dt class="col-4 text-muted">Chargeur UEFI (mboot.efi)</dt>
+          <dt class="col-4 text-muted">{{ t('boot.esxi_loader_uefi_mboot') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_efi_boot_path }}</dd>
           {% endif %}
           {% if be.kernel_path %}
-          <dt class="col-4 text-muted">Chargeur Legacy (mboot.c32)</dt>
+          <dt class="col-4 text-muted">{{ t('boot.esxi_loader_legacy_mboot') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
           {% endif %}
           {% if be.esxi_boot_cfg_path %}
-          <dt class="col-4 text-muted">ipxe-boot.cfg (UEFI)</dt>
+          <dt class="col-4 text-muted">{{ t('boot.esxi_ipxe_boot_cfg_uefi') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_path }}</dd>
           {% endif %}
           {% if be.esxi_boot_cfg_legacy_path %}
-          <dt class="col-4 text-muted">ipxe-boot-legacy.cfg</dt>
+          <dt class="col-4 text-muted">{{ t('boot.esxi_ipxe_boot_cfg_legacy') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_legacy_path }}</dd>
           {% endif %}
           {% if be.esxi_modules %}
-          <dt class="col-4 text-muted">Modules iPXE (UEFI)</dt>
-          <dd class="col-8 font-monospace small text-muted text-break" title="Ordre précharge iPXE — profil EFI">{{ be.esxi_modules }}</dd>
+          <dt class="col-4 text-muted">{{ t('boot.esxi_modules_ipxe_uefi') }}</dt>
+          <dd class="col-8 font-monospace small text-muted text-break" title="{{ t('boot.esxi_modules_ipxe_uefi_hint') }}">{{ be.esxi_modules }}</dd>
           {% endif %}
           {% if be.esxi_modules_legacy %}
-          <dt class="col-4 text-muted">Modules iPXE (Legacy)</dt>
-          <dd class="col-8 font-monospace small text-muted text-break" title="Ordre précharge iPXE — profil Legacy">{{ be.esxi_modules_legacy }}</dd>
+          <dt class="col-4 text-muted">{{ t('boot.esxi_modules_ipxe_legacy') }}</dt>
+          <dd class="col-8 font-monospace small text-muted text-break" title="{{ t('boot.esxi_modules_ipxe_legacy_hint') }}">{{ be.esxi_modules_legacy }}</dd>
           {% endif %}
           {% elif be.kernel_path %}
           <dt class="col-4 text-muted">{{ be.kernel_path.split('/')[-1] }}</dt>
@@ -134,7 +134,7 @@
           <dd class="col-8 font-monospace small text-break">{{ be.bootmgr_path }}</dd>
           {% endif %}
           {% if be.kernel_args %}
-          <dt class="col-4 text-muted">{% if is_esxi %}Options boot (imgargs){% else %}Args kernel{% endif %}</dt>
+          <dt class="col-4 text-muted">{% if is_esxi %}{{ t('iso.detail_kernel_args_esxi') }}{% else %}{{ t('iso.upload.kernel_args') }}{% endif %}</dt>
           <dd class="col-8 font-monospace small">{{ be.kernel_args }}</dd>
           {% endif %}
           {% if be.custom_ipxe_path %}

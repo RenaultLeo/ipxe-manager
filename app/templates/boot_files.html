@@ -72,17 +72,17 @@
             {% endif %}
           {% endfor %}
         {% elif v.os_type.slug == 'esxi' or v.os_type.boot_type == 'esxi' %}
-          {% for label_esxi, path_esxi in [
-              ('Chargeur UEFI (mboot.efi)',   be.esxi_efi_boot_path),
-              ('Chargeur Legacy (mboot.c32)', be.kernel_path),
-              ('ipxe-boot.cfg (UEFI)',       be.esxi_boot_cfg_path),
-              ('ipxe-boot-legacy.cfg',       be.esxi_boot_cfg_legacy_path),
+          {% for label_key, path_esxi in [
+              ('boot.esxi_loader_uefi_mboot',    be.esxi_efi_boot_path),
+              ('boot.esxi_loader_legacy_mboot', be.kernel_path),
+              ('boot.esxi_ipxe_boot_cfg_uefi',  be.esxi_boot_cfg_path),
+              ('boot.esxi_ipxe_boot_cfg_legacy', be.esxi_boot_cfg_legacy_path),
           ] %}
             {% if path_esxi %}
             <div class="col-md-6">
               <div class="p-2 bg-dark border border-secondary rounded">
                 <div class="d-flex justify-content-between align-items-start">
-                  <span class="small text-info fw-semibold">{{ label_esxi }}</span>
+                  <span class="small text-info fw-semibold">{{ t(label_key) }}</span>
                   <a href="{{ server_url }}/{{ path_esxi }}" target="_blank" class="small text-muted">
                     <i class="bi bi-box-arrow-up-right"></i>
                   </a>
@@ -95,7 +95,7 @@
           {% if be.esxi_modules %}
           <div class="col-12">
             <div class="p-2 bg-dark border border-secondary rounded">
-              <div class="small text-muted fw-semibold mb-1">Artefacts ESXi (noyau + modules HTTP)</div>
+              <div class="small text-muted fw-semibold mb-1">{{ t('boot.esxi_modules_http_title') }}</div>
               <code class="small text-break text-secondary">{{ be.esxi_modules }}</code>
             </div>
           </div>
