@@ -227,6 +227,12 @@ def extract_iso(
 # ── VMware ESXi : extraction 7z complète + boot.cfg HTTP ────────────────────────
 
 _MODULES_SPLIT_RE = re.compile(r"\s*---\s*")
+# VMware / OEM : ``KERNEL=``, espaces autour de ``=``, BOM → détection tolérante pour tout passer en minuscules.
+_RE_ESXI_LINE_KERNEL = re.compile(r"^(?i)kernel\s*=\s*(.*)$")
+_RE_ESXI_LINE_MODULES = re.compile(r"^(?i)modules\s*=\s*(.*)$")
+_RE_ESXI_LINE_MODULE = re.compile(r"^(?i)module\s*=\s*(.*)$")
+_RE_ESXI_LINE_PREFIX = re.compile(r"^(?i)prefix\s*=")
+_RE_ESXI_LINE_KERNELOPT = re.compile(r"^(?i)kernelopt\s*=")
 
 
 def _esxi_merge_cfg_continuations(raw: str) -> str:
@@ -489,7 +495,7 @@ def _rewrite_esxi_boot_cfg_http(
     Les lignes ``#`` du fichier VMware source sont ignorées pour éviter des mentions obsolètes en majuscules.
     Les autres clés VMware sont conservées ; si leur valeur ressemble à un chemin ou une URL HTTP, les segments sont mis en minuscules (souvent présent dans le ``boot.cfg`` EFI, absent du Legacy).
     """
-    merged_body = _esxi_merge_cfg_continuations(raw_cfg)
+    merged_body = _esxi_merge_cfg_continuations(raw_cfg).lstrip("\ufeff")
     http_prefix = http_prefix.rstrip("/") + "/"
 
     lines_out: list[str] = [
@@ -500,25 +506,25 @@ def _rewrite_esxi_boot_cfg_http(
     wrote_prefix = False
 
     for raw_line in merged_body.splitlines():
-        stripped = raw_line.strip()
+        stripped = raw_line.strip().lstrip("\ufeff")
         if not stripped:
             continue
         if stripped.startswith("#"):
             continue
-        if "=" not in stripped:
-            continue
-        key, _, val = stripped.partition("=")
-        kl = key.strip().lower()
-        val_s = val.strip()
 
-        if kl == "prefix":
+        if _RE_ESXI_LINE_PREFIX.match(stripped):
             lines_out.append(f"prefix={http_prefix}")
             wrote_prefix = True
             continue
-        if kl == "kernel":
+
+        mk = _RE_ESXI_LINE_KERNEL.match(stripped)
+        if mk:
             lines_out.append(f"kernel={kernel_rel}")
             continue
-        if kl == "kernelopt":
+
+        if _RE_ESXI_LINE_KERNELOPT.match(stripped):
+            _, _, rest = stripped.partition("=")
+            val_s = rest.strip()
             kopt = val_s
             if kopt:
                 kopt = re.sub(r"\bcdromBoot\b", "", kopt, flags=re.I)
@@ -526,7 +532,10 @@ def _rewrite_esxi_boot_cfg_http(
                 kopt = " ".join(_esxi_boot_cfg_lowercase_kernelopt_token(tok) for tok in kopt.split(" "))
             lines_out.append(f"kernelopt={kopt}" if kopt else "kernelopt=")
             continue
-        if kl == "modules":
+
+        mm = _RE_ESXI_LINE_MODULES.match(stripped)
+        if mm:
+            val_s = (mm.group(1) or "").strip()
             parts = [p.strip() for p in _MODULES_SPLIT_RE.split(val_s) if p.strip()]
             n = len(parts)
             chunk = module_rels[qi : qi + n]
@@ -538,7 +547,10 @@ def _rewrite_esxi_boot_cfg_http(
             qi += n
             lines_out.append("modules=" + " --- ".join(chunk))
             continue
-        if kl == "module":
+
+        mo = _RE_ESXI_LINE_MODULE.match(stripped)
+        if mo:
+            val_s = (mo.group(1) or "").strip()
             if not val_s:
                 lines_out.append(stripped)
                 continue
@@ -550,6 +562,10 @@ def _rewrite_esxi_boot_cfg_http(
             qi += 1
             continue
 
+        if "=" not in stripped:
+            continue
+        key, _, val = stripped.partition("=")
+        val_s = val.strip()
         lines_out.append(f"{key.strip()}={_esxi_boot_cfg_lowercase_if_path_like(val_s)}")
 
     if not wrote_prefix:
@@ -575,37 +591,48 @@ def _esxi_lowercase_posix_rel(rel: str) -> str:
 def normalize_esxi_ipxe_boot_cfg_paths(text: str) -> str:
     """
     Met en minuscules les segments des chemins dans ``kernel=``, ``modules=`` et ``module=``.
-    Répare les ``ipxe-boot*.cfg`` déjà déployés (ancienne extraction) lors d'une régénération menus :
+    Répare les ``ipxe-boot.cfg`` déjà déployés lors d'une régénération menus (casse OEM, ``KERNEL=``, espaces) ;
     évite les 404 nginx/ext4 sensible à la casse sans ré-extraire l'ISO.
     """
     lines_out: list[str] = []
     for raw_line in text.splitlines():
-        stripped = raw_line.strip()
+        stripped = raw_line.strip().lstrip("\ufeff")
         if not stripped:
             lines_out.append("")
             continue
         if stripped.startswith("#"):
             lines_out.append(raw_line.rstrip("\r"))
             continue
-        if "=" not in stripped:
-            lines_out.append(raw_line.rstrip("\r"))
-            continue
-        key, _, val = stripped.partition("=")
-        kl = key.strip().lower()
-        val_s = val.strip()
-        if kl == "kernel":
+
+        mk = _RE_ESXI_LINE_KERNEL.match(stripped)
+        if mk:
+            val_s = (mk.group(1) or "").strip()
             lines_out.append(f"kernel={_esxi_lowercase_posix_rel(val_s)}")
-        elif kl == "modules":
+            continue
+
+        mm = _RE_ESXI_LINE_MODULES.match(stripped)
+        if mm:
+            val_s = (mm.group(1) or "").strip()
             parts = [p.strip() for p in _MODULES_SPLIT_RE.split(val_s) if p.strip()]
             lines_out.append(
                 "modules=" + " --- ".join(_esxi_lowercase_posix_rel(p) for p in parts)
             )
-        elif kl == "module":
+            continue
+
+        mo = _RE_ESXI_LINE_MODULE.match(stripped)
+        if mo:
+            val_s = (mo.group(1) or "").strip()
             lines_out.append(
                 "module=" if not val_s else f"module={_esxi_lowercase_posix_rel(val_s)}"
             )
-        else:
+            continue
+
+        if "=" not in stripped:
             lines_out.append(raw_line.rstrip("\r"))
+            continue
+        key, _, val = stripped.partition("=")
+        val_s = val.strip()
+        lines_out.append(f"{key.strip()}={_esxi_boot_cfg_lowercase_if_path_like(val_s)}")
     return "\n".join(lines_out) + "\n"
 
 
