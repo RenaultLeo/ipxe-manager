@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import shutil
 import tempfile
@@ -351,6 +352,55 @@ def _esxi_pick_preferred_path(paths: list[Path], iso_root: Path) -> Path:
     return min(paths, key=sort_key)
 
 
+def _esxi_ensure_crypto64_lowercase_http_alias(
+    iso_lower: dict[str, list[Path]],
+    iso_root: Path,
+) -> None:
+    """mboot récupère ``crypto64.efi`` en minuscules ; l’ISO livre souvent ``CRYPTO64.EFI``.
+    Ajoute ``crypto64.efi`` comme lien dur (ou copie) vers le fichier réel pour nginx/ext4."""
+    pool = iso_lower.get("crypto64.efi")
+    if not pool:
+        return
+    src = _esxi_pick_preferred_path(pool, iso_root)
+    if not src.is_file():
+        return
+    if src.name == "crypto64.efi":
+        return
+    alias = src.parent / "crypto64.efi"
+    if alias.is_file():
+        try:
+            if alias.samefile(src):
+                return
+        except OSError:
+            pass
+        logger.warning(
+            "ESXi : « crypto64.efi » existe déjà et ne correspond pas à %s — alias ignoré.",
+            src.name,
+        )
+        return
+    try:
+        os.link(src, alias)
+        logger.info("ESXi : alias HTTP crypto64.efi → lien dur vers %s", src.name)
+    except OSError:
+        try:
+            shutil.copy2(src, alias)
+            logger.info("ESXi : alias HTTP crypto64.efi → copie depuis %s", src.name)
+        except OSError as exc:
+            logger.warning("ESXi : impossible créer crypto64.efi (%s)", exc)
+
+
+def _esxi_crypto64_path_for_http(crypto_path: Path) -> Path:
+    """Pour URLs iPXE / cohérence mboot : préférer le nom ``crypto64.efi`` si même fichier."""
+    alias = crypto_path.parent / "crypto64.efi"
+    if alias.is_file():
+        try:
+            if alias.samefile(crypto_path):
+                return alias
+        except OSError:
+            pass
+    return crypto_path
+
+
 def _path_has_efi_segment(path: Path, iso_root: Path) -> bool:
     try:
         rel = path.relative_to(iso_root)
@@ -570,7 +620,9 @@ def _esxi_boot_cfg_http_payload(
     if profile_label == "EFI":
         crypto_pool = iso_lower.get("crypto64.efi")
         if crypto_pool:
-            crypto_path = _esxi_pick_preferred_path(crypto_pool, dest)
+            crypto_path = _esxi_crypto64_path_for_http(
+                _esxi_pick_preferred_path(crypto_pool, dest)
+            )
             if crypto_path.is_file():
                 try:
                     dup = crypto_path.samefile(k_path) or any(
@@ -593,11 +645,12 @@ def _esxi_boot_cfg_http_payload(
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z dans ``dest`` (arborescence ISO inchangée) :
-    écrit ``ipxe-boot.cfg`` / ``ipxe-boot-legacy.cfg`` avec ``prefix`` HTTP et chemins relatifs disque,
-    plus les JSON modules pour iPXE.
+    ajoute si besoin ``crypto64.efi`` en alias du fichier VMware en majuscules (mboot le demande en minuscules),
+    puis écrit ``ipxe-boot.cfg`` / ``ipxe-boot-legacy.cfg`` et les JSON modules iPXE.
     """
     base = f"boot/{os_slug}/{version_slug}"
     iso_lower = _esxi_index_files_casefold(dest)
+    _esxi_ensure_crypto64_lowercase_http_alias(iso_lower, dest)
 
     src_efi_cfg = _pick_esxi_boot_cfg_efi(dest, iso_lower)
     if not src_efi_cfg:
