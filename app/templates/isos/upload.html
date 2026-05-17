@@ -57,31 +57,8 @@
             </div>
           </div>
 
-          <!-- Fichiers boot manuels -->
+          <!-- Fichiers boot manuels (Linux uniquement au dépôt ; Windows : extraction ISO puis remplacement boot.wim sur la fiche) -->
           <div id="boot-fields">
-
-            <!-- WINDOWS -->
-            <div id="fields-windows" class="d-none">
-              <div class="card border-warning mb-3">
-                <div class="card-header text-warning small">
-                  <i class="bi bi-windows me-1"></i>{{ t('iso.upload.win_title') }}
-                </div>
-                <div class="card-body">
-                  <p class="text-secondary small mb-2">
-                    <i class="bi bi-info-circle me-1"></i>
-                    {{ t('iso.upload.win_help') }}
-                  </p>
-                  <div class="col-md-6">
-                    <label class="form-label">
-                      {{ t('iso.upload.boot_wim') }}
-                      <span class="text-muted fw-normal small">— {{ t('iso.upload.optional') }}</span>
-                    </label>
-                    <input type="file" name="file_boot_wim" class="form-control" accept=".wim">
-                    <div class="form-text">{{ t('iso.upload.boot_wim_replace_hint') }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             <!-- LINUX -->
             <div id="fields-linux" class="d-none">
@@ -311,7 +288,6 @@ function syncOsSelectUi() {
   const sel = document.getElementById('os-select');
   const opt = sel.options[sel.selectedIndex];
   const bootType = opt.dataset.boot || '';
-  document.getElementById('fields-windows').classList.toggle('d-none', bootType !== 'windows');
   document.getElementById('fields-linux').classList.toggle('d-none', bootType !== 'linux');
   if (bootType === 'linux') updateLinuxFields();
 }

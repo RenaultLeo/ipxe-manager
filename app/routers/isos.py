@@ -438,16 +438,12 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         if os_type.boot_type == "windows":
             file_bcd = _pick_upload_file(form, "file_bcd")
             file_boot_sdi = _pick_upload_file(form, "file_boot_sdi")
-            file_boot_wim = _pick_upload_file(form, "file_boot_wim")
             file_bootmgr = _pick_upload_file(form, "file_bootmgr")
             if file_bcd:
                 be.bcd_path = await save_boot_file(file_bcd, "BCD")
                 has_boot_files = True
             if file_boot_sdi:
                 be.boot_sdi_path = await save_boot_file(file_boot_sdi, "boot.sdi")
-                has_boot_files = True
-            if file_boot_wim:
-                be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
                 has_boot_files = True
             if file_bootmgr:
                 be.bootmgr_path = await save_boot_file(
