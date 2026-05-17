@@ -9,7 +9,6 @@ import json
 import logging
 import subprocess
 import shutil
-import sys
 import tempfile
 import re
 from pathlib import PurePosixPath, Path
@@ -612,9 +611,9 @@ def _rewrite_esxi_boot_cfg_http(
     ``module=`` séparées ou une ligne ``modules= … --- …`` comme dans le fichier d’origine).
 
     ``prefix`` est fixé à l’URL HTTP de la racine version ; ``kernel`` / ``modules`` /
-    ``module`` utilisent des chemins relatifs **canoniques minuscules** (convention VMware /
-    Broadcom pour le déploiement HTTP sous nginx/Linux), après résolution sur l’arborescence
-    extraite ; ``kernelopt`` est repris sans ``cdromBoot``.
+    ``module`` utilisent les chemins relatifs **tels qu’après normalisation disque** de
+    l’extracteur (segments minuscules, une seule source de vérité avec nginx/Linux) ;
+    ``kernelopt`` est repris sans ``cdromBoot``.
     """
     merged_body = _esxi_merge_cfg_continuations(raw_cfg)
     http_prefix = http_prefix.rstrip("/") + "/"
@@ -693,13 +692,11 @@ def _rewrite_esxi_boot_cfg_http(
 
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
     """
-    Chemin relatif POSIX **HTTP canonique** depuis ``dest`` vers ``file_path``.
+    Chemin relatif POSIX depuis ``dest`` vers ``file_path``, **tel que nommé sur le disque**.
 
-    La résolution suit le disque (``casefold()`` sur ``iterdir()``), mais la chaîne produite
-    utilise **chaque segment en minuscules**, comme les chemins relatifs dans la documentation
-    VMware / Broadcom pour ``boot.cfg`` servi en HTTP — alignée avec nginx sensible à la casse.
-
-    Les fichiers sous Linux doivent correspondre (normalisation après extraction sur POSIX).
+    Après extraction ESXi, ``_esxi_normalize_extracted_tree_lowercase`` impose une arborescence
+    entièrement en minuscules : les lignes ``kernel=`` / ``modules=`` des fichiers générés et les
+    URLs HTTP correspondent exactement aux fichiers publiés par nginx.
     """
     dest_r = dest.resolve()
     fp = file_path if file_path.is_absolute() else (dest_r / file_path)
@@ -718,12 +715,12 @@ def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
             entries = list(cur.iterdir())
         except OSError as exc:
             logger.warning(
-                "ESXi : lecture répertoire %s impossible (%s) — suffixe du chemin en minuscules.",
+                "ESXi : lecture répertoire %s impossible (%s) — suffixe brut depuis résolution.",
                 cur,
                 exc,
             )
             si = len(parts_out)
-            return PurePosixPath(*(parts_out + [s.lower() for s in rel.parts[si:]])).as_posix()
+            return PurePosixPath(*(parts_out + list(rel.parts[si:]))).as_posix()
         chosen: Path | None = None
         for ch in entries:
             if ch.name.casefold() == seg.casefold():
@@ -731,13 +728,13 @@ def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
                 break
         if chosen is None:
             logger.warning(
-                "ESXi : segment « %s » introuvable sous %s — suffixe du chemin en minuscules.",
+                "ESXi : segment « %s » introuvable sous %s — suffixe brut depuis boot.cfg.",
                 seg,
                 cur,
             )
             si = len(parts_out)
-            return PurePosixPath(*(parts_out + [s.lower() for s in rel.parts[si:]])).as_posix()
-        parts_out.append(chosen.name.lower())
+            return PurePosixPath(*(parts_out + list(rel.parts[si:]))).as_posix()
+        parts_out.append(chosen.name)
         cur = chosen
     return PurePosixPath(*parts_out).as_posix()
 
@@ -754,9 +751,8 @@ def _esxi_boot_cfg_http_payload(
     Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
     + liste ordonnée des chemins relatifs pour préchargement iPXE.
 
-    Les chemins ``kernel=`` et ``modules=`` sont les chemins HTTP canoniques (segments minuscules)
-    pour les fichiers résolus ; sur POSIX ceux-ci correspondent au disque après normalisation de
-    l’extracteur.
+    Les chemins ``kernel=`` et ``modules=`` sont dérivés des ``Path`` résolus puis de
+    ``_esxi_rel_from_dest`` — alignés sur les fichiers réels après normalisation de casse.
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
@@ -829,50 +825,77 @@ def _esxi_boot_cfg_http_payload(
     return managed, preload_rels
 
 
-def _esxi_normalize_extracted_tree_lowercase(dest: Path) -> None:
-    """Renomme tous les fichiers sous ``dest`` pour une arborescence HTTP POSIX minuscule.
+_ESXI_LC_TMP_MARKER = ".__ipxe_lc_ren__"
 
-    Les dossiers résiduels en majuscules sont retirés une fois vidés. Sous Windows le système de
-    fichiers est en général insensible à la casse : la fonction est ignorée pour éviter collisions
-    ou échecs de renommage.
+
+def _esxi_rename_node_lowercase(node: Path) -> None:
+    """Renomme fichier ou dossier pour que son dernier segment soit en minuscules.
+
+    Sur FS insensible à la casse (Windows NTFS par défaut), un passage direct ``EFI`` → ``efi``
+    échoue ou est ignoré ; on passe par un nom temporaire unique.
     """
-    if sys.platform == "win32":
-        logger.debug("ESXi : normalisation arborescence minuscules ignorée sous Windows.")
+    low = node.name.lower()
+    if node.name == low:
         return
+    dest = node.parent / low
+    if dest.exists():
+        try:
+            if not dest.samefile(node):
+                logger.warning(
+                    "ESXi : normalisation casse — collision « %s » vs « %s », abandon.",
+                    node,
+                    dest,
+                )
+                return
+        except OSError:
+            logger.warning(
+                "ESXi : normalisation casse — « %s » existe déjà, abandon.",
+                dest,
+            )
+            return
+    tmp = node.with_name(node.name + _ESXI_LC_TMP_MARKER)
+    try:
+        node.rename(tmp)
+        tmp.rename(dest)
+    except OSError as exc:
+        logger.warning("ESXi : normalisation casse — impossible « %s » → « %s » (%s)", node, dest, exc)
+        try:
+            if tmp.exists():
+                tmp.rename(node)
+        except OSError:
+            pass
 
+
+def _esxi_normalize_extracted_tree_lowercase(dest: Path) -> None:
+    """Renomme dossiers puis fichiers pour une arborescence entièrement en minuscules.
+
+    Fonctionne aussi sous Windows (NTFS insensible à la casse) via renommage intermédiaire.
+    Les ``ipxe-boot*.cfg`` sont ensuite produits à partir des chemins réels — pas de décalage
+    avec les fichiers publiés en HTTP.
+    """
     root = dest.resolve()
     if not root.is_dir():
         return
 
-    files = [p for p in root.rglob("*") if p.is_file()]
-    for p in sorted(files, key=lambda x: (-len(x.parts), str(x))):
-        try:
-            rel = p.relative_to(root)
-        except ValueError:
-            continue
-        target = root.joinpath(*[seg.lower() for seg in rel.parts])
-        if p.resolve() == target.resolve():
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists():
-            logger.warning(
-                "ESXi : collision lors de la normalisation casse — « %s » existe, « %s » ignoré.",
-                target,
-                p,
-            )
-            continue
-        try:
-            shutil.move(str(p), str(target))
-        except OSError as exc:
-            logger.warning(
-                "ESXi : impossible déplacer « %s » vers « %s » — %s",
-                p,
-                target,
-                exc,
-            )
+    while True:
+        dirs = sorted(
+            (p for p in root.rglob("*") if p.is_dir() and p != root),
+            key=lambda x: (-len(x.parts), str(x)),
+        )
+        dirty = next((d for d in dirs if d.name != d.name.lower()), None)
+        if dirty is None:
+            break
+        _esxi_rename_node_lowercase(dirty)
+
+    for f in sorted(
+        (p for p in root.rglob("*") if p.is_file()),
+        key=lambda x: (-len(x.parts), str(x)),
+    ):
+        if f.name != f.name.lower():
+            _esxi_rename_node_lowercase(f)
 
     for d in sorted(
-        [p for p in root.rglob("*") if p.is_dir()],
+        (p for p in root.rglob("*") if p.is_dir()),
         key=lambda x: (-len(x.parts), str(x)),
     ):
         if d == root:
@@ -887,8 +910,8 @@ def _esxi_normalize_extracted_tree_lowercase(dest: Path) -> None:
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z complète dans ``dest`` :
-    - Sur Linux/POSIX : fichiers déplacés vers une arborescence **minuscule** pour URLs HTTP alignées
-      nginx (chemins dans ``ipxe-boot.cfg``, JSON modules, menus).
+    - Arborescence renommée en **minuscules** (Linux et Windows), puis ``ipxe-boot.cfg`` /
+      ``ipxe-boot-legacy.cfg`` et les JSON utilisent exactement ces chemins disque.
     - ``ipxe-boot.cfg`` : ``boot.cfg`` du **profil UEFI** (typiquement ``efi/boot/boot.cfg``, mboot EFI).
     - ``ipxe-boot-legacy.cfg`` : ``boot.cfg`` **BIOS** (souvent ``boot.cfg`` à la racine ou ``boot/boot.cfg``, mboot.c32).
     - Chemins kernel/modules résolus séparément par profil pour éviter les fichiers homonymes sous ``efi/`` vs racine.
