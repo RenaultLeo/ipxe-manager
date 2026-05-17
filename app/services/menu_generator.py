@@ -68,7 +68,6 @@ def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:
         be.kernel_path,
         be.initrd_path,
         getattr(be, "esxi_boot_cfg_path", None),
-        getattr(be, "esxi_boot_cfg_legacy_path", None),
         getattr(be, "esxi_efi_boot_path", None),
     ):
         if not rel:
@@ -140,8 +139,6 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
     esxi_boot_http = ""
     esxi_module_urls: list[str] = []
-    esxi_module_urls_efi: list[str] = []
-    esxi_module_urls_legacy: list[str] = []
     # iPXE : le 1er token de imgargs = basename de l’URL « kernel » (même casse que les fichiers ISO extraits).
     esxi_mboot_basename = ""
     slug_l = os_type.slug.lower()
@@ -149,25 +146,15 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     if be and (slug_l == "esxi" or bt_l == "esxi"):
         esxi_boot_http = h(getattr(be, "esxi_boot_cfg_path", None))
         raw_mods = getattr(be, "esxi_modules", "") or ""
-        raw_mods_legacy = getattr(be, "esxi_modules_legacy", None) or ""
         seg = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
         vr = f"boot/{os_type.slug}/{seg}".replace("\\", "/")
-        esxi_module_urls_efi = _esxi_module_urls_from_json(
+        esxi_module_urls = _esxi_module_urls_from_json(
             raw_mods,
             vr,
             h,
             version_label=v.version_label,
             field_name="esxi_modules",
         )
-        leg_src = raw_mods_legacy.strip() if raw_mods_legacy.strip() else raw_mods
-        esxi_module_urls_legacy = _esxi_module_urls_from_json(
-            leg_src,
-            vr,
-            h,
-            version_label=v.version_label,
-            field_name="esxi_modules_legacy",
-        )
-        esxi_module_urls = esxi_module_urls_efi
         if be.kernel_path:
             esxi_mboot_basename = (
                 be.kernel_path.replace("\\", "/").rstrip("/").split("/")[-1]
@@ -188,8 +175,6 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "esxi_boot_cfg": esxi_boot_http,
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
-        "esxi_module_urls_efi": esxi_module_urls_efi,
-        "esxi_module_urls_legacy": esxi_module_urls_legacy,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
         "kernel_args": _build_kernel_args(be, os_type.slug, cfg, nfsroot_pair=nfs_pair),
         "boot_type":   os_type.boot_type or "linux",
@@ -279,7 +264,7 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
 
 def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
     """
-    Réécrit ``prefix=`` dans ``ipxe-boot.cfg``, ``ipxe-boot-legacy.cfg`` et ``efi/boot/boot.cfg`` sous chaque version ESXi,
+    Réécrit ``prefix=`` dans ``ipxe-boot.cfg`` sous chaque version ESXi,
     pour refléter ``server_base_url`` sans ré-extraire l'ISO.
 
     Réécrit aussi systématiquement ``kernel=`` / ``modules=`` / ``module=`` en minuscules ; avant,
@@ -294,11 +279,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             continue
         ver = d.name
         new_line = f"prefix={base}/boot/esxi/{ver}/"
-        candidates = (
-            d / "ipxe-boot.cfg",
-            d / "ipxe-boot-legacy.cfg",
-            d / "efi" / "boot" / "boot.cfg",
-        )
+        candidates = (d / "ipxe-boot.cfg",)
         for path in candidates:
             if not path.is_file():
                 continue
@@ -372,6 +353,7 @@ def regenerate_all(db: Session) -> list[str]:
                     efi_rel = (getattr(be, "esxi_efi_boot_path", None) or "").strip()
                     has_leg = bool(be.kernel_path and str(be.kernel_path).strip())
                     rows: list[dict] = []
+                    cfg_http = _http(getattr(be, "esxi_boot_cfg_path", None), cfg)
                     if efi_rel:
                         kb = efi_rel.replace("\\", "/").rstrip("/").split("/")[-1]
                         rows.append(
@@ -379,9 +361,9 @@ def regenerate_all(db: Session) -> list[str]:
                                 **entry,
                                 "label": f"{entry['label']} [UEFI]",
                                 "kernel": _http(efi_rel, cfg),
-                                "esxi_boot_cfg": _http(getattr(be, "esxi_boot_cfg_path", None), cfg),
+                                "esxi_boot_cfg": cfg_http,
                                 "esxi_mboot_basename": kb,
-                                "esxi_module_urls": entry["esxi_module_urls_efi"],
+                                "esxi_module_urls": entry["esxi_module_urls"],
                                 "ipxe_item_tag": f"v{v.id}_uefi",
                             }
                         )
@@ -389,15 +371,14 @@ def regenerate_all(db: Session) -> list[str]:
                         kp = be.kernel_path or ""
                         kb = kp.replace("\\", "/").rstrip("/").split("/")[-1]
                         leg_suffix = " [Legacy]" if efi_rel else ""
-                        cfg_legacy_rel = getattr(be, "esxi_boot_cfg_legacy_path", None) or be.esxi_boot_cfg_path
                         rows.append(
                             {
                                 **entry,
                                 "label": f"{entry['label']}{leg_suffix}",
                                 "kernel": _http(kp, cfg),
-                                "esxi_boot_cfg": _http(cfg_legacy_rel, cfg),
+                                "esxi_boot_cfg": cfg_http,
                                 "esxi_mboot_basename": kb,
-                                "esxi_module_urls": entry["esxi_module_urls_legacy"],
+                                "esxi_module_urls": entry["esxi_module_urls"],
                                 "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
                             }
                         )

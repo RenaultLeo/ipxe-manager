@@ -130,7 +130,6 @@ def _backfill_iso_was_extracted() -> None:
                            OR COALESCE(initrd_path, '') <> ''
                            OR COALESCE(boot_wim_path, '') <> ''
                            OR COALESCE(esxi_boot_cfg_path, '') <> ''
-                           OR COALESCE(esxi_boot_cfg_legacy_path, '') <> ''
                            OR TRIM(COALESCE(esxi_modules, '')) <> ''
                            OR COALESCE(modloop_path, '') <> ''
                       )

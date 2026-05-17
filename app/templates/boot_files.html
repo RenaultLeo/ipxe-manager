@@ -75,8 +75,7 @@
           {% for label_key, path_esxi in [
               ('boot.esxi_loader_uefi_mboot',    be.esxi_efi_boot_path),
               ('boot.esxi_loader_legacy_mboot', be.kernel_path),
-              ('boot.esxi_ipxe_boot_cfg_uefi',  be.esxi_boot_cfg_path),
-              ('boot.esxi_ipxe_boot_cfg_legacy', be.esxi_boot_cfg_legacy_path),
+              ('boot.esxi_ipxe_boot_cfg',  be.esxi_boot_cfg_path),
           ] %}
             {% if path_esxi %}
             <div class="col-md-6">

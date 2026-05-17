@@ -103,10 +103,10 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.bootmgr_path  = paths.get("bootmgr_path")
         be.modloop_path  = paths.get("modloop_path")
         be.esxi_boot_cfg_path = paths.get("esxi_boot_cfg_path")
-        be.esxi_boot_cfg_legacy_path = paths.get("esxi_boot_cfg_legacy_path")
+        be.esxi_boot_cfg_legacy_path = None
         be.esxi_efi_boot_path = paths.get("esxi_efi_boot_path")
         be.esxi_modules       = paths.get("esxi_modules") or ""
-        be.esxi_modules_legacy = paths.get("esxi_modules_legacy") or ""
+        be.esxi_modules_legacy = ""
         if extra_linux is not None:
             if isinstance(extra_linux, list):
                 be.extra_linux_paths_json = json.dumps(extra_linux, ensure_ascii=False)

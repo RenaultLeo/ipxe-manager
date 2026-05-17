@@ -421,69 +421,12 @@ def _esxi_crypto64_path_for_http(crypto_path: Path) -> Path:
     return crypto_path
 
 
-def _path_has_efi_segment(path: Path, iso_root: Path) -> bool:
-    try:
-        rel = path.relative_to(iso_root)
-    except ValueError:
-        return False
-    return any(part.lower() == "efi" for part in rel.parts)
-
-
 def _pick_esxi_boot_cfg_any(iso_root: Path, idx: dict[str, list[Path]]) -> Path | None:
     """Le ``boot.cfg`` le moins profond si plusieurs (cas ISO atypiques)."""
     pool = idx.get("boot.cfg", [])
     if not pool:
         return None
     return _esxi_pick_preferred_path(pool, iso_root)
-
-
-def _pick_esxi_boot_cfg_efi(iso_root: Path, idx: dict[str, list[Path]]) -> Path | None:
-    """Profil UEFI : VMware attend ``efi/boot/boot.cfg`` — on le prend en priorité (ISO OEM sinon plusieurs boot.cfg)."""
-    pool = idx.get("boot.cfg", [])
-    canonical_rel_cf = "efi/boot/boot.cfg".casefold()
-    canon: list[Path] = []
-    for p in pool:
-        try:
-            rel = p.relative_to(iso_root).as_posix().replace("\\", "/").casefold().strip("/")
-        except ValueError:
-            continue
-        if rel == canonical_rel_cf:
-            canon.append(p)
-    if canon:
-        picked = _esxi_pick_preferred_path(canon, iso_root)
-        logger.info("ESXi EFI : boot.cfg canonique « %s ».", picked.relative_to(iso_root).as_posix())
-        return picked
-
-    pool_efi = [p for p in pool if _path_has_efi_segment(p, iso_root)]
-    if pool_efi:
-        picked = _esxi_pick_preferred_path(pool_efi, iso_root)
-        logger.warning(
-            "ESXi EFI : pas de efi/boot/boot.cfg — repli sur « %s ».",
-            picked.relative_to(iso_root).as_posix(),
-        )
-        return picked
-    return _pick_esxi_boot_cfg_any(iso_root, idx)
-
-
-def _pick_esxi_boot_cfg_legacy(iso_root: Path, idx: dict[str, list[Path]]) -> Path | None:
-    pool = [p for p in idx.get("boot.cfg", []) if not _path_has_efi_segment(p, iso_root)]
-    if pool:
-
-        def legacy_key(p: Path) -> tuple[int, int, str]:
-            try:
-                rel = p.relative_to(iso_root).as_posix().replace("\\", "/").casefold().strip("/")
-            except ValueError:
-                return (99, 999, "")
-            tier = 9
-            if rel == "boot.cfg":
-                tier = 0
-            elif rel == "boot/boot.cfg":
-                tier = 1
-            depth = len(p.relative_to(iso_root).parts)
-            return (tier, depth, rel)
-
-        return min(pool, key=legacy_key)
-    return _pick_esxi_boot_cfg_any(iso_root, idx)
 
 
 def _esxi_lowercase_http_url_path(url: str) -> str:
@@ -724,11 +667,11 @@ def _esxi_boot_cfg_http_payload(
     profile_label: str,
 ) -> tuple[str, list[str]]:
     """
-    Lit un boot.cfg VMware source et produit le corps HTTP (ipxe-boot*.cfg)
+    Lit un boot.cfg VMware source et produit le corps HTTP ``ipxe-boot.cfg``
     + liste ordonnée des chemins relatifs pour préchargement iPXE (**sans dédoublonnage**, ordre VMware inchangé).
 
     Les chemins ``kernel=`` / ``modules=`` sont toujours en **minuscules** (HTTP mboot), avec **miroirs** lien dur sur disque.
-    La ligne ``crypto64.efi`` optionnelle en tête du JSON iPXE est réservée au profil **EFI**.
+    ``crypto64.efi`` est préfixé au JSON lorsque ``profile_label`` est **EFI** (mboot.efi).
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
     parsed, mod_refs = _parse_esxi_boot_cfg_text(raw_cfg)
@@ -818,30 +761,20 @@ def _esxi_boot_cfg_http_payload(
     return managed, preload_rels
 
 
-def _esxi_publish_managed_boot_cfg_at_efi_boot(dest: Path, managed_body: str) -> None:
-    """Copie la config HTTP EFI sous ``efi/boot/boot.cfg`` (emplacement VMware officiel), tout en gardant ``ipxe-boot.cfg``."""
-    target = dest / "efi" / "boot" / "boot.cfg"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(managed_body, encoding="utf-8")
-
-
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
     Après extraction 7z dans ``dest`` (arborescence ISO inchangée) :
-    profil **EFI** et **Legacy** : ``ipxe-boot.cfg`` / ``ipxe-boot-legacy.cfg`` et JSON modules avec chemins HTTP **minuscules**
-    et **miroirs** lien dur ; précharge ``crypto64.efi`` réservée au profil EFI ; alias ``crypto64.efi`` racine HTTP conservé.
+    un seul ``ipxe-boot.cfg`` + JSON ``esxi_modules`` (chemins HTTP minuscules, miroirs lien dur),
+    utilisés à la fois par mboot.efi et mboot.c32 ; précharge ``crypto64.efi`` si présent ;
+    alias ``crypto64.efi`` racine HTTP conservé.
     """
     base = f"boot/{os_slug}/{version_slug}"
     iso_lower = _esxi_index_files_casefold(dest)
     _esxi_ensure_crypto64_lowercase_http_alias(iso_lower, dest)
 
-    src_efi_cfg = _pick_esxi_boot_cfg_efi(dest, iso_lower)
-    if not src_efi_cfg:
+    src_cfg = _pick_esxi_boot_cfg_any(dest, iso_lower)
+    if not src_cfg:
         raise ExtractionError("ESXi : aucun boot.cfg trouvé après extraction complète de l'ISO.")
-
-    src_legacy_cfg = _pick_esxi_boot_cfg_legacy(dest, iso_lower)
-    if not src_legacy_cfg:
-        src_legacy_cfg = src_efi_cfg
 
     mboot_pool = iso_lower.get("mboot.c32", [])
     if not mboot_pool:
@@ -853,26 +786,19 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
 
     http_prefix = settings.server_base_url.rstrip("/") + f"/{base}/"
 
-    managed_efi, preload_efi = _esxi_boot_cfg_http_payload(
-        dest, iso_lower, src_efi_cfg, http_prefix, profile_label="EFI"
+    managed, preload = _esxi_boot_cfg_http_payload(
+        dest, iso_lower, src_cfg, http_prefix, profile_label="EFI"
     )
-    managed_efi = normalize_esxi_ipxe_boot_cfg_paths(managed_efi)
-    (dest / "ipxe-boot.cfg").write_text(managed_efi, encoding="utf-8")
-    # Même contenu que l’entrée ISO officielle VMware : mboot / préfixes HTTP voient le même fichier sous efi/boot/boot.cfg.
-    _esxi_publish_managed_boot_cfg_at_efi_boot(dest, managed_efi)
+    managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
+    (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
+    legacy_stale = dest / "ipxe-boot-legacy.cfg"
+    if legacy_stale.is_file():
+        try:
+            legacy_stale.unlink()
+        except OSError as exc:
+            logger.warning("ESXi : suppression ipxe-boot-legacy.cfg obsolète impossible (%s)", exc)
 
-    if src_legacy_cfg.resolve() == src_efi_cfg.resolve():
-        managed_legacy = managed_efi
-        preload_legacy = list(preload_efi)
-    else:
-        managed_legacy, preload_legacy = _esxi_boot_cfg_http_payload(
-            dest, iso_lower, src_legacy_cfg, http_prefix, profile_label="Legacy"
-        )
-        managed_legacy = normalize_esxi_ipxe_boot_cfg_paths(managed_legacy)
-    (dest / "ipxe-boot-legacy.cfg").write_text(managed_legacy, encoding="utf-8")
-
-    modules_json = json.dumps(preload_efi, separators=(",", ":"))
-    modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))
+    modules_json = json.dumps(preload, separators=(",", ":"))
 
     mboot_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, mboot_path))
 
@@ -892,19 +818,12 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     else:
         logger.warning("ESXi : bootx64.efi absent — entrée menu UEFI absente.")
 
-    logger.info(
-        "ESXi OK — mboot.c32=%s modules EFI=%d Legacy=%d",
-        mboot_rel,
-        len(preload_efi),
-        len(preload_legacy),
-    )
+    logger.info("ESXi OK — mboot.c32=%s modules=%d", mboot_rel, len(preload))
 
     out_paths: dict = {
         "kernel_path": f"{base}/{mboot_rel}",
         "esxi_boot_cfg_path": f"{base}/ipxe-boot.cfg",
-        "esxi_boot_cfg_legacy_path": f"{base}/ipxe-boot-legacy.cfg",
         "esxi_modules": modules_json,
-        "esxi_modules_legacy": modules_legacy_json,
     }
     if esxi_efi_boot_http:
         out_paths["esxi_efi_boot_path"] = esxi_efi_boot_http
