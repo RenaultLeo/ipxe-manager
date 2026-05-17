@@ -13,7 +13,6 @@ from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
-from app.services.iso_extractor import normalize_esxi_ipxe_boot_cfg_paths
 
 logger = logging.getLogger(__name__)
 
@@ -264,12 +263,12 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
 
 def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
     """
-    Réécrit ``prefix=`` dans ``ipxe-boot.cfg`` sous chaque version ESXi,
-    pour refléter ``server_base_url`` sans ré-extraire l'ISO.
-
-    Réécrit aussi systématiquement ``kernel=`` / ``modules=`` / ``module=`` en minuscules ; avant,
-    si aucune ligne ``prefix`` n'était reconnue, le fichier n'était pas sauvé et les corrections étaient perdues.
+    Réécrit ``prefix=`` / ``prefix-http=`` → ``prefix=`` dans chaque ``ipxe-boot.cfg`` ESXi,
+    normalise ``kernel=`` / ``modules=`` / ``module=`` en minuscules, reflète ``server_base_url``.
+    Import local évite tout cycle au chargement du module menus.
     """
+    from app.services.iso_extractor import normalize_esxi_ipxe_boot_cfg_paths
+
     esxi_root = cfg.boot_dir / "esxi"
     if not esxi_root.is_dir():
         return

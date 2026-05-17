@@ -231,7 +231,7 @@ _MODULES_SPLIT_RE = re.compile(r"\s*---\s*")
 _RE_ESXI_LINE_KERNEL = re.compile(r"^kernel\s*=\s*(.*)$", re.I)
 _RE_ESXI_LINE_MODULES = re.compile(r"^modules\s*=\s*(.*)$", re.I)
 _RE_ESXI_LINE_MODULE = re.compile(r"^module\s*=\s*(.*)$", re.I)
-_RE_ESXI_LINE_PREFIX = re.compile(r"^prefix\s*=", re.I)
+_RE_ESXI_LINE_PREFIX = re.compile(r"^prefix(?:-http)?\s*=", re.I)
 _RE_ESXI_LINE_KERNELOPT = re.compile(r"^kernelopt\s*=", re.I)
 
 
@@ -493,7 +493,7 @@ def _rewrite_esxi_boot_cfg_http(
     ``prefix`` est fixé à l’URL HTTP de la racine version ; ``kernel`` / ``modules`` /
     ``module`` : chemins relatifs fournis par l’appelant (segments **minuscules**, mboot / nginx).
     Les lignes ``#`` du fichier VMware source sont ignorées pour éviter des mentions obsolètes en majuscules.
-    Les autres clés VMware sont conservées ; si leur valeur ressemble à un chemin ou une URL HTTP, les segments sont mis en minuscules (souvent présent dans le ``boot.cfg`` EFI, absent du Legacy).
+    Les autres clés sont recopiées telles quelles (sauf ``prefix`` / ``prefix-http`` → ``prefix`` HTTP iPXE Manager).
     """
     merged_body = _esxi_merge_cfg_continuations(raw_cfg).lstrip("\ufeff")
     http_prefix = http_prefix.rstrip("/") + "/"
@@ -564,9 +564,7 @@ def _rewrite_esxi_boot_cfg_http(
 
         if "=" not in stripped:
             continue
-        key, _, val = stripped.partition("=")
-        val_s = val.strip()
-        lines_out.append(f"{key.strip()}={_esxi_boot_cfg_lowercase_if_path_like(val_s)}")
+        lines_out.append(stripped)
 
     if not wrote_prefix:
         lines_out.insert(1, f"prefix={http_prefix}")
@@ -627,12 +625,7 @@ def normalize_esxi_ipxe_boot_cfg_paths(text: str) -> str:
             )
             continue
 
-        if "=" not in stripped:
-            lines_out.append(raw_line.rstrip("\r"))
-            continue
-        key, _, val = stripped.partition("=")
-        val_s = val.strip()
-        lines_out.append(f"{key.strip()}={_esxi_boot_cfg_lowercase_if_path_like(val_s)}")
+        lines_out.append(raw_line.rstrip("\r"))
     return "\n".join(lines_out) + "\n"
 
 
