@@ -556,20 +556,46 @@ def _rewrite_esxi_boot_cfg_http(
 
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
     """
-    Chemin relatif POSIX sous la racine version ; préserve la casse des segments de ``file_path``.
+    Chemin relatif POSIX depuis ``dest`` vers ``file_path``.
 
-    Évite ``Path.resolve()`` sur le fichier lorsque ``relative_to`` suffit : sous Windows,
-    la résolution peut conserver une casse issue du boot.cfg VMware au lieu de celle réellement
-    listée sur disque après extraction.
+    À chaque niveau on reprend le nom exact tel que ``iterdir()`` le liste sur le système de
+    fichiers (comparaison ``casefold()`` avec le segment résolu). Ainsi les URLs dans
+    ``ipxe-boot.cfg``, le JSON ``esxi_modules`` et ``kernel_path`` (mboot.c32) correspondent à ce
+    que nginx/Linux expose réellement — indépendamment de la casse VMware dans ``boot.cfg``.
     """
     dest_r = dest.resolve()
     fp = file_path if file_path.is_absolute() else (dest_r / file_path)
-    fp_abs = fp.absolute()
+    target_r = fp.resolve()
     try:
-        rel = fp_abs.relative_to(dest_r)
-    except ValueError:
-        rel = fp_abs.resolve().relative_to(dest_r)
-    return PurePosixPath(*rel.parts).as_posix()
+        rel = target_r.relative_to(dest_r)
+    except ValueError as exc:
+        raise ExtractionError(
+            f"ESXi : fichier « {fp} » en dehors de la racine version « {dest_r} »."
+        ) from exc
+
+    cur = dest_r
+    parts_out: list[str] = []
+    for seg in rel.parts:
+        try:
+            entries = list(cur.iterdir())
+        except OSError as exc:
+            logger.warning("ESXi : lecture répertoire %s impossible (%s), casse VMware conservée.", cur, exc)
+            return PurePosixPath(*(parts_out + list(rel.parts[len(parts_out) :]))).as_posix()
+        chosen: Path | None = None
+        for ch in entries:
+            if ch.name.casefold() == seg.casefold():
+                chosen = ch
+                break
+        if chosen is None:
+            logger.warning(
+                "ESXi : segment « %s » introuvable sous %s — casse résolue brute pour la suite.",
+                seg,
+                cur,
+            )
+            return PurePosixPath(*(parts_out + list(rel.parts[len(parts_out) :]))).as_posix()
+        parts_out.append(chosen.name)
+        cur = chosen
+    return PurePosixPath(*parts_out).as_posix()
 
 
 def _esxi_boot_cfg_http_payload(
