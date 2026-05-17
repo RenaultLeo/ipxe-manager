@@ -19,6 +19,7 @@ from app.models.models import OsType
 from app.services.iso_extractor import (
     ExtractionError,
     _GENERIC_RULE,
+    _extract_esxi_from_full_dest,
     _find_in_dest,
     _find_windows_in_dest,
     _fix_permissions,
@@ -122,7 +123,13 @@ def try_extract_with_plan(
         specs_raw = []
     specs_raw = specs_raw if isinstance(specs_raw, list) else []
     unified = _normalize_specs(specs_raw)
-    if not unified:
+    bt_early = (ot.boot_type or "linux").lower()
+    esxi_full_skip_specs = (
+        getattr(ot, "extract_full_iso", False)
+        and bt_early == "esxi"
+        and not unified
+    )
+    if not unified and not esxi_full_skip_specs:
         raise ExtractionError(
             "Configuration d'extraction vide ou invalide (noms / motifs)."
         )
@@ -229,6 +236,15 @@ def try_extract_with_plan(
             os_slug, specs_raw, unified, basename_report, base, result
         )
         _fallback_kernel_initrd_in_dest(dest, os_slug, version_slug, result)
+
+    elif bt == "esxi":
+        if not ot.extract_full_iso:
+            raise ExtractionError(
+                "ESXi : activer « extraction ISO complète » pour ce type de système ; "
+                "boot.cfg / mboot et les modules VMware nécessitent l’arborescence entière sous HTTP."
+            )
+        esxi_paths = _extract_esxi_from_full_dest(dest, os_slug, version_slug)
+        result.update(esxi_paths)
 
     filtered_report = {k: v for k, v in basename_report.items()}
     paths_out = {k: v for k, v in result.items()}
