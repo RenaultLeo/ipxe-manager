@@ -138,8 +138,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     esxi_module_urls: list[str] = []
     esxi_module_urls_efi: list[str] = []
     esxi_module_urls_legacy: list[str] = []
-    # iPXE : le 1er token de imgargs = basename de l’URL « kernel » (casse alignée sur les chemins HTTP
-    # canoniques VMware / Broadcom — segments minuscules après extraction).
+    # iPXE : le 1er token de imgargs = basename de l’URL « kernel » (même casse que les fichiers ISO extraits).
     esxi_mboot_basename = ""
     slug_l = os_type.slug.lower()
     bt_l = (os_type.boot_type or "linux").lower()
