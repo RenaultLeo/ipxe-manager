@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
 
+    upload_min_free_bytes: int = 268_435_456  # 256 Mo — garde fou avant uploads (multipart + fichiers boot)
+
     max_upload_size: int = 53_687_091_200  # 50 GB
     extract_timeout: int = 3600
 

@@ -1,6 +1,9 @@
+import errno
 import json
+import logging
 import shutil
 from pathlib import Path
+from typing import Sequence
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Query
@@ -18,6 +21,7 @@ from app.config import settings
 
 router = APIRouter(prefix="/isos")
 TEMPLATES = templates
+logger = logging.getLogger(__name__)
 
 
 def _auth(request: Request):
@@ -163,6 +167,41 @@ def _iso_duplicate_label_and_filename(
     return False
 
 
+def _minimum_free_near_upload_roots() -> int:
+    """Espace libre minimal (octets) entre ``iso_root`` et ``http_root`` (donc ``boot``)."""
+    frees: list[int] = []
+    for raw in (settings.iso_root, settings.http_root):
+        p = Path(raw)
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            frees.append(shutil.disk_usage(p).free)
+        except OSError:
+            frees.append(0)
+    return min(frees) if frees else 0
+
+
+def _discard_partial_iso_upload(
+    *,
+    iso_pack_dir: Path | None,
+    iso_file: Path | None,
+    boot_files_written: Sequence[Path],
+) -> None:
+    """Efface dossier ISO et fichiers boot écrits pendant un upload incomplet."""
+    if iso_file and iso_file.is_file():
+        try:
+            iso_file.unlink()
+        except OSError:
+            pass
+    if iso_pack_dir and iso_pack_dir.is_dir():
+        shutil.rmtree(iso_pack_dir, ignore_errors=True)
+    for bf in boot_files_written:
+        try:
+            if bf.is_file():
+                bf.unlink()
+        except OSError:
+            pass
+
+
 def _route_linux_manual_file(
     be: BootEntry,
     ot: OsType,
@@ -192,6 +231,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
 
+    lang = getattr(request.state, "locale", "fr")
     form = await request.form()
     try:
         os_type_id = int(form.get("os_type_id"))
@@ -217,13 +257,25 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         if ext not in {".iso", ".img", ""}:
             raise HTTPException(400, f"Extension non supportée : {ext}")
         if _iso_duplicate_label_and_filename(db, os_type_id, version_label, iso_safe_name):
-            lang = getattr(request.state, "locale", "fr")
             raise HTTPException(
                 status_code=409,
                 detail=translate(lang, "iso.upload.iso_duplicate_submit"),
             )
 
-    # ── Créer l'entrée en BDD d'abord ──────────────────────
+    mf = _minimum_free_near_upload_roots()
+    reserve = settings.upload_min_free_bytes
+    if mf <= reserve:
+        raise HTTPException(
+            status_code=507,
+            detail=translate(lang, "iso.upload.disk_low_reserve"),
+        )
+    decl = getattr(file_iso, "size", None) if file_iso else None
+    if isinstance(decl, int) and decl > 0 and mf <= decl + reserve:
+        raise HTTPException(
+            status_code=507,
+            detail=translate(lang, "iso.upload.disk_low_reserve"),
+        )
+
     version = IsoVersion(
         os_type_id=os_type_id,
         version_label=version_label,
@@ -232,112 +284,168 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         notes=notes,
     )
     db.add(version)
-    db.flush()  # obtenir version.id
+    db.flush()
 
-    # ── ISO (optionnel) — un dossier par id pour éviter collision entre versions ──
-    if file_iso:
-        iso_version_dir = Path(settings.iso_root) / os_type.slug / str(version.id)
-        iso_version_dir.mkdir(parents=True, exist_ok=True)
-        dest = iso_version_dir / iso_safe_name
-        size = 0
-        with open(dest, "wb") as f:
-            while chunk := await file_iso.read(1024 * 1024):
-                f.write(chunk)
-                size += len(chunk)
-                if size > settings.max_upload_size:
-                    dest.unlink(missing_ok=True)
-                    raise HTTPException(413, "Fichier trop volumineux")
-        version.iso_path = str(dest)
-        version.iso_size = size
-        db.add(Upload(filename=iso_safe_name, file_type="iso", size=size, status="done"))
-
-    # ── Fichiers boot manuels ──────────────────────────────
     from app.services.slugify import slugify
     from starlette.datastructures import UploadFile as StarletteUploadFile
 
     version_slug = slugify(version.version_label)
-
     boot_dir = settings.boot_dir / os_type.slug / version_slug
-    boot_dir.mkdir(parents=True, exist_ok=True)
 
-    be = BootEntry(iso_version_id=version.id, kernel_args=kernel_args)
-    db.add(be)
+    iso_pack_dir: Path | None = None
+    iso_written_path: Path | None = None
+    saved_boot_paths: list[Path] = []
 
     async def save_boot_file(upload: StarletteUploadFile, fname: str) -> str:
         dest_p = boot_dir / fname
         with open(dest_p, "wb") as f:
             while chunk := await upload.read(1024 * 1024):
                 f.write(chunk)
+        saved_boot_paths.append(dest_p)
         return f"boot/{os_type.slug}/{version_slug}/{fname}"
 
-    has_boot_files = False
-    extra_linux: list[dict] = []
+    try:
+        if file_iso:
+            iso_pack_dir = Path(settings.iso_root) / os_type.slug / str(version.id)
+            iso_pack_dir.mkdir(parents=True, exist_ok=True)
+            dest_iso = iso_pack_dir / iso_safe_name
+            iso_written_path = dest_iso
+            size_iso = 0
+            with open(dest_iso, "wb") as f:
+                while chunk := await file_iso.read(1024 * 1024):
+                    f.write(chunk)
+                    size_iso += len(chunk)
+                    if size_iso > settings.max_upload_size:
+                        raise HTTPException(413, "Fichier trop volumineux")
+            version.iso_path = str(dest_iso)
+            version.iso_size = size_iso
+            db.add(
+                Upload(filename=iso_safe_name, file_type="iso", size=size_iso, status="done")
+            )
 
-    if os_type.boot_type == "windows":
-        file_bcd = _pick_upload_file(form, "file_bcd")
-        file_boot_sdi = _pick_upload_file(form, "file_boot_sdi")
-        file_boot_wim = _pick_upload_file(form, "file_boot_wim")
-        file_bootmgr = _pick_upload_file(form, "file_bootmgr")
-        if file_bcd:
-            be.bcd_path = await save_boot_file(file_bcd, "BCD")
-            has_boot_files = True
-        if file_boot_sdi:
-            be.boot_sdi_path = await save_boot_file(file_boot_sdi, "boot.sdi")
-            has_boot_files = True
-        if file_boot_wim:
-            be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
-            has_boot_files = True
-        if file_bootmgr:
-            be.bootmgr_path = await save_boot_file(file_bootmgr, Path(file_bootmgr.filename).name)
-            has_boot_files = True
-    else:
-        linux_terms = _extract_search_terms_for_ot(os_type)
-        if linux_terms:
-            for i, term in enumerate(linux_terms):
-                uf = _pick_upload_file(form, f"linux_manual_{i}")
-                if not uf:
-                    continue
-                name_on_disk = Path(uf.filename).name
-                rel = await save_boot_file(uf, name_on_disk)
-                routed = _route_linux_manual_file(be, os_type, i, term, rel)
-                if routed is not None:
-                    extra_linux.append(routed)
+        boot_dir.mkdir(parents=True, exist_ok=True)
+        be = BootEntry(iso_version_id=version.id, kernel_args=kernel_args)
+        db.add(be)
+
+        has_boot_files = False
+        extra_linux: list[dict] = []
+
+        if os_type.boot_type == "windows":
+            file_bcd = _pick_upload_file(form, "file_bcd")
+            file_boot_sdi = _pick_upload_file(form, "file_boot_sdi")
+            file_boot_wim = _pick_upload_file(form, "file_boot_wim")
+            file_bootmgr = _pick_upload_file(form, "file_bootmgr")
+            if file_bcd:
+                be.bcd_path = await save_boot_file(file_bcd, "BCD")
+                has_boot_files = True
+            if file_boot_sdi:
+                be.boot_sdi_path = await save_boot_file(file_boot_sdi, "boot.sdi")
+                has_boot_files = True
+            if file_boot_wim:
+                be.boot_wim_path = await save_boot_file(file_boot_wim, "boot.wim")
+                has_boot_files = True
+            if file_bootmgr:
+                be.bootmgr_path = await save_boot_file(
+                    file_bootmgr, Path(file_bootmgr.filename).name
+                )
                 has_boot_files = True
         else:
-            file_kernel = _pick_upload_file(form, "file_kernel")
-            file_initrd = _pick_upload_file(form, "file_initrd")
-            file_modloop = _pick_upload_file(form, "file_modloop")
-            if file_kernel:
-                be.kernel_path = await save_boot_file(file_kernel, Path(file_kernel.filename).name)
-                has_boot_files = True
-            if file_initrd:
-                be.initrd_path = await save_boot_file(file_initrd, Path(file_initrd.filename).name)
-                has_boot_files = True
-            if file_modloop:
-                be.modloop_path = await save_boot_file(file_modloop, Path(file_modloop.filename).name)
-                has_boot_files = True
+            linux_terms = _extract_search_terms_for_ot(os_type)
+            if linux_terms:
+                for i, term in enumerate(linux_terms):
+                    uf = _pick_upload_file(form, f"linux_manual_{i}")
+                    if not uf:
+                        continue
+                    name_on_disk = Path(uf.filename).name
+                    rel = await save_boot_file(uf, name_on_disk)
+                    routed = _route_linux_manual_file(be, os_type, i, term, rel)
+                    if routed is not None:
+                        extra_linux.append(routed)
+                    has_boot_files = True
+            else:
+                file_kernel = _pick_upload_file(form, "file_kernel")
+                file_initrd = _pick_upload_file(form, "file_initrd")
+                file_modloop = _pick_upload_file(form, "file_modloop")
+                if file_kernel:
+                    be.kernel_path = await save_boot_file(
+                        file_kernel, Path(file_kernel.filename).name
+                    )
+                    has_boot_files = True
+                if file_initrd:
+                    be.initrd_path = await save_boot_file(
+                        file_initrd, Path(file_initrd.filename).name
+                    )
+                    has_boot_files = True
+                if file_modloop:
+                    be.modloop_path = await save_boot_file(
+                        file_modloop, Path(file_modloop.filename).name
+                    )
+                    has_boot_files = True
 
-    if extra_linux:
-        be.extra_linux_paths_json = json.dumps(extra_linux, ensure_ascii=False)
+        if extra_linux:
+            be.extra_linux_paths_json = json.dumps(extra_linux, ensure_ascii=False)
 
-    file_custom_ipxe = _pick_upload_file(form, "file_custom_ipxe")
-    if file_custom_ipxe:
-        be.custom_ipxe_path = await save_boot_file(file_custom_ipxe, Path(file_custom_ipxe.filename).name)
-        has_boot_files = True
+        file_custom_ipxe = _pick_upload_file(form, "file_custom_ipxe")
+        if file_custom_ipxe:
+            be.custom_ipxe_path = await save_boot_file(
+                file_custom_ipxe, Path(file_custom_ipxe.filename).name
+            )
+            has_boot_files = True
 
-    if has_boot_files:
-        version.status = "ready"
+        if has_boot_files:
+            version.status = "ready"
 
-    db.commit()
+        db.commit()
 
-    # Régénérer les menus si la version est prête
+    except HTTPException as exc:
+        db.rollback()
+        _discard_partial_iso_upload(
+            iso_pack_dir=iso_pack_dir,
+            iso_file=iso_written_path,
+            boot_files_written=saved_boot_paths,
+        )
+        raise exc
+    except OSError as exc:
+        db.rollback()
+        _discard_partial_iso_upload(
+            iso_pack_dir=iso_pack_dir,
+            iso_file=iso_written_path,
+            boot_files_written=saved_boot_paths,
+        )
+        en = getattr(exc, "errno", None)
+        win = getattr(exc, "winerror", None)
+        if en == errno.ENOSPC or win == 112:
+            raise HTTPException(
+                status_code=507,
+                detail=translate(lang, "iso.upload.disk_full"),
+            ) from exc
+        logger.warning("Erreur I/O lors d'un upload ISO : %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=translate(lang, "iso.upload.io_error"),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        _discard_partial_iso_upload(
+            iso_pack_dir=iso_pack_dir,
+            iso_file=iso_written_path,
+            boot_files_written=saved_boot_paths,
+        )
+        logger.exception("Échec lors d'un upload ISO")
+        raise HTTPException(
+            status_code=500,
+            detail=translate(lang, "iso.upload.io_error"),
+        ) from exc
+
     if version.status == "ready":
         from app.services.menu_generator import regenerate_all
+
         regenerate_all(db)
 
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
 
 
+# ── Detail ────────────────────────────────────────────────────────────────────
 # ── Detail ────────────────────────────────────────────────────────────────────
 
 @router.get("/{version_id}", response_class=HTMLResponse)
