@@ -196,9 +196,9 @@ const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows']);
 const DISTRO_HINTS = {
   debian:  { kernel: 'vmlinuz',    initrd: 'initrd.gz',      hint: 'vmlinuz + initrd.gz' },
   ubuntu:  { kernel: 'vmlinuz',    initrd: 'initrd',         hint: UBUNTU_HINT, fullExtract: true },
-  centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
-  rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
-  alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
+  rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
+  alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
   fedora:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
   proxmox: { kernel: 'linux26 / vmlinuz', initrd: 'initrd.img', hint: 'linux26 + initrd.img' },
   alpine:  { kernel: 'vmlinuz-lts', initrd: 'initramfs-lts', hint: 'vmlinuz-lts + initramfs-lts + modloop-lts', modloop: true },

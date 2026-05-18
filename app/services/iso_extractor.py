@@ -57,9 +57,9 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd":  ["initrd", "initrd.gz", "initrd.lz", "initrd.lz4"],
         "extra":   {},
     },
-    # CentOS / Fedora — vmlinuz + initrd.img (extraction partielle)
+    # CentOS — extraction complète EL (Anaconda : inst.repo= comme Rocky / Alma ; isolinux ou images/pxeboot)
     "centos": {
-        "type":    "linux",
+        "type":    "centos",
         "kernel":  ["vmlinuz"],
         "initrd":  ["initrd.img"],
         "extra":   {},
@@ -184,7 +184,7 @@ def extract_iso(
         logger.info("Extraction terminée : %s", paths)
         return paths
 
-    if rule["type"] in ("windows", "ubuntu", "rocky", "alma"):
+    if rule["type"] in ("windows", "ubuntu", "rocky", "alma", "centos"):
         # Extraction COMPLÈTE de l'ISO directement dans dest
         # Windows : tous les fichiers nécessaires pour setup.exe via Samba/HTTP
         # Ubuntu  : contenu ISO nécessaire pour cloud-init autoinstall via HTTP
@@ -982,7 +982,7 @@ def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
 
 def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
     """
-    Après extraction complète d'une ISO EL (Rocky, AlmaLinux, …) dans ``dest``,
+    Après extraction complète d'une ISO EL (Rocky, AlmaLinux, CentOS, …) dans ``dest``,
     localise vmlinuz + initrd.img dans ``images/pxeboot/`` (ou équivalent).
     Le reste de l'arbre (BaseOS, Appstream, .treeinfo, images/install.img) reste servi via HTTP.
     """

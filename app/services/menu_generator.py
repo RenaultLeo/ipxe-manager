@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
-# Rocky / AlmaLinux : ISO extraite en entier ; inst.repo= → boot/<slug>/<version>/
-_EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma"})
+# EL + Anaconda (Rocky, AlmaLinux, CentOS, …) : ISO extraite en entier ; inst.repo= → boot/<slug>/<version>/
+_EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma", "centos"})
 
 # Dépôt APK public par défaut (installateur netboot Alpine)
 ALPINE_REPO_DEFAULT_PUBLIC = "http://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
@@ -497,7 +497,7 @@ def _build_kernel_args(
     ``netboot=nfs``, ``nfsroot=hôte:chemin``, et si besoin ``nfsopts=…`` (voir casper(7) —
     ne pas coller ``,vers=`` dans nfsroot).
 
-    Pour **Rocky** / **AlmaLinux** (ISO extraite en entier) : ajoute ``inst.repo=`` (URL du
+    Pour **Rocky** / **AlmaLinux** / **CentOS** (ISO extraite en entier) : ajoute ``inst.repo=`` (URL du
     répertoire racine servi par HTTP, avec ``.treeinfo``) et ``ip=dhcp`` si absent — requis
     par Anaconda/dracut.
     """
@@ -516,7 +516,7 @@ def _build_kernel_args(
             if "modloop=" not in args:
                 args = f"{args} modloop={modloop_url}".strip()
 
-    # Rocky / AlmaLinux (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
+    # Rocky / AlmaLinux / CentOS (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
     if os_slug in _EL_ANACONDA_FULL_ISO_SLUGS and be:
         seg = _boot_os_version_segment(be, os_slug)
         if seg and "inst.repo=" not in args:

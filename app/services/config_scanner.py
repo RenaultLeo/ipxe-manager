@@ -161,9 +161,9 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         # Debian preseed
         return f"auto=true priority=critical preseed/url={url}"
     elif config_type == "kickstart":
-        if os_slug in ("fedora", "rocky", "alma"):
+        if os_slug in ("fedora", "rocky", "alma", "centos"):
             return f"inst.ks={url}"
-        else:  # centos, esxi…
+        else:  # esxi…
             return f"ks={url}"
     elif config_type == "cloud-init":
         # Ubuntu autoinstall (nocloud-net) — URL du dossier, toujours avec / final
