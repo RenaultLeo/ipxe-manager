@@ -27,6 +27,13 @@ from app.services.iso_extractor import (
 
 logger = logging.getLogger(__name__)
 
+# Extraction complète « intégrée » dans ``iso_extractor.extract_iso`` (7z + détection vmlinuz/initrd).
+# Si l’admin coche « extraction complète » sur le type d’OS sans liste de noms, on évite l’erreur
+# « Configuration vide » et on délègue au moteur intégré (Fedora / EL / Ubuntu / Windows comme en seed).
+_BUILTIN_FULL_ISO_SLUGS = frozenset(
+    {"windows", "ubuntu", "rocky", "alma", "centos", "fedora"}
+)
+
 
 @dataclass
 class _UnifiedSpec:
@@ -130,6 +137,14 @@ def try_extract_with_plan(
         and not unified
     )
     if not unified and not esxi_full_skip_specs:
+        slug_lc = (os_slug or "").strip().lower()
+        if getattr(ot, "extract_full_iso", False) and slug_lc in _BUILTIN_FULL_ISO_SLUGS:
+            logger.info(
+                'Extraction : slug « %s », extract_full_iso sans noms dans Paramètres — '
+                "recours à iso_extractor (règles intégrées).",
+                slug_lc,
+            )
+            return None
         raise ExtractionError(
             "Configuration d'extraction vide ou invalide (noms / motifs)."
         )

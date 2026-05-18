@@ -25,6 +25,10 @@ class ExtractionError(Exception):
     pass
 
 
+# Initrd Anaconda / netboot (EL, Fedora) : plusieurs noms selon l’ISO (Live, ISO anciennes).
+_ANACONDA_INITRD_CANDIDATES = ("initrd.img", "initrd0.img", "initrd")
+
+
 # ── Règles par distribution ────────────────────────────────────────────────────
 # Chaque entrée : liste de noms exacts OU préfixes (terminant par "*")
 
@@ -61,27 +65,27 @@ DISTRO_RULES: dict[str, dict] = {
     "centos": {
         "type":    "centos",
         "kernel":  ["vmlinuz"],
-        "initrd":  ["initrd.img"],
+        "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
     # Rocky Linux — extraction complète (Anaconda : inst.repo= en génération de menus)
     "rocky": {
         "type":    "rocky",
         "kernel":  ["vmlinuz"],
-        "initrd":  ["initrd.img"],
+        "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
     # AlmaLinux — même schéma EL que Rocky (BaseOS, Appstream, images/pxeboot, .treeinfo)
     "alma": {
         "type":    "alma",
         "kernel":  ["vmlinuz"],
-        "initrd":  ["initrd.img"],
+        "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
     "fedora": {
         "type":    "fedora",
         "kernel":  ["vmlinuz"],
-        "initrd":  ["initrd.img"],
+        "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
     # Proxmox VE — linux26 (v7) ou vmlinuz (v8) + initrd.img
@@ -1011,12 +1015,22 @@ def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, r
         result["initrd_path"] = f"{base}/{rel.as_posix()}"
         logger.info("%s initrd : %s", label, rel)
     else:
-        logger.warning("%s : initrd non trouvé (cherché initrd.img)", label)
+        logger.warning("%s : initrd non trouvé (cherché %s)", label, ", ".join(initrd_names))
 
-    if not result:
+    if not result.get("kernel_path") and not result.get("initrd_path"):
         raise ExtractionError(
-            f"Aucun fichier de boot {os_slug} (vmlinuz / initrd.img) trouvé dans l'ISO."
+            f"Aucun fichier de boot {os_slug} (vmlinuz / initrd) trouvé dans l'ISO."
         )
+    if not result.get("kernel_path"):
+        raise ExtractionError(
+            f"{os_slug} : noyau (vmlinuz) introuvable après extraction complète de l’ISO."
+        )
+    if not result.get("initrd_path"):
+        raise ExtractionError(
+            f"{os_slug} : initrd introuvable (essayé : {', '.join(initrd_names)}). "
+            "Vérifiez que l’ISO contient bien images/pxeboot/ ou isolinux/ ; en dernier recours utilisez l’ISO « Everything » ou netinst."
+        )
+
     logger.info(
         "Extraction %s complète — kernel=%s initrd=%s",
         os_slug,
