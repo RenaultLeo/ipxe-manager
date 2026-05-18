@@ -308,7 +308,7 @@
         <i class="bi bi-plus-circle me-1"></i>{{ t('menu.chain_add') }}
       </div>
       <div class="card-body">
-        <form method="post" action="/ipxe-menus/chains/add" class="row g-2 align-items-end">
+        <form id="form-chain-add" method="post" action="/ipxe-menus/chains/add" class="row g-2 align-items-end">
           <div class="col-md-4">
             <label class="form-label small">{{ t('menu.chain_menu_label') }}</label>
             <input type="text" name="name" class="form-control form-control-sm"
@@ -320,7 +320,7 @@
                    placeholder="{{ t('menu.chain_url_ph') }}" required>
           </div>
           <div class="col-md-2">
-            <button class="btn btn-info btn-sm w-100">
+            <button type="submit" class="btn btn-info btn-sm w-100">
               <i class="bi bi-plus-circle me-1"></i>{{ t('sett.add') }}
             </button>
           </div>
@@ -329,8 +329,8 @@
     </div>
 
     <!-- Liste des chainloads -->
-    {% if remote_chains %}
-    <div class="table-responsive">
+    {% set has_chains = remote_chains|length > 0 %}
+    <div class="table-responsive {% if not has_chains %}d-none{% endif %}" id="chains-table-wrap">
       <table class="table table-dark table-hover table-bordered align-middle">
         <thead>
           <tr>
@@ -340,9 +340,11 @@
             <th class="text-center" style="width:80px">{{ t('menu.chain_col_action') }}</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="chains-tbody">
           {% for rc in remote_chains %}
-          <tr class="{% if not rc.enabled %}opacity-50{% endif %}">
+          <tr class="{% if not rc.enabled %}opacity-50{% endif %}"
+              data-chain-id="{{ rc.id }}"
+              data-chain-name={{ rc.name|tojson }}>
             <td>
               <i class="bi bi-diagram-3 me-2 text-info"></i>
               <strong>{{ rc.name }}</strong>
@@ -351,31 +353,26 @@
               <code class="small text-break">{{ rc.url }}</code>
             </td>
             <td class="text-center">
-              <form method="post" action="/ipxe-menus/chains/{{ rc.id }}/toggle" class="d-inline">
-                <button type="submit" class="btn btn-sm {% if rc.enabled %}btn-success{% else %}btn-outline-secondary{% endif %}"
-                        title="{% if rc.enabled %}{{ t('menu.toggle_disable') }}{% else %}{{ t('menu.toggle_enable') }}{% endif %}">
-                  <i class="bi {% if rc.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
-                </button>
-              </form>
+              <button type="button"
+                      class="btn btn-sm chain-toggle {% if rc.enabled %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                      title="{% if rc.enabled %}{{ t('menu.toggle_disable') }}{% else %}{{ t('menu.toggle_enable') }}{% endif %}">
+                <i class="bi {% if rc.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+              </button>
             </td>
             <td class="text-center">
-              <form method="post" action="/ipxe-menus/chains/{{ rc.id }}/delete" class="d-inline"
-                    onsubmit="return confirm(MSG_DEL_CHAIN.replace('{name}', {{ rc.name|tojson }}));">
-                <button type="submit" class="btn btn-outline-danger btn-sm" title="{{ t('menu.btn_delete') }}">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </form>
+              <button type="button" class="btn btn-outline-danger btn-sm chain-delete"
+                      title="{{ t('menu.btn_delete') }}">
+                <i class="bi bi-trash"></i>
+              </button>
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% else %}
-    <div class="alert alert-secondary">
+    <div id="chains-empty-hint" class="alert alert-secondary {% if has_chains %}d-none{% endif %}">
       <i class="bi bi-info-circle me-2"></i>{{ t('menu.chains_none') }}
     </div>
-    {% endif %}
 
   </div><!-- /pane-chains -->
 
@@ -386,6 +383,11 @@
 <script>
 const MSG_DEL_SCRIPT = {{ t('menu.confirm_delete_script')|tojson }};
 const MSG_DEL_CHAIN = {{ t('menu.confirm_delete_chain')|tojson }};
+const CHAIN_UI = {
+  titleEnable: {{ t('menu.toggle_enable')|tojson }},
+  titleDisable: {{ t('menu.toggle_disable')|tojson }},
+  btnDeleteTitle: {{ t('menu.btn_delete')|tojson }},
+};
 
 function toggleEdit(editId, viewId) {
   document.getElementById(editId).classList.toggle('d-none');
@@ -433,6 +435,162 @@ function confirmDelete(id, filename) {
     document.getElementById('delete-form-' + id).submit();
   }
 }
+
+function chainRowSetEnabled(tr, enabled) {
+  tr.classList.toggle('opacity-50', !enabled);
+}
+
+function chainToggleButtonSync(btn, enabled) {
+  btn.title = enabled ? CHAIN_UI.titleDisable : CHAIN_UI.titleEnable;
+  btn.classList.remove('btn-success', 'btn-outline-secondary');
+  btn.classList.add(enabled ? 'btn-success' : 'btn-outline-secondary');
+  const ic = btn.querySelector('i');
+  if (ic) {
+    ic.className = 'bi ' + (enabled ? 'bi-toggle-on' : 'bi-toggle-off');
+  }
+}
+
+function chainCreateRow(c) {
+  const tr = document.createElement('tr');
+  tr.dataset.chainId = String(c.id);
+  tr.dataset.chainName = c.name;
+  if (!c.enabled) tr.classList.add('opacity-50');
+
+  const td1 = document.createElement('td');
+  td1.innerHTML = '<i class="bi bi-diagram-3 me-2 text-info"></i>';
+  const strong = document.createElement('strong');
+  strong.textContent = c.name;
+  td1.appendChild(strong);
+
+  const td2 = document.createElement('td');
+  const code = document.createElement('code');
+  code.className = 'small text-break';
+  code.textContent = c.url;
+  td2.appendChild(code);
+
+  const td3 = document.createElement('td');
+  td3.className = 'text-center';
+  const tbtn = document.createElement('button');
+  tbtn.type = 'button';
+  tbtn.className = 'btn btn-sm chain-toggle ' + (c.enabled ? 'btn-success' : 'btn-outline-secondary');
+  tbtn.title = c.enabled ? CHAIN_UI.titleDisable : CHAIN_UI.titleEnable;
+  tbtn.innerHTML = '<i class="bi ' + (c.enabled ? 'bi-toggle-on' : 'bi-toggle-off') + '"></i>';
+  td3.appendChild(tbtn);
+
+  const td4 = document.createElement('td');
+  td4.className = 'text-center';
+  const dbtn = document.createElement('button');
+  dbtn.type = 'button';
+  dbtn.className = 'btn btn-outline-danger btn-sm chain-delete';
+  dbtn.title = CHAIN_UI.btnDeleteTitle;
+  dbtn.innerHTML = '<i class="bi bi-trash"></i>';
+  td4.appendChild(dbtn);
+
+  tr.appendChild(td1);
+  tr.appendChild(td2);
+  tr.appendChild(td3);
+  tr.appendChild(td4);
+  return tr;
+}
+
+async function chainFetch(url, init) {
+  const r = await fetch(url, {
+    credentials: 'same-origin',
+    ...init,
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'fetch',
+      ...(init && init.headers ? init.headers : {}),
+    },
+  });
+  if (r.status === 401) {
+    window.location.href = '/login';
+    return null;
+  }
+  return r;
+}
+
+(function chainsPanelAjax() {
+  const tbody = document.getElementById('chains-tbody');
+  const tableWrap = document.getElementById('chains-table-wrap');
+  const emptyHint = document.getElementById('chains-empty-hint');
+  const addForm = document.getElementById('form-chain-add');
+  if (!tbody || !tableWrap || !emptyHint) return;
+
+  function showEmptyState() {
+    tableWrap.classList.add('d-none');
+    emptyHint.classList.remove('d-none');
+  }
+
+  function hideEmptyState() {
+    tableWrap.classList.remove('d-none');
+    emptyHint.classList.add('d-none');
+  }
+
+  if (addForm) {
+    addForm.addEventListener('submit', async function(ev) {
+      ev.preventDefault();
+      const sub = addForm.querySelector('button[type="submit"]');
+      const fd = new FormData(addForm);
+      if (sub) sub.disabled = true;
+      const r = await chainFetch('/ipxe-menus/chains/add', { method: 'POST', body: fd });
+      if (sub) sub.disabled = false;
+      if (!r) return;
+      let data = {};
+      try { data = await r.json(); } catch (e) {}
+      if (r.ok && data.ok && data.chain) {
+        hideEmptyState();
+        tbody.appendChild(chainCreateRow(data.chain));
+        addForm.reset();
+        return;
+      }
+      const err = (data && (data.detail || data.error)) ? (data.detail || data.error) : ('HTTP ' + r.status);
+      alert(err);
+    });
+  }
+
+  tbody.addEventListener('click', async function(ev) {
+    const tDel = ev.target.closest('.chain-delete');
+    const tTog = ev.target.closest('.chain-toggle');
+    const tr = (tDel || tTog) && (tDel || tTog).closest('tr');
+    if (!tr || !tr.dataset.chainId) return;
+
+    if (tDel) {
+      const nm = tr.dataset.chainName || '';
+      if (!confirm(MSG_DEL_CHAIN.replace('{name}', nm))) return;
+      const r = await chainFetch('/ipxe-menus/chains/' + encodeURIComponent(tr.dataset.chainId) + '/delete', {
+        method: 'POST',
+      });
+      if (!r) return;
+      let data = {};
+      try { data = await r.json(); } catch (e) {}
+      if (r.ok && data.ok) {
+        tr.remove();
+        if (!tbody.children.length) showEmptyState();
+        return;
+      }
+      alert((data && (data.detail || data.error)) || ('HTTP ' + r.status));
+      return;
+    }
+
+    if (tTog) {
+      tTog.disabled = true;
+      const r = await chainFetch('/ipxe-menus/chains/' + encodeURIComponent(tr.dataset.chainId) + '/toggle', {
+        method: 'POST',
+      });
+      tTog.disabled = false;
+      if (!r) return;
+      let data = {};
+      try { data = await r.json(); } catch (e) {}
+      if (r.ok && data.ok === true && typeof data.enabled === 'boolean') {
+        chainToggleButtonSync(tTog, data.enabled);
+        chainRowSetEnabled(tr, data.enabled);
+        return;
+      }
+      alert((data && (data.detail || data.error)) || ('HTTP ' + r.status));
+    }
+  });
+})();
 
 // Ré-ouvrir le bon onglet selon ?tab= dans l'URL
 (function() {

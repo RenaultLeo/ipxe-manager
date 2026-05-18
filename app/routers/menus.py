@@ -3,7 +3,7 @@ import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -21,6 +21,25 @@ router = APIRouter(prefix="/ipxe-menus")
 def _auth(request: Request):
     if not is_authenticated(request):
         return RedirectResponse("/login", status_code=302)
+    return None
+
+
+def _wants_json(request: Request) -> bool:
+    return "application/json" in (request.headers.get("accept") or "").lower()
+
+
+def _json_or_redirect_unauth(request: Request, redir):
+    """Si non authentifié : JSON 401 pour fetch/AJAX, sinon redirection login."""
+    if redir is None:
+        return None
+    if _wants_json(request):
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    return redir
+
+
+def _not_found_chain_response(request: Request):
+    if _wants_json(request):
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     return None
 
 
@@ -241,16 +260,28 @@ async def chain_add(
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
-    if redir:
-        return redir
+    unauth = _json_or_redirect_unauth(request, redir)
+    if unauth is not None:
+        return unauth
     chain = RemoteChain(name=name.strip(), url=url.strip())
     db.add(chain)
     db.commit()
+    db.refresh(chain)
     try:
         from app.services.menu_generator import regenerate_all
         regenerate_all(db)
     except Exception:
         logger.exception("Erreur régénération menus après ajout chain")
+    if _wants_json(request):
+        return JSONResponse({
+            "ok": True,
+            "chain": {
+                "id": chain.id,
+                "name": chain.name,
+                "url": chain.url,
+                "enabled": chain.enabled,
+            },
+        })
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
@@ -261,10 +292,14 @@ async def chain_delete(
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
-    if redir:
-        return redir
+    unauth = _json_or_redirect_unauth(request, redir)
+    if unauth is not None:
+        return unauth
     chain = db.query(RemoteChain).get(chain_id)
     if not chain:
+        nf = _not_found_chain_response(request)
+        if nf is not None:
+            return nf
         raise HTTPException(404)
     db.delete(chain)
     db.commit()
@@ -273,6 +308,8 @@ async def chain_delete(
         regenerate_all(db)
     except Exception:
         logger.exception("Erreur régénération menus après suppression chain")
+    if _wants_json(request):
+        return JSONResponse({"ok": True})
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
@@ -283,10 +320,14 @@ async def chain_toggle(
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
-    if redir:
-        return redir
+    unauth = _json_or_redirect_unauth(request, redir)
+    if unauth is not None:
+        return unauth
     chain = db.query(RemoteChain).get(chain_id)
     if not chain:
+        nf = _not_found_chain_response(request)
+        if nf is not None:
+            return nf
         raise HTTPException(404)
     chain.enabled = not chain.enabled
     db.commit()
@@ -295,6 +336,8 @@ async def chain_toggle(
         regenerate_all(db)
     except Exception:
         logger.exception("Erreur régénération menus après toggle chain")
+    if _wants_json(request):
+        return JSONResponse({"ok": True, "enabled": chain.enabled})
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
