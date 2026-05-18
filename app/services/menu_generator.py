@@ -531,6 +531,11 @@ def _build_kernel_args(
             )
         if not _has_ip_kernel_arg(args):
             args = f"ip=dhcp {args}".strip()
+        # Doc iPXE Fedora : le noyau attend souvent initrd=<nom> sur la même « ligne » args (dracut)
+        if be.initrd_path and not re.search(r"(?:^|\s)initrd=", args):
+            init_bn = be.initrd_path.replace("\\", "/").rstrip("/").split("/")[-1]
+            if init_bn:
+                args = f"{args} initrd={init_bn}".strip()
 
     # Ubuntu ISO extraite : indiquer explicitement NFS pour monter casper depuis la racine exportée.
     if os_slug.lower() != "ubuntu" or not nfsroot_pair or "nfsroot=" in args:

@@ -84,7 +84,8 @@ DISTRO_RULES: dict[str, dict] = {
     },
     "fedora": {
         "type":    "fedora",
-        "kernel":  ["vmlinuz"],
+        # Live Workstation : boot/x86_64/loader/linux + initrd (pas toujours images/pxeboot/vmlinuz)
+        "kernel":  ["vmlinuz", "linux"],
         "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
@@ -987,7 +988,8 @@ def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
 def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
     """
     Après extraction complète d'une ISO EL/Fedora (Rocky, AlmaLinux, CentOS, Fedora, …) dans ``dest``,
-    localise vmlinuz + initrd.img dans ``images/pxeboot/`` (ou équivalent).
+    localise vmlinuz ou ``linux`` (Fedora Live : ``boot/*/loader/``) + initrd sous
+    ``images/pxeboot/``, ``isolinux/``, ``loader/``, etc.
     Le reste de l'arbre (BaseOS, Appstream, .treeinfo, images/install.img) reste servi via HTTP.
     """
     label = os_slug.upper()
@@ -995,7 +997,9 @@ def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, r
     base = f"boot/{os_slug}/{version_slug}"
     kernel_names: list[str] = rule.get("kernel") or ["vmlinuz"]
     initrd_names: list[str] = rule.get("initrd") or ["initrd.img"]
-    rhel_boot_pref = frozenset({"pxeboot", "images", "efi", "boot", "isolinux"})
+    rhel_boot_pref = frozenset(
+        {"pxeboot", "images", "efi", "boot", "isolinux", "loader"}
+    )
 
     kernel = _find_in_dest(
         dest, kernel_names, mode="kernel", preferred_parent_names=rhel_boot_pref
@@ -1005,7 +1009,11 @@ def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, r
         result["kernel_path"] = f"{base}/{rel.as_posix()}"
         logger.info("%s kernel : %s", label, rel)
     else:
-        logger.warning("%s : kernel non trouvé dans l'ISO (cherché vmlinuz)", label)
+        logger.warning(
+            "%s : noyau non trouvé (essayé : %s)",
+            label,
+            ", ".join(kernel_names),
+        )
 
     initrd = _find_in_dest(
         dest, initrd_names, mode="initrd", preferred_parent_names=rhel_boot_pref
@@ -1023,12 +1031,13 @@ def _find_el_anaconda_iso_in_dest(dest: Path, os_slug: str, version_slug: str, r
         )
     if not result.get("kernel_path"):
         raise ExtractionError(
-            f"{os_slug} : noyau (vmlinuz) introuvable après extraction complète de l’ISO."
+            f"{os_slug} : noyau introuvable après extraction (essayé : {', '.join(kernel_names)}). "
+            "Fedora Live : chercher boot/*/loader/linux ; DVD : images/pxeboot/vmlinuz."
         )
     if not result.get("initrd_path"):
         raise ExtractionError(
             f"{os_slug} : initrd introuvable (essayé : {', '.join(initrd_names)}). "
-            "Vérifiez que l’ISO contient bien images/pxeboot/ ou isolinux/ ; en dernier recours utilisez l’ISO « Everything » ou netinst."
+            "Vérifiez images/pxeboot/, isolinux/ ou boot/*/loader/ ; sinon ISO « Everything » ou netinst (cf. iPXE howto Fedora)."
         )
 
     logger.info(
