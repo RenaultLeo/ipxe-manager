@@ -205,15 +205,15 @@
             </td>
             <td class="text-center">
               <div class="d-flex gap-1 justify-content-center">
-                <button class="btn btn-outline-info btn-sm"
+                <button class="btn btn-outline-info btn-sm" type="button"
                         onclick="openScriptPanel({{ s.boot_entry_id }})">
                   <i class="bi bi-eye me-1"></i>{{ t('menu.btn_view') }}
                 </button>
-                <button class="btn btn-outline-warning btn-sm"
+                <button class="btn btn-outline-warning btn-sm" type="button"
                         onclick="openScriptEditor({{ s.boot_entry_id }})">
                   <i class="bi bi-pencil me-1"></i>{{ t('menu.btn_edit') }}
                 </button>
-                <button class="btn btn-outline-danger btn-sm"
+                <button class="btn btn-outline-danger btn-sm" type="button"
                         onclick="confirmDelete({{ s.boot_entry_id }}, {{ s.filename|tojson }})">
                   <i class="bi bi-trash me-1"></i>{{ t('menu.btn_delete') }}
                 </button>
@@ -233,17 +233,17 @@
                   <span class="badge bg-secondary">{{ s.os_label }}</span>
                   <span class="text-secondary small">{{ s.version_label }}</span>
                   <div class="ms-auto d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-secondary active"
+                    <button type="button" class="btn btn-sm btn-outline-secondary active"
                             id="btn-view-{{ s.boot_entry_id }}"
                             onclick="switchPanelMode({{ s.boot_entry_id }}, 'view')">
                       {{ t('menu.preview') }}
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary"
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
                             id="btn-edit-{{ s.boot_entry_id }}"
                             onclick="switchPanelMode({{ s.boot_entry_id }}, 'edit')">
                       {{ t('menu.editor') }}
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary"
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
                             onclick="closePanel({{ s.boot_entry_id }})">
                       <i class="bi bi-x"></i>
                     </button>
@@ -359,7 +359,7 @@
               </form>
             </td>
             <td class="text-center">
-              <button class="btn btn-outline-danger btn-sm"
+              <button type="button" class="btn btn-outline-danger btn-sm"
                       onclick="confirmDeleteChain({{ rc.id }}, {{ rc.name|tojson }})">
                 <i class="bi bi-trash"></i>
               </button>
