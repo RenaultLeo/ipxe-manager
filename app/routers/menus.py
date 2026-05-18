@@ -2,7 +2,7 @@ import logging
 import traceback
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -73,10 +73,17 @@ def _collect_custom_scripts(db: Session) -> list[dict]:
 
 
 @router.get("", response_class=HTMLResponse)
-async def menus_list(request: Request, db: Session = Depends(get_db)):
+async def menus_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    tab: str | None = Query(None, description="Onglet pré-ouvert : custom, chains."),
+):
     redir = _auth(request)
     if redir:
         return redir
+
+    raw_tab = (tab or "").strip().lower()
+    active_tab = raw_tab if raw_tab in ("custom", "chains") else ""
 
     remote_chains = db.query(RemoteChain).order_by(RemoteChain.id).all()
     iso_versions = (
@@ -96,6 +103,7 @@ async def menus_list(request: Request, db: Session = Depends(get_db)):
             iso_versions=iso_versions,
             server_url=settings.server_base_url,
             remote_chains=remote_chains,
+            active_tab=active_tab,
         ),
     )
 
@@ -141,6 +149,7 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
                 error=err,
                 custom_scripts=[],
                 remote_chains=[],
+                active_tab="",
             ),
             status_code=500,
         )
