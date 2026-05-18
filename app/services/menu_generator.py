@@ -22,7 +22,7 @@ TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma"})
 
 # Dépôt APK public par défaut (installateur netboot Alpine)
-ALPINE_REPO_DEFAULT_PUBLIC = "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
+ALPINE_REPO_DEFAULT_PUBLIC = "http://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
 
 MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 
