@@ -74,6 +74,8 @@ class BootEntry(Base):
 
     # Alpine Linux — modloop (module loop filesystem)
     modloop_path = Column(String(512))
+    # Alpine : URL du dépôt APK (vide = CDN public par défaut dans menu_generator)
+    alpine_repo_url = Column(String(512))
 
     # Script iPXE personnalisé (optionnel — chainload custom)
     custom_ipxe_path = Column(String(512))

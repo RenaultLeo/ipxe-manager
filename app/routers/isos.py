@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Query
+from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ from app.auth import is_authenticated
 from app.i18n import translate
 from app.models.models import OsType, IsoVersion, Upload, BootEntry
 from app.services.disk_info import fmt_size
+from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC, regenerate_all
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
 from app.config import settings
@@ -283,6 +284,21 @@ def _discard_partial_iso_upload(
             pass
 
 
+def _normalize_alpine_repo_url(lang: str, raw: str) -> str:
+    """Valide une URL de dépôt APK Alpine (HTTPS/HTTP uniquement)."""
+    s = (raw or "").strip()
+    if not s:
+        raise HTTPException(400, translate(lang, "iso.upload.alpine_repo_required"))
+    if len(s) > 512:
+        raise HTTPException(400, translate(lang, "iso.upload.alpine_repo_too_long"))
+    if "\n" in s or "\r" in s or "\t" in s:
+        raise HTTPException(400, translate(lang, "iso.upload.alpine_repo_invalid"))
+    low = s.lower()
+    if not (low.startswith("http://") or low.startswith("https://")):
+        raise HTTPException(400, translate(lang, "iso.upload.alpine_repo_invalid"))
+    return s
+
+
 def _route_linux_manual_file(
     be: BootEntry,
     ot: OsType,
@@ -343,6 +359,8 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     version_label = str(form.get("version_label") or "").strip()
     notes = str(form.get("notes") or "").strip()
     kernel_args = str(form.get("kernel_args") or "").strip()
+    alpine_repo_custom_raw = form.get("alpine_repo_custom")
+    alpine_repo_url_raw = str(form.get("alpine_repo_url") or "").strip()
 
     if not version_label:
         raise HTTPException(400, "Label de version requis")
@@ -430,6 +448,17 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
 
         boot_dir.mkdir(parents=True, exist_ok=True)
         be = BootEntry(iso_version_id=version.id, kernel_args=kernel_args)
+        if os_type.slug == "alpine":
+            alpine_custom_on = str(alpine_repo_custom_raw or "").strip().lower() in (
+                "1",
+                "on",
+                "true",
+                "yes",
+            )
+            if alpine_custom_on:
+                be.alpine_repo_url = _normalize_alpine_repo_url(lang, alpine_repo_url_raw)
+            else:
+                be.alpine_repo_url = None
         db.add(be)
 
         has_boot_files = False
@@ -539,8 +568,6 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         ) from exc
 
     if version.status == "ready":
-        from app.services.menu_generator import regenerate_all
-
         regenerate_all(db)
 
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
@@ -594,8 +621,53 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             basename_report_items=basename_report_items,
             boot_extra_linux=boot_extra_linux,
             iso_file_exists=iso_file_exists,
+            alpine_repo_default_public=ALPINE_REPO_DEFAULT_PUBLIC,
         ),
     )
+
+
+@router.post("/{version_id}/alpine-repo")
+async def iso_alpine_repo_save(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    alpine_repo_custom: str | None = Form(None),
+    alpine_repo_url: str = Form(""),
+):
+    """Met à jour l’URL du dépôt APK Alpine (menus : paramètre ``alpine_repo=`` sur la ligne kernel)."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = db.query(IsoVersion).get(version_id)
+    if not version:
+        raise HTTPException(404, "Version introuvable")
+    if getattr(version.os_type, "slug", "") != "alpine":
+        raise HTTPException(
+            status_code=400,
+            detail=translate(lang, "iso.alpine_repo_not_alpine"),
+        )
+    be = getattr(version, "boot_entry", None)
+    if not be:
+        raise HTTPException(
+            status_code=400,
+            detail=translate(lang, "iso.alpine_repo_no_boot"),
+        )
+    custom_on = str(alpine_repo_custom or "").strip().lower() in (
+        "1",
+        "on",
+        "true",
+        "yes",
+    )
+    if custom_on:
+        be.alpine_repo_url = _normalize_alpine_repo_url(lang, alpine_repo_url)
+    else:
+        be.alpine_repo_url = None
+    db.add(be)
+    db.commit()
+    if version.status == "ready":
+        regenerate_all(db)
+    return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
 @router.post("/{version_id}/purge-iso-preference")

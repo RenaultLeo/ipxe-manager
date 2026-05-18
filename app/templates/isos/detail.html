@@ -159,6 +159,39 @@
           <dd class="col-8 font-monospace small text-break">{{ be.custom_ipxe_path }}</dd>
           {% endif %}
         </dl>
+
+        {% if version.os_type.slug == 'alpine' and be %}
+        <div class="mt-3 pt-3 border-top border-secondary">
+          <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.detail_alpine_repo_title') }}</h6>
+          <p class="small mb-3">
+            {% if be.alpine_repo_url %}
+              <span class="font-monospace text-break">{{ be.alpine_repo_url }}</span>
+            {% else %}
+              <span class="text-muted">{{ t('iso.detail_alpine_repo_default_value') }}</span>
+              <span class="d-block small mt-1 font-monospace text-break">{{ alpine_repo_default_public }}</span>
+            {% endif %}
+          </p>
+          <form method="post" action="/isos/{{ version.id }}/alpine-repo" class="row g-2 align-items-end">
+            <div class="col-12">
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" name="alpine_repo_custom" value="1" id="detail-alpine-repo-custom"
+                       {% if be.alpine_repo_url %}checked{% endif %}>
+                <label class="form-check-label" for="detail-alpine-repo-custom">{{ t('iso.upload.alpine_repo_switch') }}</label>
+              </div>
+            </div>
+            <div class="col-12 col-lg-10 d-none" id="detail-alpine-repo-url-wrap">
+              <label class="form-label small mb-1">{{ t('iso.upload.alpine_repo_url_label') }}</label>
+              <input type="text" name="alpine_repo_url" class="form-control form-control-sm font-monospace"
+                     value="{{ be.alpine_repo_url or '' }}"
+                     placeholder="{{ t('iso.upload.alpine_repo_placeholder') }}" autocomplete="off">
+            </div>
+            <div class="col-12 col-lg-auto">
+              <button type="submit" class="btn btn-primary btn-sm">{{ t('common.save') }}</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+
         {% else %}
         <p class="text-muted mb-0">
           Aucun fichier de boot extrait.
@@ -360,6 +393,17 @@
     }
     if (!await persist(true)) cb.checked = false;
   });
+})();
+
+(function () {
+  var cb = document.getElementById('detail-alpine-repo-custom');
+  var wrap = document.getElementById('detail-alpine-repo-url-wrap');
+  if (!cb || !wrap) return;
+  function syncDetailAlpine() {
+    wrap.classList.toggle('d-none', !cb.checked);
+  }
+  cb.addEventListener('change', syncDetailAlpine);
+  syncDetailAlpine();
 })();
 </script>
 {% endblock %}

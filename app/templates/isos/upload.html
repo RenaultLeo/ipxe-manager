@@ -107,6 +107,21 @@
                         <div class="form-text text-muted">{{ t('iso.upload.modloop_help') }}</div>
                       </div>
                     </div>
+                    <div class="row g-3 mt-2" id="field-alpine-repo" style="display:none">
+                      <div class="col-12">
+                        <div class="form-text text-muted mb-2">{{ t('iso.upload.alpine_repo_public_hint') }}</div>
+                        <div class="form-check form-switch mb-2">
+                          <input class="form-check-input" type="checkbox" name="alpine_repo_custom" value="1" id="alpine-repo-custom">
+                          <label class="form-check-label" for="alpine-repo-custom">{{ t('iso.upload.alpine_repo_switch') }}</label>
+                        </div>
+                        <div id="alpine-repo-url-wrap" class="d-none">
+                          <label class="form-label" for="alpine-repo-url">{{ t('iso.upload.alpine_repo_url_label') }}</label>
+                          <input type="text" name="alpine_repo_url" class="form-control font-monospace" id="alpine-repo-url"
+                                 autocomplete="off" placeholder="{{ t('iso.upload.alpine_repo_placeholder') }}">
+                          <div class="form-text text-muted">{{ t('iso.upload.alpine_repo_help') }}</div>
+                        </div>
+                      </div>
+                    </div>
                     <div class="row g-3 mt-1">
                       <div class="col-12">
                         <label class="form-label">{{ t('iso.upload.kernel_args') }}</label>
@@ -277,6 +292,20 @@ function updateLinuxFields() {
       distroBadge.classList.remove('d-none');
     }
   }
+
+  const alpBlock = document.getElementById('field-alpine-repo');
+  if (alpBlock) {
+    const showAlp = (slug === 'alpine');
+    alpBlock.style.display = showAlp ? '' : 'none';
+    if (!showAlp) {
+      const acb = document.getElementById('alpine-repo-custom');
+      const aurl = document.getElementById('alpine-repo-url');
+      const awrap = document.getElementById('alpine-repo-url-wrap');
+      if (acb) acb.checked = false;
+      if (aurl) aurl.value = '';
+      if (awrap) awrap.classList.add('d-none');
+    }
+  }
 }
 
 document.getElementById('os-select').addEventListener('change', function() {
@@ -339,6 +368,17 @@ document.getElementById('iso-file').addEventListener('change', function() {
   scheduleIsoDupCheck();
 });
 document.getElementById('version-label-input').addEventListener('input', scheduleIsoDupCheck);
+
+(function () {
+  const cb = document.getElementById('alpine-repo-custom');
+  const wrap = document.getElementById('alpine-repo-url-wrap');
+  if (!cb || !wrap) return;
+  function sync() {
+    wrap.classList.toggle('d-none', !cb.checked);
+  }
+  cb.addEventListener('change', sync);
+  sync();
+})();
 
 function sumChosenFileSizes(formEl) {
   let n = 0;

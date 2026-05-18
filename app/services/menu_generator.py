@@ -21,6 +21,9 @@ TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 # Rocky / AlmaLinux : ISO extraite en entier ; inst.repo= → boot/<slug>/<version>/
 _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma"})
 
+# Dépôt APK public par défaut (installateur netboot Alpine)
+ALPINE_REPO_DEFAULT_PUBLIC = "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
+
 MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 
 # VMware / OEM : parfois ``prefix-http=`` ou espaces ; sans ça la mise à jour pouvait tout ignorer (bug silencieux).
@@ -503,10 +506,15 @@ def _build_kernel_args(
     if os_slug.lower() == "esxi":
         return args.strip()
 
-    if os_slug == "alpine" and be and be.modloop_path:
-        modloop_url = _http(be.modloop_path, cfg)
-        if "modloop=" not in args:
-            args = f"{args} modloop={modloop_url}".strip()
+    if os_slug == "alpine" and be:
+        if "alpine_repo=" not in args:
+            custom = (getattr(be, "alpine_repo_url", None) or "").strip()
+            repo = custom if custom else ALPINE_REPO_DEFAULT_PUBLIC
+            args = f"{args} alpine_repo={repo}".strip()
+        if be.modloop_path:
+            modloop_url = _http(be.modloop_path, cfg)
+            if "modloop=" not in args:
+                args = f"{args} modloop={modloop_url}".strip()
 
     # Rocky / AlmaLinux (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
     if os_slug in _EL_ANACONDA_FULL_ISO_SLUGS and be:
