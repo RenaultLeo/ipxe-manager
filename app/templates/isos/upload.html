@@ -54,6 +54,13 @@
                 <span id="iso-dup-badge" class="badge bg-warning text-dark d-none">{{ t('iso.upload.iso_duplicate_badge') }}</span>
                 <span id="iso-dup-hint" class="small text-muted d-none">{{ t('iso.upload.iso_duplicate_hint') }}</span>
               </div>
+              <div id="field-fedora-live" class="mt-3 pt-3 border-top border-secondary" style="display:none">
+                <div class="form-check form-switch mb-1">
+                  <input class="form-check-input" type="checkbox" name="fedora_live_os" value="1" id="fedora-live-os">
+                  <label class="form-check-label" for="fedora-live-os">{{ t('iso.upload.fedora_live_label') }}</label>
+                </div>
+                <div class="form-text text-muted">{{ t('iso.upload.fedora_live_help') }}</div>
+              </div>
             </div>
           </div>
 
@@ -105,15 +112,6 @@
                         <label class="form-label">{{ t('iso.upload.modloop_label') }} <span class="text-muted small">(Alpine)</span></label>
                         <input type="file" name="file_modloop" class="form-control">
                         <div class="form-text text-muted">{{ t('iso.upload.modloop_help') }}</div>
-                      </div>
-                    </div>
-                    <div class="row g-3 mt-2" id="field-fedora-live" style="display:none">
-                      <div class="col-12">
-                        <div class="form-check form-switch mb-1">
-                          <input class="form-check-input" type="checkbox" name="fedora_live_os" value="1" id="fedora-live-os">
-                          <label class="form-check-label" for="fedora-live-os">{{ t('iso.upload.fedora_live_label') }}</label>
-                        </div>
-                        <div class="form-text text-muted">{{ t('iso.upload.fedora_live_help') }}</div>
                       </div>
                     </div>
                     <div class="row g-3 mt-2" id="field-alpine-repo" style="display:none">
@@ -208,7 +206,7 @@ const DISTRO_HINTS = {
   centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
   rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
   alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
-  fedora:  { kernel: 'vmlinuz ou linux', initrd: 'initrd', hint: 'ISO complète — cocher Live OS si Workstation Live', fullExtract: true },
+  fedora:  { kernel: 'vmlinuz ou linux', initrd: 'initrd', hint: 'ISO complète ; option Live près du fichier ISO', fullExtract: true },
   proxmox: { kernel: 'linux26 / vmlinuz', initrd: 'initrd.img', hint: 'linux26 + initrd.img' },
   alpine:  { kernel: 'vmlinuz-lts', initrd: 'initramfs-lts', hint: 'vmlinuz-lts + initramfs-lts + modloop-lts', modloop: true },
 };
@@ -337,7 +335,16 @@ function syncOsSelectUi() {
   const opt = sel.options[sel.selectedIndex];
   const bootType = opt.dataset.boot || '';
   document.getElementById('fields-linux').classList.toggle('d-none', bootType !== 'linux');
-  if (bootType === 'linux') updateLinuxFields();
+  if (bootType === 'linux') {
+    updateLinuxFields();
+  } else {
+    const fedLive = document.getElementById('field-fedora-live');
+    if (fedLive) {
+      fedLive.style.display = 'none';
+      const fl = document.getElementById('fedora-live-os');
+      if (fl) fl.checked = false;
+    }
+  }
 }
 syncOsSelectUi();
 
