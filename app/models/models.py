@@ -77,6 +77,9 @@ class BootEntry(Base):
     # Alpine : URL du dépôt APK (vide = CDN public par défaut dans menu_generator)
     alpine_repo_url = Column(String(512))
 
+    # Fedora ISO Live (Workstation) : root=live:http://…/LiveOS/squashfs.img au lieu de inst.stage2
+    live_os = Column(Boolean, default=False)
+
     # Script iPXE personnalisé (optionnel — chainload custom)
     custom_ipxe_path = Column(String(512))
 

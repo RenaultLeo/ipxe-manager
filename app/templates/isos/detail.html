@@ -160,6 +160,21 @@
           {% endif %}
         </dl>
 
+        {% if version.os_type.slug == 'fedora' and be %}
+        <div class="mt-3 pt-3 border-top border-secondary">
+          <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.detail_fedora_live_title') }}</h6>
+          <p class="small text-muted mb-2">{{ t('iso.detail_fedora_live_intro') }}</p>
+          <form method="post" action="/isos/{{ version.id }}/fedora-live" class="d-flex flex-wrap align-items-center gap-3">
+            <div class="form-check form-switch m-0">
+              <input class="form-check-input" type="checkbox" name="fedora_live_os" value="1" id="detail-fedora-live"
+                     {% if be.live_os %}checked{% endif %}>
+              <label class="form-check-label" for="detail-fedora-live">{{ t('iso.upload.fedora_live_label') }}</label>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">{{ t('common.save') }}</button>
+          </form>
+        </div>
+        {% endif %}
+
         {% if version.os_type.slug == 'alpine' and be %}
         <div class="mt-3 pt-3 border-top border-secondary">
           <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.detail_alpine_repo_title') }}</h6>

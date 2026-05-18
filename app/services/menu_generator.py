@@ -498,8 +498,8 @@ def _build_kernel_args(
     ne pas coller ``,vers=`` dans nfsroot).
 
     Pour **Rocky** / **AlmaLinux** / **CentOS** : ``inst.repo=`` vers la racine HTTP de l’ISO extraite.
-    Pour **Fedora** : ``inst.stage2=`` (même racine) et ``rd.neednet=1`` — flux Live / dracut conforme au boot PXE
-    (voir usages iPXE avec ``loader/linux``). ``ip=dhcp`` et ``initrd=<basename>`` si absents.
+    Pour **Fedora** (installateur) : ``inst.stage2=`` ; si **live_os** : ``root=live:…/LiveOS/squashfs.img``,
+    ``ro``, ``rd.live.image``. Dans tous les cas : ``rd.neednet=1``, ``ip=dhcp`` et ``initrd=<basename>`` si absents.
     """
     args = be.kernel_args if be and be.kernel_args else ""
 
@@ -522,7 +522,16 @@ def _build_kernel_args(
         if seg:
             root_url = _http(f"boot/{os_slug}/{seg}/", cfg)
             if root_url:
-                if os_slug == "fedora":
+                if os_slug == "fedora" and getattr(be, "live_os", False):
+                    squash_url = _http(f"boot/{os_slug}/{seg}/LiveOS/squashfs.img", cfg)
+                    if squash_url:
+                        if not re.search(r"(?:^|\s)root=live:", args):
+                            args = f"{args} root=live:{squash_url}".strip()
+                        if not re.search(r"(?:^|\s)ro(?:\s|$)", args):
+                            args = f"{args} ro".strip()
+                        if "rd.live.image" not in args:
+                            args = f"{args} rd.live.image".strip()
+                elif os_slug == "fedora":
                     if not re.search(r"(?:^|\s)inst\.stage2=", args):
                         args = f"{args} inst.stage2={root_url}".strip()
                 else:

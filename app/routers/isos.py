@@ -459,6 +459,13 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                 be.alpine_repo_url = _normalize_alpine_repo_url(lang, alpine_repo_url_raw)
             else:
                 be.alpine_repo_url = None
+        if os_type.slug == "fedora":
+            be.live_os = str(form.get("fedora_live_os") or "").strip().lower() in (
+                "1",
+                "on",
+                "true",
+                "yes",
+            )
         db.add(be)
 
         has_boot_files = False
@@ -663,6 +670,45 @@ async def iso_alpine_repo_save(
         be.alpine_repo_url = _normalize_alpine_repo_url(lang, alpine_repo_url)
     else:
         be.alpine_repo_url = None
+    db.add(be)
+    db.commit()
+    if version.status == "ready":
+        regenerate_all(db)
+    return RedirectResponse(f"/isos/{version_id}", status_code=302)
+
+
+@router.post("/{version_id}/fedora-live")
+async def iso_fedora_live_save(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    fedora_live_os: str | None = Form(None),
+):
+    """Active ou non le boot Fedora Live (``root=live:…/LiveOS/squashfs.img`` au lieu de ``inst.stage2``)."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = db.query(IsoVersion).get(version_id)
+    if not version:
+        raise HTTPException(404, "Version introuvable")
+    if getattr(version.os_type, "slug", "") != "fedora":
+        raise HTTPException(
+            status_code=400,
+            detail=translate(lang, "iso.fedora_live_not_fedora"),
+        )
+    be = getattr(version, "boot_entry", None)
+    if not be:
+        raise HTTPException(
+            status_code=400,
+            detail=translate(lang, "iso.fedora_live_no_boot"),
+        )
+    be.live_os = str(fedora_live_os or "").strip().lower() in (
+        "1",
+        "on",
+        "true",
+        "yes",
+    )
     db.add(be)
     db.commit()
     if version.status == "ready":
