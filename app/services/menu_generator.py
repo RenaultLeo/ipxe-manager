@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
-# Rocky, AlmaLinux, CentOS, Fedora : ISO extraite en entier ; inst.repo= → boot/<slug>/<version>/
+# Rocky, AlmaLinux, CentOS : inst.repo=  |  Fedora : inst.stage2= + rd.neednet=1 (Live / ISO extraite)
 _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma", "centos", "fedora"})
 
 # Dépôt APK public par défaut (installateur netboot Alpine)
@@ -497,9 +497,9 @@ def _build_kernel_args(
     ``netboot=nfs``, ``nfsroot=hôte:chemin``, et si besoin ``nfsopts=…`` (voir casper(7) —
     ne pas coller ``,vers=`` dans nfsroot).
 
-    Pour **Rocky** / **AlmaLinux** / **CentOS** / **Fedora** (ISO extraite en entier) : ajoute ``inst.repo=`` (URL du
-    répertoire racine servi par HTTP, avec ``.treeinfo``) et ``ip=dhcp`` si absent — requis
-    par Anaconda/dracut.
+    Pour **Rocky** / **AlmaLinux** / **CentOS** : ``inst.repo=`` vers la racine HTTP de l’ISO extraite.
+    Pour **Fedora** : ``inst.stage2=`` (même racine) et ``rd.neednet=1`` — flux Live / dracut conforme au boot PXE
+    (voir usages iPXE avec ``loader/linux``). ``ip=dhcp`` et ``initrd=<basename>`` si absents.
     """
     args = be.kernel_args if be and be.kernel_args else ""
 
@@ -516,19 +516,27 @@ def _build_kernel_args(
             if "modloop=" not in args:
                 args = f"{args} modloop={modloop_url}".strip()
 
-    # Rocky / AlmaLinux / CentOS / Fedora (ISO complète sous http) : inst.repo → racine extraction pour Anaconda
+    # Rocky / Alma / CentOS : inst.repo=  |  Fedora : inst.stage2= + rd.neednet=1
     if os_slug in _EL_ANACONDA_FULL_ISO_SLUGS and be:
         seg = _boot_os_version_segment(be, os_slug)
-        if seg and "inst.repo=" not in args:
-            repo_url = _http(f"boot/{os_slug}/{seg}/", cfg)
-            if repo_url:
-                args = f"{args} inst.repo={repo_url}".strip()
+        if seg:
+            root_url = _http(f"boot/{os_slug}/{seg}/", cfg)
+            if root_url:
+                if os_slug == "fedora":
+                    if not re.search(r"(?:^|\s)inst\.stage2=", args):
+                        args = f"{args} inst.stage2={root_url}".strip()
+                else:
+                    if "inst.repo=" not in args:
+                        args = f"{args} inst.repo={root_url}".strip()
         elif not seg:
             logger.warning(
-                '%s : inst.repo non ajouté — chemin kernel/initrd inattendu (pas de dossier sous "boot/%s/<version>/").',
+                '%s : inst.repo / inst.stage2 non ajouté — chemin kernel/initrd inattendu '
+                '(pas de dossier sous "boot/%s/<version>/").',
                 os_slug,
                 os_slug,
             )
+        if os_slug == "fedora" and not re.search(r"(?:^|\s)rd\.neednet=", args):
+            args = f"{args} rd.neednet=1".strip()
         if not _has_ip_kernel_arg(args):
             args = f"ip=dhcp {args}".strip()
         # Doc iPXE Fedora : le noyau attend souvent initrd=<nom> sur la même « ligne » args (dracut)
