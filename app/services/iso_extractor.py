@@ -809,7 +809,9 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
         raise ExtractionError("ESXi : mboot.c32 introuvable.")
     _esxi_ensure_lowercase_http_mirrors(dest, [mboot_path])
 
-    http_prefix = settings.server_base_url.rstrip("/") + f"/{base}/"
+    from app.config import resolve_server_base_url
+
+    http_prefix = resolve_server_base_url().rstrip("/") + f"/{base}/"
 
     managed, preload = _esxi_boot_cfg_http_payload(
         dest, iso_lower, src_cfg, http_prefix, profile_label="EFI"

@@ -8,7 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
 
-from app.config import Settings
+from app.config import Settings, resolve_server_base_url
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
@@ -315,6 +315,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
 def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
+    cfg.server_base_url = resolve_server_base_url(db)
     _refresh_esxi_ipxe_boot_cfg_prefixes(cfg)
     cfg.menus_dir.mkdir(parents=True, exist_ok=True)
     repo_root = Path(__file__).resolve().parent.parent.parent

@@ -14,15 +14,14 @@ from app.auth import is_authenticated, hash_password
 from app.models.models import AppSetting, OsType
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.menu_generator import MENU_LOGO_UPLOAD_NAME
-from app.config import settings as app_settings
+from app.config import settings as app_settings, persist_server_base_url, resolve_server_base_url
 from app.templating import templates, template_context
 from app.services.autoconfig_types import all_config_types_for_ui, config_type_labels as _config_type_labels
+from app.services.slugify import slugify
 
 BUNDLED_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
 router = APIRouter(prefix="/settings")
-
-EDITABLE_KEYS = ["server_base_url", "admin_password_hash"]
 
 BOOT_TYPE_CHOICES = frozenset({"linux", "windows", "tools"})
 
@@ -124,7 +123,7 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     menu_logo_qs = int(logo_fs.stat().st_mtime) if menu_logo_uploaded else 0
 
     current = {
-        "server_base_url": _get_setting(db, "server_base_url", app_settings.server_base_url),
+        "server_base_url": resolve_server_base_url(db),
         "tftp_root": app_settings.tftp_root,
         "http_root": app_settings.http_root,
         "iso_root": app_settings.iso_root,
@@ -295,8 +294,7 @@ async def update_server_url(
     redir = _auth(request)
     if redir:
         return redir
-    _set_setting(db, "server_base_url", server_base_url.rstrip("/"))
-    app_settings.server_base_url = server_base_url.rstrip("/")
+    persist_server_base_url(db, server_base_url)
     from app.tasks.jobs import regenerate_menus_task
 
     regenerate_menus_task.delay()

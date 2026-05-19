@@ -13,7 +13,7 @@ from app.auth import is_authenticated
 from app.models.models import IsoVersion, BootEntry, Upload
 from app.services.disk_info import fmt_size
 from app.templating import templates, template_context
-from app.config import settings
+from app.config import settings, resolve_server_base_url
 from app.i18n import translate
 
 router = APIRouter(prefix="/boot-files")
@@ -49,7 +49,7 @@ async def boot_list(request: Request, db: Session = Depends(get_db),
             request,
             versions=versions,
             fmt_size=fmt_size,
-            server_url=settings.server_base_url,
+            server_url=resolve_server_base_url(db),
             scan_result=scan_result,
         ),
     )

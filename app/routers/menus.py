@@ -11,7 +11,7 @@ from app.auth import is_authenticated
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
-from app.config import settings
+from app.config import settings, resolve_server_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +43,15 @@ def _not_found_chain_response(request: Request):
     return None
 
 
-def _collect_menu_files() -> list[dict]:
+def _collect_menu_files(db: Session | None = None) -> list[dict]:
+    base = resolve_server_base_url(db)
     files = []
     if settings.menus_dir.exists():
         for f in sorted(settings.menus_dir.glob("*.ipxe")):
             files.append({
                 "name": f.name,
                 "content": f.read_text(encoding="utf-8"),
-                "url": f"{settings.server_base_url}/menus/{f.name}",
+                "url": f"{base}/menus/{f.name}",
                 "size": f.stat().st_size,
             })
     return files
@@ -67,6 +68,7 @@ def _collect_custom_scripts(db: Session) -> list[dict]:
         .all()
     )
     http_root = Path(settings.http_root)
+    base = resolve_server_base_url(db)
     for e in entries:
         path = http_root / e.custom_ipxe_path
         content = ""
@@ -77,6 +79,7 @@ def _collect_custom_scripts(db: Session) -> list[dict]:
                 size = path.stat().st_size
             except Exception:
                 pass
+        rel = str(e.custom_ipxe_path).replace("\\", "/").lstrip("/")
         scripts.append({
             "boot_entry_id": e.id,
             "os_label":      e.iso_version.os_type.label,
@@ -84,7 +87,7 @@ def _collect_custom_scripts(db: Session) -> list[dict]:
             "version_label": e.iso_version.version_label,
             "filename":      Path(e.custom_ipxe_path).name,
             "rel_path":      e.custom_ipxe_path,
-            "url":           f"{settings.server_base_url}/{e.custom_ipxe_path}",
+            "url":           f"{base}/{rel}" if rel else base,
             "size":          size,
             "content":       content,
         })
@@ -116,11 +119,11 @@ async def menus_list(
         "menus.html",
         template_context(
             request,
-            menu_files=_collect_menu_files(),
+            menu_files=_collect_menu_files(db),
             custom_scripts=_collect_custom_scripts(db),
             os_types=sort_os_types_for_ui(db.query(OsType).all()),
             iso_versions=iso_versions,
-            server_url=settings.server_base_url,
+            server_url=resolve_server_base_url(db),
             remote_chains=remote_chains,
             active_tab=active_tab,
         ),
@@ -148,15 +151,7 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
             .order_by(OsType.label.asc(), IsoVersion.version_label.asc())
             .all()
         )
-        menu_files = []
-        if settings.menus_dir.exists():
-            for f in sorted(settings.menus_dir.glob("*.ipxe")):
-                menu_files.append({
-                    "name": f.name,
-                    "content": f.read_text(encoding="utf-8"),
-                    "url": f"{settings.server_base_url}/menus/{f.name}",
-                    "size": f.stat().st_size,
-                })
+        menu_files = _collect_menu_files(db)
         return templates.TemplateResponse(
             "menus.html",
             template_context(
@@ -164,7 +159,7 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
                 menu_files=menu_files,
                 os_types=os_types,
                 iso_versions=iso_versions,
-                server_url=settings.server_base_url,
+                server_url=resolve_server_base_url(db),
                 error=err,
                 custom_scripts=[],
                 remote_chains=[],

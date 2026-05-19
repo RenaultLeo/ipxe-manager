@@ -20,10 +20,7 @@ ExecStart=/srv/ipxe/venv/bin/uvicorn app.main:app \
 Restart=always
 RestartSec=5
 
-# Sécurité
-NoNewPrivileges=yes
-ProtectSystem=full
-PrivateTmp=yes
+# Même politique que l’unité générée par deploy/setup.sh (écritures sous /srv/ipxe).
 
 [Install]
 WantedBy=multi-user.target

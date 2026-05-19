@@ -21,9 +21,7 @@ ExecStart=/srv/ipxe/venv/bin/celery \
 Restart=always
 RestartSec=10
 
-NoNewPrivileges=yes
-ProtectSystem=full
-PrivateTmp=yes
+# Même politique que l’unité « ipxe-celery » installée par deploy/setup.sh.
 
 [Install]
 WantedBy=multi-user.target

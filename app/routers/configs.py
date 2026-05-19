@@ -14,7 +14,7 @@ from app.models.models import IsoVersion, AutoConfig
 from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
 from app.services.slugify import slugify
 from app.templating import templates, template_context
-from app.config import settings
+from app.config import settings, resolve_server_base_url
 from app.i18n import translate
 
 from app.services.autoconfig_types import (
@@ -123,7 +123,7 @@ async def config_new(
             versions=versions,
             preset_iso_version_id=preset_version,
             config_types=types_combo,
-            server_url=settings.server_base_url,
+            server_url=resolve_server_base_url(db),
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
             config_type_labels=_config_type_labels(lang, types_combo),
@@ -232,7 +232,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
             versions=versions,
             preset_iso_version_id=None,
             config_types=types_combo,
-            server_url=settings.server_base_url,
+            server_url=resolve_server_base_url(db),
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
             config_type_labels=_config_type_labels(lang, types_combo),

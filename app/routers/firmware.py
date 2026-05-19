@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import is_authenticated
 from app.templating import templates, template_context
-from app.config import settings
+from app.config import settings, resolve_server_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,8 @@ async def firmware_index(request: Request, task_id: str = "", db: Session = Depe
     status   = _firmware_status()
     building = _active_build()
     result   = _build_result(task_id) if task_id else None
-    menu_url = f"{settings.server_base_url}/menus/menu.ipxe"
+    base = resolve_server_base_url(db)
+    menu_url = f"{base}/menus/menu.ipxe"
 
     return templates.TemplateResponse(
         "firmware.html",
@@ -118,7 +119,7 @@ async def firmware_build(
         return redir
 
     if not menu_url:
-        menu_url = f"{settings.server_base_url}/menus/menu.ipxe"
+        menu_url = f"{resolve_server_base_url(db)}/menus/menu.ipxe"
 
     try:
         from app.tasks.jobs import compile_ipxe_task
