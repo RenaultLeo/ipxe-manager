@@ -1,4 +1,3 @@
-import secrets
 import shutil
 from pathlib import Path
 from datetime import datetime
@@ -27,11 +26,6 @@ from app.services.autoconfig_types import (
 router = APIRouter(prefix="/ipxe-configs")
 
 UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
-
-
-def _generic_conf_label() -> str:
-    """Libellé dans le menu iPXE sans saisie — pas « user-data » (réservé au cloud-init Ubuntu)."""
-    return "conf{:08d}".format(secrets.randbelow(100_000_000))
 
 
 def _auth(request: Request):
@@ -173,7 +167,12 @@ async def config_create(
         elif config_type not in allowed_types:
             raise HTTPException(400, "Type de configuration non autorisé.")
 
-    raw_label = (label or "").strip()
+    cfg = AutoConfig(
+        iso_version_id=iso_version_id,
+        config_type=config_type,
+        label=label or "user-data",
+        content=content,
+    )
 
     if (
         os_slug == "ubuntu"
@@ -196,17 +195,7 @@ async def config_create(
             .first()
         )
         if dup:
-            raise HTTPException(
-                400,
-                f"Une config « {UBUNTU_CLOUD_PREFIX}{slug} » existe déjà pour cette version.",
-            )
-        effective_label = raw_label or slug
-        cfg = AutoConfig(
-            iso_version_id=iso_version_id,
-            config_type=config_type,
-            label=effective_label,
-            content=content,
-        )
+            raise HTTPException(400, f"Une config « {UBUNTU_CLOUD_PREFIX}{slug} » existe déjà pour cette version.")
         cfg.meta_data_content = content_meta
         cfg.ubuntu_cloud_slug = slug
         db.add(cfg)
@@ -215,14 +204,6 @@ async def config_create(
         cfg.file_path = fp
         db.commit()
         return RedirectResponse("/ipxe-configs", status_code=302)
-
-    effective_label = raw_label or _generic_conf_label()
-    cfg = AutoConfig(
-        iso_version_id=iso_version_id,
-        config_type=config_type,
-        label=effective_label,
-        content=content,
-    )
 
     db.add(cfg)
     db.flush()
@@ -275,22 +256,11 @@ async def config_update(
     if not cfg:
         raise HTTPException(404)
 
-    stripped = (label or "").strip()
-    ver = cfg.iso_version
-    if stripped:
-        cfg.label = stripped
-    elif not cfg.label:
-        if (
-            cfg.config_type == "cloud-init"
-            and ver.os_type.slug == "ubuntu"
-            and cfg.ubuntu_cloud_slug
-        ):
-            cfg.label = cfg.ubuntu_cloud_slug
-        else:
-            cfg.label = _generic_conf_label()
+    cfg.label = label or cfg.label or "user-data"
     cfg.content = content
     cfg.updated_at = datetime.utcnow()
 
+    ver = cfg.iso_version
     if (
         cfg.config_type == "cloud-init"
         and ver.os_type.slug == "ubuntu"
