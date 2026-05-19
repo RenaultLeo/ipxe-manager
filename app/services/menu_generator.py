@@ -179,7 +179,9 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
-        "kernel_args": _build_kernel_args(be, os_type.slug, cfg, nfsroot_pair=nfs_pair),
+        "kernel_args": _build_kernel_args(
+            be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
+        ),
         "boot_type":   os_type.boot_type or "linux",
         "autoconfigs": [
             {
@@ -486,18 +488,49 @@ def _has_ip_kernel_arg(s: str) -> bool:
     return bool(re.search(r"(?:^|\s)ip=", s))
 
 
+def _ubuntu_iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
+    """URL HTTP de l’ISO Ubuntu si ``iso_path`` est sous ``iso_root``."""
+    if iso_version is None:
+        return ""
+    raw = (iso_version.iso_path or "").strip()
+    if not raw:
+        return ""
+    return cfg.iso_public_http_url(raw) or ""
+
+
+def _append_ubuntu_http_casper_args(
+    args: str, cfg: Settings, iso_url: str | None
+) -> str:
+    """Args noyau casper en mode HTTP (sans NFS) : ramdisk, DHCP, ISO optionnelle."""
+    bits: list[str] = []
+    if not re.search(r"(?:^|\s)root=/dev/ram0(?:\s|$)", args):
+        bits.append("root=/dev/ram0")
+    if not re.search(r"(?:^|\s)ramdisk_size=", args):
+        bits.append(f"ramdisk_size={cfg.ubuntu_ramdisk_size}")
+    if not _has_ip_kernel_arg(args):
+        bits.insert(0, "ip=dhcp")
+    if iso_url and not re.search(r"(?:^|\s)url=", args):
+        bits.append(f"url={iso_url}")
+    if not bits:
+        return args.strip()
+    return f"{args} {' '.join(bits)}".strip()
+
+
 def _build_kernel_args(
     be,
     os_slug: str,
     cfg: Settings,
     nfsroot_pair: str | None = None,
+    iso_version: IsoVersion | None = None,
 ) -> str:
     """
-    Concatène les args DB et ajoute modloop (Alpine). Pour Ubuntu NFS : ajoute après le
-    téléchargement HTTP de vmlinuz/initrd par iPXE les paramètres noyau permettant au
-    live (casper) de lire le squashfs sur NFS : ``ip=dhcp`` si besoin, ``boot=casper``,
-    ``netboot=nfs``, ``nfsroot=hôte:chemin``, et si besoin ``nfsopts=…`` (voir casper(7) —
-    ne pas coller ``,vers=`` dans nfsroot).
+    Concatène les args DB et ajoute modloop (Alpine).
+
+    **Ubuntu** (défaut, sans ``UBUNTU_NFS_ENABLED``) : ``root=/dev/ram0``,
+    ``ramdisk_size=…``, ``ip=dhcp``, ``url=`` vers l’ISO HTTP si le fichier est encore
+    sur le serveur ; les entrées autoconfig ajoutent ``autoinstall ds=nocloud-net;…``.
+
+    **Ubuntu NFS** : ``boot=casper``, ``netboot=nfs``, ``nfsroot=``, ``nfsopts=`` (casper(7)).
 
     Pour **Rocky** / **AlmaLinux** / **CentOS** : ``inst.repo=`` vers la racine HTTP de l’ISO extraite.
     Pour **Fedora** (installateur) : ``inst.stage2=`` ; si **live_os** : ``root=live:…/LiveOS/squashfs.img``,
@@ -556,18 +589,23 @@ def _build_kernel_args(
             if init_bn:
                 args = f"{args} initrd={init_bn}".strip()
 
-    # Ubuntu ISO extraite : indiquer explicitement NFS pour monter casper depuis la racine exportée.
-    if os_slug.lower() != "ubuntu" or not nfsroot_pair or "nfsroot=" in args:
+    # Ubuntu : NFS optionnel, sinon mode HTTP autoinstall (défaut).
+    if os_slug.lower() == "ubuntu":
+        if nfsroot_pair and "nfsroot=" not in args:
+            nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
+            if not _has_ip_kernel_arg(args):
+                nfs_bits.insert(0, "ip=dhcp")
+            opts = cfg.ubuntu_nfs_mount_opts.strip().strip(",").strip()
+            if opts and "nfsopts=" not in args:
+                nfs_bits.append(f"nfsopts={opts}")
+            args = f"{args} {' '.join(nfs_bits)}".strip()
+        else:
+            args = _append_ubuntu_http_casper_args(
+                args, cfg, _ubuntu_iso_http_url(iso_version, cfg) or None
+            )
         return args
 
-    nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
-    if not _has_ip_kernel_arg(args):
-        nfs_bits.insert(0, "ip=dhcp")
-    opts = cfg.ubuntu_nfs_mount_opts.strip().strip(",").strip()
-    if opts and "nfsopts=" not in args:
-        nfs_bits.append(f"nfsopts={opts}")
-    args = f"{args} {' '.join(nfs_bits)}".strip()
-    return args
+    return args.strip()
 
 
 def _find_unattend_url(v: IsoVersion, os_type: OsType, cfg: Settings) -> str:

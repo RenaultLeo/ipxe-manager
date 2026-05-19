@@ -151,7 +151,7 @@ Tu crées une **version** pour un type d’OS (label lisible : « 22.04 LTS », 
 
 Pour **Windows**, l’extraction est **complète** (toute l’arborescence ISO) afin que les chemins d’installation réseau fonctionnent ; tu peux ensuite **remplacer uniquement `boot.wim`** depuis la fiche version. Un **`autounattend.xml`** à la racine du dossier version peut être pris en charge par le menu si présent.
 
-Pour **Ubuntu**, l’ISO est aussi extraite **en entier** (cas autoinstall / accès aux couches live) ; noyau et initrd sont résolus dans **`casper/`**.
+Pour **Ubuntu**, l’ISO est aussi extraite **en entier** ; noyau et initrd dans **`casper/`**. Par défaut les menus utilisent le mode **HTTP autoinstall** (`root=/dev/ram0`, `url=` vers l’ISO si elle est encore sur le serveur, `autoinstall ds=nocloud-net` + `cloud-config-url=/dev/null` sur les configs auto). Option **`UBUNTU_NFS_ENABLED=true`** pour l’ancien mode NFS.
 
 Pour **Rocky Linux**, **AlmaLinux**, **CentOS** et **Fedora** (Anaconda), l’ISO est extraite **en entier**. Les menus ajoutent selon l’OS : **`inst.repo=`** (Rocky, Alma, CentOS). **Fedora** : **`inst.stage2=`** + **`rd.neednet=1`** si l’ISO n’est **pas** Live ; si l’option **ISO Fedora Live** est cochée à l’upload (ou sur la fiche version), utilisation de **`root=live:http://…/LiveOS/squashfs.img`**, **`ro`**, **`rd.live.image`** à la place de `inst.stage2`. Toujours **`ip=dhcp`** si besoin. Si le type d’OS a **« extraction complète »** sans liste de noms dans Paramètres, le moteur intégré s’applique. **Fedora Workstation Live** place souvent le noyau en **`boot/x86_64/loader/linux`** ; l’[howto iPXE Fedora](https://ipxe.org/howto/fedora) pour une install « miroir » classique utilise plutôt **Everything** / **netinst** avec **`images/pxeboot/vmlinuz`**.
 
@@ -173,7 +173,7 @@ Tu relies une **config à une version**. Les **OS fournis par défaut** (seed) o
 | Proxmox | `answer.toml` |
 | Alpine | `answers` ou `alpine.apkovl.tar.gz` |
 
-Les arguments noyau iPXE (preseed URL, `inst.ks`, `autoinstall ds=nocloud-net`, etc.) sont dérivés automatiquement là où c’est prévu.
+Les arguments noyau iPXE (preseed URL, `inst.ks`, `autoinstall ds=nocloud-net` + `cloud-config-url=/dev/null` pour Ubuntu, etc.) sont dérivés automatiquement là où c’est prévu.
 
 ### Menus iPXE
 

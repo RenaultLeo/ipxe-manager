@@ -3,9 +3,12 @@
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
 ########################################
-{% if os_type.slug == "ubuntu" and ubuntu_nfs_enabled %}
-# Ubuntu : vmlinuz/initrd en HTTP ; casper : netboot=nfs, nfsroot=hôte:chemin disque, nfsopts= dans la ligne kernel (cf. casper(7)).
-# Export NFS typique : {{ ubuntu_nfs_export_path }}/
+{% if os_type.slug == "ubuntu" %}
+{% if ubuntu_nfs_enabled %}
+# Ubuntu NFS : vmlinuz/initrd en HTTP ; casper monte le squashfs via nfsroot= (export typique : {{ ubuntu_nfs_export_path }}/).
+{% else %}
+# Ubuntu HTTP autoinstall : root=/dev/ram0, url= ISO si présente ; configs [+conf] ajoutent autoinstall ds=nocloud-net + cloud-config-url=/dev/null.
+{% endif %}
 {% endif %}
 
 :start

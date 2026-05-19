@@ -170,9 +170,11 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         else:  # esxi…
             return f"ks={url}"
     elif config_type == "cloud-init":
-        # Ubuntu autoinstall (nocloud-net) — URL du dossier, toujours avec / final
+        # Ubuntu autoinstall (nocloud-net) — URL du dossier seed, toujours avec / final
         base_url = url.rstrip("/") + "/"
-        return f"autoinstall ds=nocloud-net;s={base_url}"
+        return (
+            f"autoinstall ds=nocloud-net;s={base_url} cloud-config-url=/dev/null"
+        )
     elif config_type == "unattend":
         return ""   # injecté comme initrd dans wimboot (Windows)
     elif config_type == "proxmox-answer":
