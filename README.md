@@ -93,7 +93,8 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 - Installe les paquets : Nginx, tftpd-hpa, Redis, Python, p7zip, outils de build pour iPXE, Samba, etc.
 - Crée l’utilisateur système **`ipxe`**, les répertoires sous `/srv/ipxe/`, les unités **`ipxe-manager`** et **`ipxe-celery`**.
-- Configure **Nginx** en **HTTP (80)** uniquement (`deploy/nginx.conf` copié par `setup.sh`) : alias `/menus/`, `/boot/`, **`/isos-ipxe/`**, etc., reverse proxy vers FastAPI, limites d’upload pour les grosses ISO.
+- Configure **Nginx** avec les **mêmes locations** en **HTTP (80)** et **HTTPS (443)** (`deploy/nginx.conf` copié par `setup.sh`) : alias `/menus/`, `/boot/`, **`/isos-ipxe/`**, etc., reverse proxy vers FastAPI avec **`X-Forwarded-Proto`**, limites d’upload pour les grosses ISO.
+- Génère un **certificat auto-signé** OpenSSL sous **`/srv/ipxe/certs/ipxe-manager/`** (`deploy/https_cert_gen.sh`) pour Nginx **et** pour **`make … CERT=…`** lors de la compilation firmware (chaîne **`IPXE_TLS_TRUSTED_PEM`** dans `.env` — fichier PEM utilisé aussi par Nginx, voir https://ipxe.org/crypto).
 - Écrit **`/etc/default/tftpd-hpa`** et **redémarre `tftpd-hpa` à la fin** : pendant le script, le service peut démarrer avec une config encore incomplète ; le redémarrage final évite un TFTP qui ne lit qu’une partie des paramètres ou des répertoires.
 - Initialise la base avec **`deploy/seed_db.py`** (types d’OS par défaut : Windows, Ubuntu, Debian, Rocky, Alma, Fedora, Proxmox, ESXi, Alpine, etc.).
 - Au **premier démarrage** de l’appli (`uvicorn`), **`init_db()`** complète encore les migrations de schéma (colonnes SQLite ajoutées au fil des versions du code).
@@ -104,7 +105,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 - **`sudo`** : tout le flux `setup.sh` suppose un shell root ou `sudo bash …`.
 - **Accès réseau** pendant l’installation : téléchargements `apt`, `git clone`, `wget` (boot.ipxe.org / wimboot GitHub).
-- **Ports** après install : HTTP **80**, TFTP **69/UDP**, **Redis** en local (**6379**), éventuellement **SMB** (**445**) et **NFS** (**2049** si `nfs-kernel-server` démarre). Ouvre/adapte le pare-feu sur la VM ou le VLAN.
+- **Ports** après install : HTTP **80**, HTTPS **443** (TLS auto-signé), TFTP **69/UDP**, **Redis** en local (**6379**), éventuellement **SMB** (**445**) et **NFS** (**2049** si `nfs-kernel-server` démarre). Ouvre/adapte le pare-feu sur la VM ou le VLAN.
 - **Branche Git** : le premier clonage tente `main`, puis `master`, puis clone par défaut — un `git pull` ultérieur suit la **branche suivie**. Si tu as un flux personnalisé, clone la bonne branche **avant** de lancer `setup.sh` dans ce répertoire (le script ne supprime alors pas le dossier tant que `.git` est présent).
 - **PostgreSQL** : le `.env` généré cible du **SQLite** sous `/srv/ipxe/app/` ; passer en Postgres se fait à la main en `.env`, sans script dédié.
 - **Ubuntu NFS** : si le service NFS passe vert, `setup.sh` force **`UBUNTU_NFS_ENABLED=true`** dans `.env` pour aligner menus et casper NFS ; désactive puis redémarre les services si tu ne veux pas d’export NFS tout de suite.
@@ -115,9 +116,29 @@ Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.servic
 
 ### Première connexion
 
-- Ouvre **`http://<IP>/`** dans un navigateur.
+- Ouvre **`https://<IP>/`** dans un navigateur (**certificat auto-signé** : ajoute une exception ou importe `server.crt`). **`http://<IP>/`** reste disponible sur le port **80** (sans redirection forcée).
 - Identifiants par défaut : **`admin` / `admin`**.
-- Va dans **Paramètres** et **change immédiatement le mot de passe** (et vérifie **`SERVER_BASE_URL`** / URL de base si ton accès passe par un reverse proxy ou un autre port ; en usage typique tout est en **`http://…`**).
+- Va dans **Paramètres** et **change immédiatement le mot de passe** (et vérifie **`SERVER_BASE_URL`** / URL de base si ton accès passe par un reverse proxy ou un autre port).
+
+### Menu HTTPS : « Permission denied » — https://ipxe.org/0216eb8f
+
+Ce code chez iPXE correspond en pratique à un **échec de validation TLS** (certificat hors confiance ou **SAN sans l’IP / le nom utilisé** dans `https://…`).
+
+À faire :
+
+1. **Vérifier** que **`/srv/ipxe/certs/ipxe-manager/server.crt`** existe (voir **`IPXE_TLS_TRUSTED_PEM`** dans `.env`), puis recompiler depuis **Firmware** jusqu’à voir dans les logs **`CERT=`** sur ce PEM ; sinon un **`chain https://`** peut échouer alors que **`http://`** fonctionne encore.
+2. **Aligner SAN et URL** : le cert doit couvrir **`IP:…`** ou **`DNS:`** comme les clients y accèdent. Par défaut **`deploy/setup.sh`** appelle **`https_cert_gen.sh AUTO`** : le script déduit un **FQDN** `hostname.suffixe-DHCP-or-DNS` (**`CN` + entrée `DNS:`**) et ajoute l’**IPv4 locale** ; si **`IPXE_TLS_EXTRA_SAN`** est vide, l’IP du 1ᵉʳ argument de **`setup.sh`** est aussi ajoutée. Régénère puis recharge Nginx, par exemple :
+   ```bash
+   sudo bash /srv/ipxe/app/deploy/https_cert_gen.sh AUTO
+   sudo systemctl reload nginx
+   ```
+   Mode manuel encore possible : une seule entrée « principale » :  
+   **`sudo bash …/https_cert_gen.sh 192.168.2.8`**  
+   Pour **plusieurs noms/IPs** :  
+   `export IPXE_TLS_EXTRA_SAN="192.168.2.6,autre.host.lan"` puis **`https_cert_gen.sh AUTO`** (voir l’en-tête du script).
+3. **Recompiler les binaires iPXE** depuis **Firmware** ; les logs de compilation doivent mentionner **`CERT=`** sur le PEM.
+4. **Secours diagnostic** : `http://<IP>/menus/menu.ipxe` sur le port 80.
+5. **Heure BIOS/UEFI** : une date très fausse peut invalider un cert ; le message **`Access Denied`** UEFI après l’erreur peut aussi pointer vers **Secure Boot** ou une politique de boot.
 
 ---
 
@@ -130,7 +151,7 @@ Le **serveur DHCP** (souvent **pfSense**, routeur, ou `isc-dhcp-server`) doit :
    - **BIOS / Legacy** : en général **`undionly.kpxe`** (iPXE PXE stack).
    - **UEFI x86_64 en VM** (Proxmox, QEMU, VMware…) : de préférence **`snponly.efi`**, qui utilise la **pile réseau de l’EFI** (virtio, e1000…). **`ipxe.efi`** reste utile surtout pour du **bare-metal** avec drivers intégrés iPXE.
 
-3. Une fois le client **déjà sous iPXE** (user-class `iPXE`), donne l’**URL HTTP** du menu central (`http://<IP>/menus/menu.ipxe`) pour **éviter un double chainload** iPXE qui casse souvent l’accès réseau.
+3. Une fois le client **déjà sous iPXE** (user-class `iPXE`), il est préférable de lui donner directement l’**URL HTTP ou HTTPS** du menu central (`http://<IP>/menus/menu.ipxe` ou `https://<IP>/menus/menu.ipxe` si TLS et firmware compilé avec **`CERT=`** sur ton PEM), pour **éviter un double chainload** iPXE qui casse souvent l’accès réseau.
 
 L’interface **Firmware** affiche un bloc d’aide avec un exemple de clauses DHCP (pfSense / options) aligné sur les binaires que tu compiles.
 
