@@ -448,6 +448,19 @@ function confirmDelete(id, filename) {
   }
 }
 
+function chainLedHtml(online) {
+  var cls = 'status-led-unknown';
+  if (online === true) cls = 'status-led-on';
+  else if (online === false) cls = 'status-led-off';
+  return '<span class="status-led ' + cls + '" aria-hidden="true"></span>';
+}
+
+function chainSetLed(tr, online) {
+  var led = tr && tr.querySelector('.chain-status-cell .status-led');
+  if (!led) return;
+  led.className = 'status-led ' + (online === true ? 'status-led-on' : online === false ? 'status-led-off' : 'status-led-unknown');
+}
+
 function chainRowSetEnabled(tr, enabled) {
   tr.classList.toggle('opacity-50', !enabled);
 }
@@ -510,13 +523,24 @@ function chainCreateRow(c) {
   return tr;
 }
 
+function chainFormatError(data, status) {
+  if (!data) return 'HTTP ' + status;
+  if (typeof data.detail === 'string') return data.detail;
+  if (Array.isArray(data.detail)) {
+    return data.detail.map(function (d) {
+      return (d && d.msg) ? d.msg : String(d);
+    }).join('\n');
+  }
+  return data.error || data.detail || ('HTTP ' + status);
+}
+
 async function chainFetch(url, init) {
   const r = await fetch(url, {
     credentials: 'same-origin',
     ...init,
     headers: {
       'Accept': 'application/json',
-      'X-Requested-With': 'fetch',
+      'X-Requested-With': 'XMLHttpRequest',
       ...(init && init.headers ? init.headers : {}),
     },
   });
@@ -547,24 +571,28 @@ async function chainFetch(url, init) {
   var chainStatusTimer = null;
 
   async function refreshChainStatuses() {
-    const rows = tbody.querySelectorAll('tr[data-chain-id]');
-    if (!rows.length) return;
-    rows.forEach(function (tr) {
-      chainSetLed(tr, null);
-    });
-    const r = await chainFetch('/ipxe-menus/chains/status');
-    if (!r) return;
-    let data = {};
     try {
-      data = await r.json();
+      const rows = tbody.querySelectorAll('tr[data-chain-id]');
+      if (!rows.length) return;
+      rows.forEach(function (tr) {
+        chainSetLed(tr, null);
+      });
+      const r = await chainFetch('/ipxe-menus/chains/status');
+      if (!r) return;
+      let data = {};
+      try {
+        data = await r.json();
+      } catch (e) {
+        return;
+      }
+      if (!r.ok || !data.ok || !Array.isArray(data.chains)) return;
+      data.chains.forEach(function (item) {
+        const tr = tbody.querySelector('tr[data-chain-id="' + item.id + '"]');
+        if (tr) chainSetLed(tr, !!item.online);
+      });
     } catch (e) {
-      return;
+      console.error('refreshChainStatuses', e);
     }
-    if (!r.ok || !data.ok || !Array.isArray(data.chains)) return;
-    data.chains.forEach(function (item) {
-      const tr = tbody.querySelector('tr[data-chain-id="' + item.id + '"]');
-      if (tr) chainSetLed(tr, !!item.online);
-    });
   }
 
   function scheduleChainStatusRefresh() {
@@ -573,30 +601,41 @@ async function chainFetch(url, init) {
     chainStatusTimer = setInterval(refreshChainStatuses, 45000);
   }
 
-  if (tbody.children.length) scheduleChainStatusRefresh();
-
   if (addForm) {
     addForm.addEventListener('submit', async function(ev) {
       ev.preventDefault();
       const sub = addForm.querySelector('button[type="submit"]');
+      const subHtml = sub ? sub.innerHTML : '';
       const fd = new FormData(addForm);
-      if (sub) sub.disabled = true;
-      const r = await chainFetch('/ipxe-menus/chains/add', { method: 'POST', body: fd });
-      if (sub) sub.disabled = false;
-      if (!r) return;
+      if (sub) {
+        sub.disabled = true;
+        sub.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>…';
+      }
+      let r = null;
       let data = {};
-      try { data = await r.json(); } catch (e) {}
+      try {
+        r = await chainFetch('/ipxe-menus/chains/add', { method: 'POST', body: fd });
+        if (r) {
+          try { data = await r.json(); } catch (e) { data = {}; }
+        }
+      } catch (e) {
+        alert(String(e));
+      } finally {
+        if (sub) {
+          sub.disabled = false;
+          sub.innerHTML = subHtml;
+        }
+      }
+      if (!r) return;
       if (r.ok && data.ok && data.chain) {
         hideEmptyState();
-        const newRow = chainCreateRow(data.chain);
-        tbody.appendChild(newRow);
+        tbody.appendChild(chainCreateRow(data.chain));
         addForm.reset();
         refreshChainStatuses();
         if (!chainStatusTimer) scheduleChainStatusRefresh();
         return;
       }
-      const err = (data && (data.detail || data.error)) ? (data.detail || data.error) : ('HTTP ' + r.status);
-      alert(err);
+      alert(chainFormatError(data, r.status));
     });
   }
 
@@ -620,7 +659,7 @@ async function chainFetch(url, init) {
         if (!tbody.children.length) showEmptyState();
         return;
       }
-      alert((data && (data.detail || data.error)) || ('HTTP ' + r.status));
+      alert(chainFormatError(data, r.status));
       return;
     }
 
@@ -638,9 +677,18 @@ async function chainFetch(url, init) {
         chainRowSetEnabled(tr, data.enabled);
         return;
       }
-      alert((data && (data.detail || data.error)) || ('HTTP ' + r.status));
+      alert(chainFormatError(data, r.status));
     }
   });
+
+  if (tbody.children.length) scheduleChainStatusRefresh();
+
+  const tabChains = document.getElementById('tab-chains');
+  if (tabChains) {
+    tabChains.addEventListener('shown.bs.tab', function () {
+      refreshChainStatuses();
+    });
+  }
 })();
 
 // Ré-ouvrir le bon onglet selon ?tab= dans l'URL

@@ -574,6 +574,15 @@ def probe_full_url(url: str, timeout: float = 3.0) -> dict[str, Any]:
     return http_probe(base, path, timeout=timeout)
 
 
+def chain_url_reachable(url: str, timeout: float = 3.0) -> bool:
+    """Serveur joignable si une réponse HTTP est reçue (code > 0), pas seulement 200."""
+    result = probe_full_url(url, timeout=timeout)
+    code = result.get("status", -1)
+    if isinstance(code, int) and code > 0:
+        return True
+    return bool(result.get("ok"))
+
+
 def probe_urls_parallel(urls: list[tuple[int, str]], timeout: float = 3.0) -> dict[int, bool]:
     """Sonde plusieurs URLs en parallèle ; retourne {id: online}."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -584,7 +593,7 @@ def probe_urls_parallel(urls: list[tuple[int, str]], timeout: float = 3.0) -> di
 
     def _one(item: tuple[int, str]) -> tuple[int, bool]:
         chain_id, url = item
-        return chain_id, bool(probe_full_url(url, timeout=timeout).get("ok"))
+        return chain_id, chain_url_reachable(url, timeout=timeout)
 
     workers = min(8, len(urls))
     with ThreadPoolExecutor(max_workers=workers) as pool:

@@ -263,6 +263,32 @@ async def custom_script_delete(
 
 # ── Chainloads distants ───────────────────────────────────────────────────────
 
+def _normalize_chain_url(url: str) -> str:
+    u = (url or "").strip()
+    if u and "://" not in u:
+        u = "http://" + u
+    return u
+
+
+def _regenerate_menus_async() -> None:
+    import threading
+
+    from app.database import SessionLocal
+
+    def _run() -> None:
+        db = SessionLocal()
+        try:
+            from app.services.menu_generator import regenerate_all
+
+            regenerate_all(db)
+        except Exception:
+            logger.exception("Erreur régénération menus (arrière-plan)")
+        finally:
+            db.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _probe_chains_status(chains: list[RemoteChain]) -> list[dict]:
     from app.services.server_diagnostics import probe_urls_parallel
 
@@ -293,16 +319,12 @@ async def chain_add(
     unauth = _json_or_redirect_unauth(request, redir)
     if unauth is not None:
         return unauth
-    chain = RemoteChain(name=name.strip(), url=url.strip())
+    chain = RemoteChain(name=name.strip(), url=_normalize_chain_url(url))
     db.add(chain)
     db.commit()
     db.refresh(chain)
-    try:
-        from app.services.menu_generator import regenerate_all
-        regenerate_all(db)
-    except Exception:
-        logger.exception("Erreur régénération menus après ajout chain")
     if _wants_json(request):
+        _regenerate_menus_async()
         return JSONResponse({
             "ok": True,
             "chain": {
@@ -312,6 +334,12 @@ async def chain_add(
                 "enabled": chain.enabled,
             },
         })
+    try:
+        from app.services.menu_generator import regenerate_all
+
+        regenerate_all(db)
+    except Exception:
+        logger.exception("Erreur régénération menus après ajout chain")
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
@@ -333,13 +361,15 @@ async def chain_delete(
         raise HTTPException(404)
     db.delete(chain)
     db.commit()
+    if _wants_json(request):
+        _regenerate_menus_async()
+        return JSONResponse({"ok": True})
     try:
         from app.services.menu_generator import regenerate_all
+
         regenerate_all(db)
     except Exception:
         logger.exception("Erreur régénération menus après suppression chain")
-    if _wants_json(request):
-        return JSONResponse({"ok": True})
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
@@ -361,13 +391,15 @@ async def chain_toggle(
         raise HTTPException(404)
     chain.enabled = not chain.enabled
     db.commit()
+    if _wants_json(request):
+        _regenerate_menus_async()
+        return JSONResponse({"ok": True, "enabled": chain.enabled})
     try:
         from app.services.menu_generator import regenerate_all
+
         regenerate_all(db)
     except Exception:
         logger.exception("Erreur régénération menus après toggle chain")
-    if _wants_json(request):
-        return JSONResponse({"ok": True, "enabled": chain.enabled})
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
