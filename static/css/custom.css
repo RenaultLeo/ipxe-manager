@@ -1,49 +1,242 @@
-/* ── iPXE Manager custom styles ── */
+/* ── iPXE Manager ── */
 
 :root {
-  --ipxe-primary: #0d6efd;
-  --ipxe-surface: #1a1d21;
-  --ipxe-card: #212529;
+  --ipxe-primary: #3b82f6;
+  --ipxe-primary-dim: rgba(59, 130, 246, 0.15);
+  --ipxe-surface: #0f1114;
+  --ipxe-surface-elevated: #161a1f;
+  --ipxe-card: #1c2128;
+  --ipxe-card-border: rgba(255, 255, 255, 0.08);
+  --ipxe-nav-height: 3.25rem;
 }
 
 body {
   background-color: var(--ipxe-surface);
-  color: #dee2e6;
+  color: #e2e8f0;
+  min-height: 100vh;
 }
 
-.navbar {
-  background-color: #0d1117 !important;
+/* ── Navbar ── */
+.app-navbar {
+  background: linear-gradient(180deg, #12151a 0%, #0d0f12 100%) !important;
+  border-bottom: 1px solid var(--ipxe-card-border) !important;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
 }
 
+.app-navbar .navbar-brand {
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.app-navbar .nav-link {
+  font-size: 0.875rem;
+  padding: 0.45rem 0.65rem !important;
+  border-radius: 0.375rem;
+  color: #94a3b8 !important;
+  transition: color 0.15s, background 0.15s;
+}
+
+.app-navbar .nav-link:hover {
+  color: #e2e8f0 !important;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.app-navbar .nav-link.active {
+  color: #fff !important;
+  background: var(--ipxe-primary-dim);
+  font-weight: 600;
+}
+
+.app-navbar .nav-link.active i {
+  color: var(--ipxe-primary);
+}
+
+.nav-group-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  padding: 0.35rem 0.65rem 0.15rem;
+  margin-top: 0.25rem;
+}
+
+@media (min-width: 992px) {
+  .nav-group-label {
+    padding: 0 0.5rem;
+    margin-top: 0;
+    margin-right: 0.15rem;
+    align-self: center;
+  }
+
+  .navbar-nav.nav-main,
+  .navbar-nav.nav-admin {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .app-navbar .navbar-nav .nav-link {
+    white-space: nowrap;
+  }
+
+  .nav-admin-wrap {
+    border-left: 1px solid var(--ipxe-card-border);
+    margin-left: 0.5rem;
+    padding-left: 0.5rem;
+  }
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ipxe-card-border);
+  font-size: 0.8125rem;
+  color: #cbd5e1;
+}
+
+.user-chip i {
+  color: var(--ipxe-primary);
+}
+
+/* ── Layout ── */
+.app-main {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--ipxe-card-border);
+}
+
+/* ── Cards ── */
 .card {
   background-color: var(--ipxe-card);
+  border: 1px solid var(--ipxe-card-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-/* Spinning icon for in-progress jobs */
+.card-header {
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--ipxe-card-border);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.75rem 1rem;
+}
+
+.panel-card .card-body {
+  padding: 1rem 1.15rem;
+}
+
+/* ── Tables ── */
+.table-dark {
+  --bs-table-bg: transparent;
+  --bs-table-border-color: var(--ipxe-card-border);
+}
+
+.table-dark thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  border-color: var(--ipxe-card-border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ── User admin list ── */
+.user-card {
+  border: 1px solid var(--ipxe-card-border);
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.user-card + .user-card {
+  margin-top: 0.65rem;
+}
+
+.user-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.user-card-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95rem;
+  color: #f472b6;
+}
+
+.user-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-card-actions .form-control {
+  min-width: 10rem;
+  flex: 1 1 10rem;
+  max-width: 14rem;
+}
+
+/* ── Path list ── */
+.path-list dt {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.path-list dd {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+/* ── Dashboard action cards ── */
+.action-card {
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
+
 .spin {
   display: inline-block;
   animation: spin 1s linear infinite;
 }
 
-/* Action cards on dashboard */
-.action-card {
-  transition: transform .15s, box-shadow .15s;
-}
-.action-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px rgba(0,0,0,.4);
-}
-
-/* Progress bar fill animation */
 .progress-bar {
-  transition: width .3s ease;
+  transition: width 0.3s ease;
 }
 
-/* CodeMirror integration */
 .CodeMirror {
   height: auto;
   min-height: 300px;
@@ -51,31 +244,21 @@ body {
   font-size: 0.82rem;
 }
 
-/* Scrollable pre blocks */
 pre {
   white-space: pre-wrap;
   word-break: break-all;
 }
 
-/* Table borders */
-.table-dark th {
-  border-color: #373b3e;
-}
-
-/* Badge pill */
 .badge {
   font-weight: 500;
 }
 
-/* Nav link active highlight */
-.navbar .nav-link.active {
-  color: var(--ipxe-primary) !important;
-  font-weight: 600;
+.btn-primary {
+  background-color: var(--ipxe-primary);
+  border-color: var(--ipxe-primary);
 }
 
-/* Keep primary nav labels on one line (long ES/PT strings) */
-@media (min-width: 992px) {
-  .navbar .navbar-nav .nav-link {
-    white-space: nowrap;
-  }
+.btn-primary:hover {
+  background-color: #2563eb;
+  border-color: #2563eb;
 }
