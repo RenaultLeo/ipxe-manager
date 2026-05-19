@@ -127,15 +127,13 @@ Ce code chez iPXE correspond en pratique à un **échec de validation TLS** (cer
 À faire :
 
 1. **Vérifier** que **`/srv/ipxe/certs/ipxe-manager/server.crt`** existe (voir **`IPXE_TLS_TRUSTED_PEM`** dans `.env`), puis recompiler depuis **Firmware** jusqu’à voir dans les logs **`CERT=`** sur ce PEM ; sinon un **`chain https://`** peut échouer alors que **`http://`** fonctionne encore.
-2. **Aligner SAN et URL** : le cert doit couvrir **`IP:…`** ou **`DNS:`** comme les clients y accèdent. Par défaut **`deploy/setup.sh`** appelle **`https_cert_gen.sh AUTO`** : le script déduit un **FQDN** `hostname.suffixe-DHCP-or-DNS` (**`CN` + entrée `DNS:`**) et ajoute l’**IPv4 locale** ; si **`IPXE_TLS_EXTRA_SAN`** est vide, l’IP du 1ᵉʳ argument de **`setup.sh`** est aussi ajoutée. Régénère puis recharge Nginx, par exemple :
+2. **Aligner SAN et URL** : si le client charge `https://192.168.2.8/…`, le certificat doit inclure **`IP:192.168.2.8`** dans le Subject Alternative Name. Régénère le cert puis recharge Nginx, par exemple :
    ```bash
-   sudo bash /srv/ipxe/app/deploy/https_cert_gen.sh AUTO
+   sudo bash /srv/ipxe/app/deploy/https_cert_gen.sh 192.168.2.8
    sudo systemctl reload nginx
    ```
-   Mode manuel encore possible : une seule entrée « principale » :  
-   **`sudo bash …/https_cert_gen.sh 192.168.2.8`**  
-   Pour **plusieurs noms/IPs** :  
-   `export IPXE_TLS_EXTRA_SAN="192.168.2.6,autre.host.lan"` puis **`https_cert_gen.sh AUTO`** (voir l’en-tête du script).
+   Pour **plusieurs IPs** dans le SAN :  
+   `export IPXE_TLS_EXTRA_SAN="192.168.2.6,10.0.0.12"` puis le même **`https_cert_gen.sh`** (voir commentaires en tête du script).
 3. **Recompiler les binaires iPXE** depuis **Firmware** ; les logs de compilation doivent mentionner **`CERT=`** sur le PEM.
 4. **Secours diagnostic** : `http://<IP>/menus/menu.ipxe` sur le port 80.
 5. **Heure BIOS/UEFI** : une date très fausse peut invalider un cert ; le message **`Access Denied`** UEFI après l’erreur peut aussi pointer vers **Secure Boot** ou une politique de boot.
