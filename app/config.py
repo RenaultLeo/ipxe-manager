@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
 
-    # PEM incorporé dans les firmwares via ``make … TRUST=…`` (chaîne HTTPS menu/embed).
+    # PEM utilisé lors du ``make CERT=… TRUST=…`` (cert auto-signé Nginx ou CA locale).
     # Par défaut : certificat serveur généré par deploy/https_cert_gen.sh (voir deploy/setup.sh).
     ipxe_tls_trusted_pem: str = "/srv/ipxe/certs/ipxe-manager/server.crt"
 
