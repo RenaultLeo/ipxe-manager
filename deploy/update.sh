@@ -24,9 +24,20 @@ echo "==> Migrations base de données…"
 cd "$APP_DIR"
 "$VENV/bin/python" deploy/seed_db.py
 
-echo "==> Redémarrage des services…"
+echo "==> Redémarrage des services applicatifs…"
 systemctl restart ipxe-manager ipxe-celery tftpd-hpa
-systemctl reload nginx 2>/dev/null || true
+
+echo "==> Nginx — alignement sur deploy/nginx.conf…"
+if [ -f "$APP_DIR/deploy/nginx.conf" ]; then
+  cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ipxe-manager
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx && echo "  Nginx rechargé."
+  else
+    echo "  ! nginx -t a échoué — corrige la config puis: sudo nginx -t && sudo systemctl reload nginx" >&2
+  fi
+else
+  echo "  ! deploy/nginx.conf absent dans le dépôt."
+fi
 
 echo ""
 echo "Mise à jour terminée."

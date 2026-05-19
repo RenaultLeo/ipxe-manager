@@ -188,81 +188,11 @@ chmod -R 755 "$DATA_DIR/tftpboot"
 
 # ── 10. Nginx ─────────────────────────────────────────────────────────────────
 echo "[10/15] Configuration Nginx…"
-cat > /etc/nginx/sites-available/ipxe-manager <<'NGINX'
-server {
-    listen 80;
-    server_name _;
-
-    access_log /var/log/nginx/ipxe-manager.access.log;
-    error_log  /var/log/nginx/ipxe-manager.error.log;
-
-    sendfile        on;
-    tcp_nopush      on;
-    tcp_nodelay     on;
-    keepalive_timeout 65;
-
-    # Upload ISO volumineux (jusqu'à 60 Go)
-    client_max_body_size 60G;
-
-    # ── Fichiers statiques iPXE (bypasse FastAPI pour les performances) ──
-
-    location /menus/ {
-        alias /srv/ipxe/http/menus/;
-        add_header Content-Type text/plain;
-        expires -1;
-    }
-
-    location /boot/ {
-        alias /srv/ipxe/http/boot/;
-        autoindex off;
-        sendfile on;
-        aio threads;
-        output_buffers 1 128k;
-        expires 1d;
-    }
-
-    location /configs/ {
-        alias /srv/ipxe/http/configs/;
-        add_header Content-Type text/plain;
-        expires -1;
-    }
-
-    # ISO sous ISO_ROOT — préfixe dédié (pas « /isos/ » : évite tout conflit avec les routes UI FastAPI /isos).
-    location /isos-ipxe/ {
-        alias /srv/ipxe/isos/;
-        autoindex off;
-        sendfile on;
-        expires 1d;
-    }
-
-    # wimboot — binaire pour le boot Windows PE
-    location /wimboot {
-        alias /srv/ipxe/http/wimboot;
-        add_header Content-Type application/octet-stream;
-    }
-
-    location /static/ {
-        alias /srv/ipxe/app/static/;
-        expires 7d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # ── Interface web FastAPI ──────────────────────────────────────────────
-    location / {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_set_header   Upgrade           $http_upgrade;
-        proxy_set_header   Connection        "upgrade";
-        proxy_read_timeout  3600;
-        proxy_send_timeout  3600;
-        proxy_request_buffering off;
-    }
-}
-NGINX
+if [ ! -f "$APP_DIR/deploy/nginx.conf" ]; then
+    echo "ERREUR : $APP_DIR/deploy/nginx.conf introuvable." >&2
+    exit 1
+fi
+cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ipxe-manager
 
 ln -sf /etc/nginx/sites-available/ipxe-manager /etc/nginx/sites-enabled/ipxe-manager
 rm -f /etc/nginx/sites-enabled/default

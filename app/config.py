@@ -1,16 +1,44 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+import socket
+from urllib.parse import urlparse
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def detect_primary_ipv4() -> str:
+    """IPv4 joignable pour les clients PXE si ``SERVER_BASE_URL`` n’expose pas d’hôte utilisable."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
+        pass
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except OSError:
+        return "127.0.0.1"
+
+
+def default_server_base_url() -> str:
+    """Si ``SERVER_BASE_URL`` absent du .env, URL publique = HTTP + IP/route locale."""
+    return f"http://{detect_primary_ipv4()}"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(_PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
+        # Clés obsolètes dans un vieux .env (ex. retirées du schéma) : ne pas planter.
+        extra="ignore",
     )
 
-    server_base_url: str = "http://192.168.2.6"
+    server_base_url: str = Field(default_factory=default_server_base_url)
     secret_key: str = "changeme_generate_with_openssl_rand_hex_32"
     admin_password: str = "admin"
 
@@ -32,7 +60,7 @@ class Settings(BaseSettings):
 
     # Ubuntu full-ISO sous http/boot/ubuntu/<slug> — live-server lit le contenu via NFS (comme SMB côté Windows)
     ubuntu_nfs_enabled: bool = False
-    ubuntu_nfs_host: str = ""  # Vide = 192.168.2.6 dans nfsroot= ; sinon UBUNTU_NFS_HOST
+    ubuntu_nfs_host: str = ""  # Vide : hôte dérivé de SERVER_BASE_URL puis IPv4 locale
     ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Passé en nfsopts= (casper), pas après une virgule dans nfsroot
 
     @property
@@ -77,8 +105,12 @@ class Settings(BaseSettings):
         manual = self.ubuntu_nfs_host.strip()
         if manual:
             return manual.rstrip("/")
-        # IP NFS par défaut (menus ubuntu.ipxe → nfsroot=192.168.2.6:…)
-        return "192.168.2.6"
+        host = urlparse(self.server_base_url.strip()).hostname
+        if host:
+            hl = host.lower()
+            if hl not in ("localhost", "127.0.0.1", "::1"):
+                return host
+        return detect_primary_ipv4()
 
     def ubuntu_boot_version_dir(self, version_slug: str) -> Path:
         """Répertoire disque HTTP_ROOT/boot/ubuntu/<slug> (sans resolve)."""
