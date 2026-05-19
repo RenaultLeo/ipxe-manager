@@ -308,15 +308,10 @@ def compile_ipxe_task(self, menu_url: str):
         completed_steps.append("patch_ipxe_config")
 
         trust_pem = Path(settings.ipxe_tls_trusted_pem).expanduser()
-        # CA privée / cert auto-signé servi par Nginx : après ipxe.org/crypto, embarquer
-        # le PEM complet (CERT=) et la racine de confiance (TRUST=) — souvent le même fichier.
-        make_tls_cert_args: list[str] = []
+        make_trust_args: list[str] = []
         if trust_pem.is_file():
-            resolved_pem = trust_pem.resolve()
-            logs.append(
-                f"TLS iPXE (cf. ipxe.org/crypto — CA privée / auto-signé) : "
-                f"CERT={resolved_pem} TRUST={resolved_pem}"
-            )
+            resolved_trust = trust_pem.resolve()
+            logs.append(f"TLS embarqué : make … TRUST={resolved_trust}")
             self.update_state(
                 state="PROGRESS",
                 meta={
@@ -325,14 +320,11 @@ def compile_ipxe_task(self, menu_url: str):
                     "logs": logs,
                 },
             )
-            make_tls_cert_args = [
-                f"CERT={resolved_pem}",
-                f"TRUST={resolved_pem}",
-            ]
+            make_trust_args = [f"TRUST={resolved_trust}"]
             completed_steps.append("trust_https")
         else:
             logs.append(
-                f"Aucun PEM ({trust_pem}) — compilation sans CERT=/TRUST= "
+                f"Aucun PEM TRUST ({trust_pem}) — compilation sans TRUST= "
                 "(chainload HTTPS peut échouer si menu/embed utilise https://)."
             )
 
@@ -343,7 +335,7 @@ def compile_ipxe_task(self, menu_url: str):
             meta={"step": "compile_bios", "completed_steps": list(completed_steps), "logs": logs},
         )
         run(
-            ["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_tls_cert_args],
+            ["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_trust_args],
             cwd=make_dir,
         )
         completed_steps.append("compile_bios")
@@ -357,14 +349,14 @@ def compile_ipxe_task(self, menu_url: str):
             meta={"step": "compile_efi", "completed_steps": list(completed_steps), "logs": logs},
         )
         run(
-            ["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_tls_cert_args],
+            ["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_trust_args],
             cwd=make_dir,
         )
 
         # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
         logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
         run(
-            ["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *make_tls_cert_args],
+            ["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *make_trust_args],
             cwd=make_dir,
         )
         completed_steps.append("compile_efi")
