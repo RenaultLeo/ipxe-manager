@@ -47,6 +47,7 @@
             <i class="bi bi-list-ul me-1"></i>{{ t('nav.menus') }}
           </a>
         </li>
+        {% if is_admin %}
         <li class="nav-item">
           <a class="nav-link {% if '/firmware' in request.url.path %}active{% endif %}" href="/firmware">
             <i class="bi bi-cpu me-1"></i>{{ t('nav.firmware') }}
@@ -57,6 +58,12 @@
             <i class="bi bi-gear me-1"></i>{{ t('nav.settings') }}
           </a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if '/admin' in request.url.path %}active{% endif %}" href="/admin/users">
+            <i class="bi bi-people me-1"></i>{{ t('nav.admin_users') }}
+          </a>
+        </li>
+        {% endif %}
       </ul>
       <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
         <div class="dropdown">
@@ -73,6 +80,11 @@
             {% endfor %}
           </ul>
         </div>
+        {% if current_user %}
+        <span class="text-muted small d-none d-md-inline">
+          <i class="bi bi-person-circle me-1"></i>{{ current_user.username }}
+        </span>
+        {% endif %}
         <a href="/logout" class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-box-arrow-right me-1"></i>{{ t('nav.logout') }}
         </a>

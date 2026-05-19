@@ -7,6 +7,16 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    password_hash = Column(String(256), nullable=False)
+    role = Column(String(16), default="user", nullable=False)  # admin | user
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class OsType(Base):
     __tablename__ = "os_types"
 
@@ -37,6 +47,7 @@ class IsoVersion(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     os_type_id = Column(Integer, ForeignKey("os_types.id"), nullable=False)
+    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     version_label = Column(String(64), nullable=False)       # "22.04 LTS", "11 Bullseye"…
     status = Column(String(16), default="uploaded")          # uploaded|extracting|ready|error
     iso_path = Column(String(512))
@@ -121,6 +132,7 @@ class Upload(Base):
     __tablename__ = "uploads"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     filename = Column(String(256))
     file_type = Column(String(32))   # iso|kernel|initrd|boot_wim|ipxe|config|other
     size = Column(BigInteger, default=0)

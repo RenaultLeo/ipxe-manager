@@ -31,8 +31,14 @@
     {% endif %}
     <form method="post" action="/login">
       <div class="mb-3">
+        <label class="form-label">{{ t('auth.username') }}</label>
+        <input type="text" name="username" class="form-control form-control-lg" autofocus required
+               autocomplete="username">
+      </div>
+      <div class="mb-3">
         <label class="form-label">{{ t('auth.password') }}</label>
-        <input type="password" name="password" class="form-control form-control-lg" autofocus required>
+        <input type="password" name="password" class="form-control form-control-lg" required
+               autocomplete="current-password">
       </div>
       <button class="btn btn-primary w-100 btn-lg" type="submit">
         <i class="bi bi-unlock me-1"></i>{{ t('auth.submit') }}

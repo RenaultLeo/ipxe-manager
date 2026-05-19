@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 from urllib.parse import quote
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import auth_redirect_admin, auth_redirect_login, get_session_user
+from app.services.ownership import (
+    filter_autoconfigs,
+    filter_iso_versions,
+    get_autoconfig,
+    get_iso_version,
+)
 from app.models.models import IsoVersion, AutoConfig
 from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
 from app.services.slugify import slugify
@@ -35,9 +41,7 @@ UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_login(request)
 
 
 def _ubuntu_bundle_rel_path(os_slug: str, version_slug: str, cloud_slug: str) -> str:
@@ -75,11 +79,16 @@ async def config_list(request: Request, db: Session = Depends(get_db),
     redir = _auth(request)
     if redir:
         return redir
-    configs = db.query(AutoConfig).order_by(AutoConfig.updated_at.desc()).all()
+    user = get_session_user(request)
+    configs = (
+        filter_autoconfigs(db, user)
+        .order_by(AutoConfig.updated_at.desc())
+        .all()
+    )
     config_menu_labels = {
         c.id: resolve_autoconfig_menu_label(c) for c in configs
     }
-    versions = db.query(IsoVersion).all()
+    versions = filter_iso_versions(db, user).all()
     types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
         "configs/index.html",
@@ -96,7 +105,7 @@ async def config_list(request: Request, db: Session = Depends(get_db),
 
 @router.post("/scan")
 async def config_scan(request: Request, db: Session = Depends(get_db)):
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     if redir:
         return redir
     from app.services.config_scanner import scan_and_import
@@ -122,7 +131,8 @@ async def config_new(
     redir = _auth(request)
     if redir:
         return redir
-    versions = db.query(IsoVersion).all()
+    user = get_session_user(request)
+    versions = filter_iso_versions(db, user).all()
     lang = getattr(request.state, "locale", "fr")
     types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
@@ -158,7 +168,8 @@ async def config_create(
     if redir:
         return redir
 
-    version = db.query(IsoVersion).get(iso_version_id)
+    user = get_session_user(request)
+    version = get_iso_version(db, user, iso_version_id)
     if not version:
         raise HTTPException(404)
 
@@ -236,10 +247,11 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
     redir = _auth(request)
     if redir:
         return redir
-    cfg = db.query(AutoConfig).get(config_id)
+    user = get_session_user(request)
+    cfg = get_autoconfig(db, user, config_id)
     if not cfg:
         raise HTTPException(404)
-    versions = db.query(IsoVersion).all()
+    versions = filter_iso_versions(db, user).all()
     lang = getattr(request.state, "locale", "fr")
     types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
@@ -271,7 +283,8 @@ async def config_update(
     redir = _auth(request)
     if redir:
         return redir
-    cfg = db.query(AutoConfig).get(config_id)
+    user = get_session_user(request)
+    cfg = get_autoconfig(db, user, config_id)
     if not cfg:
         raise HTTPException(404)
 
@@ -310,7 +323,8 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
     redir = _auth(request)
     if redir:
         return redir
-    cfg = db.query(AutoConfig).get(config_id)
+    user = get_session_user(request)
+    cfg = get_autoconfig(db, user, config_id)
     if not cfg:
         raise HTTPException(404)
 

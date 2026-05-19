@@ -7,6 +7,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
+from app.auth import get_session_user, is_admin
 from app.i18n import translate, SUPPORTED_LOCALES
 from app.config import settings
 
@@ -24,6 +25,7 @@ def template_context(request: Request, **extra):
     raw_next = request.url.path
     if request.url.query:
         raw_next += "?" + request.url.query
+    current_user = get_session_user(request)
     return {
         "request": request,
         "lang": lang,
@@ -31,5 +33,7 @@ def template_context(request: Request, **extra):
         "i18n_next": quote(raw_next, safe=""),
         "locale_choices": sorted(SUPPORTED_LOCALES),
         "iso_public_http_url": settings.iso_public_http_url,
+        "current_user": current_user,
+        "is_admin": is_admin(request),
         **extra,
     }

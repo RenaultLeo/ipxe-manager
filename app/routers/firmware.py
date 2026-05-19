@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import auth_redirect_admin
 from app.templating import templates, template_context
 from app.config import settings, resolve_server_base_url
 
@@ -19,9 +19,7 @@ router = APIRouter(prefix="/firmware")
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_admin(request)
 
 
 def _firmware_status() -> dict:

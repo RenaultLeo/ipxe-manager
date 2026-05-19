@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from urllib.parse import quote
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import auth_redirect_admin, auth_redirect_login, get_session_user
+from app.services.ownership import filter_iso_versions, get_iso_version
 from app.models.models import IsoVersion, BootEntry, Upload
 from app.services.disk_info import fmt_size
 from app.templating import templates, template_context
@@ -27,9 +28,7 @@ def _safe_redirect_path(raw: str, default: str) -> str:
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_login(request)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -58,7 +57,7 @@ async def boot_list(request: Request, db: Session = Depends(get_db),
 @router.post("/scan")
 async def scan_boot_files(request: Request, db: Session = Depends(get_db)):
     """Scanne boot/ et enregistre les fichiers existants en DB."""
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     if redir:
         return redir
     from app.services.boot_scanner import scan_and_register
@@ -97,7 +96,8 @@ async def upload_boot_file(
     if redir:
         return redir
 
-    version = db.query(IsoVersion).get(version_id)
+    user = get_session_user(request)
+    version = get_iso_version(db, user, version_id)
     if not version:
         raise HTTPException(404)
 
@@ -153,7 +153,15 @@ async def upload_boot_file(
     if version.status != "ready":
         version.status = "ready"
 
-    db.add(Upload(filename=safe_name, file_type=file_role, size=size, status="done"))
+    db.add(
+        Upload(
+            filename=safe_name,
+            file_type=file_role,
+            size=size,
+            status="done",
+            owner_user_id=user.id,
+        )
+    )
     db.commit()
 
     from app.tasks.jobs import regenerate_menus_task
@@ -175,7 +183,8 @@ async def replace_boot_wim(
     if redir:
         return redir
 
-    version = db.query(IsoVersion).get(version_id)
+    user = get_session_user(request)
+    version = get_iso_version(db, user, version_id)
     if not version:
         raise HTTPException(404)
     if version.os_type.boot_type != "windows":
@@ -232,7 +241,8 @@ async def update_kernel_args(
     if redir:
         return redir
 
-    version = db.query(IsoVersion).get(version_id)
+    user = get_session_user(request)
+    version = get_iso_version(db, user, version_id)
     if not version:
         raise HTTPException(404)
 

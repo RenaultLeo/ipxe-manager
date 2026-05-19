@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
 
-from app.auth import check_admin_password, login_user, logout_user, is_authenticated
+from app.auth import authenticate_user, get_session_user, is_authenticated, login_user, logout_user
 from app.i18n import translate
 from app.templating import templates, template_context
 
@@ -16,12 +16,17 @@ async def login_page(request: Request):
 
 
 @router.post("/login")
-async def login_submit(request: Request, password: str = Form(...)):
-    if check_admin_password(password):
-        login_user(request)
+async def login_submit(
+    request: Request,
+    username: str = Form(""),
+    password: str = Form(...),
+):
+    user = authenticate_user(username, password)
+    if user:
+        login_user(request, user.id, user.username, user.role)
         return RedirectResponse("/", status_code=302)
     lang = getattr(request.state, "locale", "fr")
-    err = translate(lang, "auth.bad_password")
+    err = translate(lang, "auth.bad_credentials")
     return templates.TemplateResponse(
         "auth/login.html",
         template_context(request, error=err),

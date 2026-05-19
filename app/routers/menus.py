@@ -7,7 +7,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse,
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import ROLE_ADMIN, auth_redirect_admin, auth_redirect_login, get_session_user, is_admin
+from app.services.ownership import filter_iso_versions, get_boot_entry
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
@@ -19,9 +20,7 @@ router = APIRouter(prefix="/ipxe-menus")
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_login(request)
 
 
 def _wants_json(request: Request) -> bool:
@@ -57,16 +56,22 @@ def _collect_menu_files(db: Session | None = None) -> list[dict]:
     return files
 
 
-def _collect_custom_scripts(db: Session) -> list[dict]:
-    """Retourne tous les BootEntry ayant un custom_ipxe_path."""
+def _collect_custom_scripts(db: Session, request: Request) -> list[dict]:
+    """Retourne les BootEntry avec script personnalisé (filtrés par propriétaire)."""
     scripts = []
-    entries = (
+    user = get_session_user(request)
+    q = (
         db.query(BootEntry)
         .filter(BootEntry.custom_ipxe_path.isnot(None))
         .join(BootEntry.iso_version)
         .join(IsoVersion.os_type)
-        .all()
     )
+    if user and user.role != ROLE_ADMIN:
+        owned = [r[0] for r in filter_iso_versions(db, user).with_entities(IsoVersion.id).all()]
+        if not owned:
+            return []
+        q = q.filter(BootEntry.iso_version_id.in_(owned))
+    entries = q.all()
     http_root = Path(settings.http_root)
     base = resolve_server_base_url(db)
     for e in entries:
@@ -107,9 +112,12 @@ async def menus_list(
     raw_tab = (tab or "").strip().lower()
     active_tab = raw_tab if raw_tab in ("custom", "chains") else ""
 
-    remote_chains = db.query(RemoteChain).order_by(RemoteChain.id).all()
+    user = get_session_user(request)
+    remote_chains = (
+        db.query(RemoteChain).order_by(RemoteChain.id).all() if is_admin(request) else []
+    )
     iso_versions = (
-        db.query(IsoVersion)
+        filter_iso_versions(db, user)
         .join(IsoVersion.os_type)
         .options(joinedload(IsoVersion.os_type))
         .order_by(OsType.label.asc(), IsoVersion.version_label.asc())
@@ -120,7 +128,9 @@ async def menus_list(
         template_context(
             request,
             menu_files=_collect_menu_files(db),
-            custom_scripts=_collect_custom_scripts(db),
+            custom_scripts=_collect_custom_scripts(db, request),
+            can_edit_global_menus=is_admin(request),
+            can_manage_chains=is_admin(request),
             os_types=sort_os_types_for_ui(db.query(OsType).all()),
             iso_versions=iso_versions,
             server_url=resolve_server_base_url(db),
@@ -144,8 +154,9 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
         err = traceback.format_exc()
         logger.error("Erreur régénération menus :\n%s", err)
         os_types = sort_os_types_for_ui(db.query(OsType).all())
+        user = get_session_user(request)
         iso_versions = (
-            db.query(IsoVersion)
+            filter_iso_versions(db, user)
             .join(IsoVersion.os_type)
             .options(joinedload(IsoVersion.os_type))
             .order_by(OsType.label.asc(), IsoVersion.version_label.asc())
@@ -164,6 +175,8 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
                 custom_scripts=[],
                 remote_chains=[],
                 active_tab="",
+                can_edit_global_menus=is_admin(request),
+                can_manage_chains=is_admin(request),
             ),
             status_code=500,
         )
@@ -191,7 +204,8 @@ async def custom_script_save(
     if redir:
         return redir
 
-    entry = db.query(BootEntry).get(entry_id)
+    user = get_session_user(request)
+    entry = get_boot_entry(db, user, entry_id)
     if not entry or not entry.custom_ipxe_path:
         raise HTTPException(404)
 
@@ -219,7 +233,8 @@ async def custom_script_delete(
     if redir:
         return redir
 
-    entry = db.query(BootEntry).get(entry_id)
+    user = get_session_user(request)
+    entry = get_boot_entry(db, user, entry_id)
     if not entry or not entry.custom_ipxe_path:
         raise HTTPException(404)
 
@@ -254,7 +269,7 @@ async def chain_add(
     url:  str = Form(...),
     db: Session = Depends(get_db),
 ):
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     unauth = _json_or_redirect_unauth(request, redir)
     if unauth is not None:
         return unauth
@@ -286,7 +301,7 @@ async def chain_delete(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     unauth = _json_or_redirect_unauth(request, redir)
     if unauth is not None:
         return unauth
@@ -314,7 +329,7 @@ async def chain_toggle(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     unauth = _json_or_redirect_unauth(request, redir)
     if unauth is not None:
         return unauth
@@ -353,7 +368,7 @@ async def save_menu_override(
     request: Request,
     content: str = Form(...),
 ):
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     if redir:
         return redir
     f = settings.menus_dir / filename

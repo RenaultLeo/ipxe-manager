@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import auth_redirect_login, get_session_user
+from app.services.ownership import filter_iso_versions, get_iso_version
 from app.i18n import translate
 from app.models.models import OsType, IsoVersion, Upload, BootEntry
 from app.services.disk_info import fmt_size
@@ -88,9 +89,17 @@ def _raise_if_free_space_below_reserve(lang: str) -> None:
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_login(request)
+
+
+def _get_version_or_404(db: Session, request: Request, version_id: int) -> IsoVersion:
+    user = get_session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    version = get_iso_version(db, user, version_id)
+    if not version:
+        raise HTTPException(status_code=404)
+    return version
 
 
 def _extract_search_terms_for_ot(ot: OsType) -> list[str]:
@@ -130,8 +139,13 @@ async def iso_list(
     redir = _auth(request)
     if redir:
         return redir
+    user = get_session_user(request)
     os_types = sort_os_types_for_ui(db.query(OsType).all())
-    versions = db.query(IsoVersion).order_by(IsoVersion.created_at.desc()).all()
+    versions = (
+        filter_iso_versions(db, user)
+        .order_by(IsoVersion.created_at.desc())
+        .all()
+    )
     slug_set = {ot.slug for ot in os_types}
     raw = (os or "").strip().lower()
     filter_os_slug = raw if raw in slug_set else ""
@@ -183,7 +197,7 @@ async def upload_check_iso_duplicate(
     iso_filename: str = Query(""),
 ):
     """Indique si un ISO avec ce nom existe déjà pour ce couple (type OS + label)."""
-    if not is_authenticated(request):
+    if _auth(request):
         raise HTTPException(401)
     vn = Path(iso_filename.replace("\\", "/")).name.strip()
     vl = version_label.strip()
@@ -207,7 +221,7 @@ async def upload_precheck(
     Vérification avant le POST multipart : espace vs réserve + taille cumulée, sans recevoir les octets fichiers.
     Le JS appelle cet endpoint puis n’affiche la barre de progression que si ``ok``.
     """
-    if not is_authenticated(request):
+    if _auth(request):
         raise HTTPException(401)
     lang = getattr(request.state, "locale", "fr")
     blocked = _multipart_upload_blocked(lang, mf=None, expected_file_bytes=total_bytes)
@@ -369,6 +383,10 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if not version_label:
         raise HTTPException(400, "Label de version requis")
 
+    owner = get_session_user(request)
+    if not owner:
+        raise HTTPException(status_code=401)
+
     os_type = db.query(OsType).get(os_type_id)
     if not os_type:
         raise HTTPException(404, "Type d'OS introuvable")
@@ -395,6 +413,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
 
     version = IsoVersion(
         os_type_id=os_type_id,
+        owner_user_id=owner.id,
         version_label=version_label,
         status="uploaded",
         iso_size=0,
@@ -447,7 +466,13 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
             version.iso_path = str(dest_iso)
             version.iso_size = size_iso
             db.add(
-                Upload(filename=iso_safe_name, file_type="iso", size=size_iso, status="done")
+                Upload(
+                    filename=iso_safe_name,
+                    file_type="iso",
+                    size=size_iso,
+                    status="done",
+                    owner_user_id=owner.id,
+                )
             )
 
         boot_dir.mkdir(parents=True, exist_ok=True)
@@ -591,7 +616,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
     redir = _auth(request)
     if redir:
         return redir
-    version = db.query(IsoVersion).get(version_id)
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404, "Version introuvable")
     basename_report: dict[str, list[str]] = {}
@@ -650,7 +675,7 @@ async def iso_alpine_repo_save(
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    version = db.query(IsoVersion).get(version_id)
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404, "Version introuvable")
     if getattr(version.os_type, "slug", "") != "alpine":
@@ -693,7 +718,7 @@ async def iso_fedora_live_save(
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    version = db.query(IsoVersion).get(version_id)
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404, "Version introuvable")
     if getattr(version.os_type, "slug", "") != "fedora":
@@ -728,12 +753,8 @@ async def set_ubuntu_nfs_boot(
     db: Session = Depends(get_db),
 ):
     """Active ou non le boot NFS casper pour cette version Ubuntu (ligne kernel du menu généré)."""
-    if not is_authenticated(request):
-        raise HTTPException(status_code=401)
     lang = getattr(request.state, "locale", "fr")
-    version = db.query(IsoVersion).get(version_id)
-    if not version:
-        raise HTTPException(status_code=404)
+    version = _get_version_or_404(db, request, version_id)
     if getattr(version.os_type, "slug", "") != "ubuntu":
         raise HTTPException(
             status_code=400,
@@ -754,12 +775,8 @@ async def set_purge_iso_preference(
     body: PurgeIsoPreferenceBody,
     db: Session = Depends(get_db),
 ):
-    if not is_authenticated(request):
-        raise HTTPException(status_code=401)
     lang = getattr(request.state, "locale", "fr")
-    version = db.query(IsoVersion).get(version_id)
-    if not version:
-        raise HTTPException(status_code=404)
+    version = _get_version_or_404(db, request, version_id)
     if body.enabled:
         iso_p = Path((version.iso_path or "").strip())
         if not iso_p.is_file():
@@ -781,7 +798,7 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    version = db.query(IsoVersion).get(version_id)
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
 
@@ -792,11 +809,13 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
             detail=translate(lang, "iso.extract_missing_iso"),
         )
 
+    owner = get_session_user(request)
     upload_log = Upload(
         filename=iso_p.name,
         file_type="extraction",
         size=version.iso_size,
         status="pending",
+        owner_user_id=owner.id if owner else version.owner_user_id,
     )
     db.add(upload_log)
     db.commit()
@@ -810,8 +829,12 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
 # ── Job status (HTMX polling) ─────────────────────────────────────────────────
 
 @router.get("/{version_id}/status")
-async def iso_status(version_id: int, db: Session = Depends(get_db)):
-    version = db.query(IsoVersion).get(version_id)
+async def iso_status(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
     return JSONResponse({"status": version.status})
@@ -825,7 +848,7 @@ async def iso_status_fragment(
     db: Session = Depends(get_db),
 ):
     """HTMX endpoint — retourne uniquement le badge de statut HTML."""
-    version = db.query(IsoVersion).get(version_id)
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
     pull_end = align == "end"
@@ -847,7 +870,7 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
     redir = _auth(request)
     if redir:
         return redir
-    version = db.query(IsoVersion).get(version_id)
+    version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
 

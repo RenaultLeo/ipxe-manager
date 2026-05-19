@@ -47,6 +47,7 @@
       {% endif %}
     </button>
   </li>
+  {% if can_manage_chains %}
   <li class="nav-item" role="presentation">
     <button class="nav-link {% if active_tab == 'chains' %}active{% endif %}"
             id="tab-chains"
@@ -58,6 +59,7 @@
       {% endif %}
     </button>
   </li>
+  {% endif %}
 </ul>
 
 <div class="tab-content" id="mainTabContent">
@@ -93,16 +95,19 @@
               <a href="{{ mf.url }}" class="btn btn-outline-info btn-sm" target="_blank">
                 <i class="bi bi-box-arrow-up-right me-1"></i>{{ t('menu.url_btn') }}
               </a>
+              {% if can_edit_global_menus %}
               <button type="button" class="btn btn-outline-warning btn-sm"
                       onclick="toggleEdit('gedit-{{ loop.index }}', 'gview-{{ loop.index }}')">
                 <i class="bi bi-pencil me-1"></i>{{ t('menu.edit') }}
               </button>
+              {% endif %}
             </div>
           </div>
           <div id="gview-{{ loop.index }}" class="card-body p-0">
             <pre class="p-3 mb-0 bg-dark text-light rounded-bottom font-monospace small"
                  style="max-height:400px;overflow-y:auto">{{ mf.content }}</pre>
           </div>
+          {% if can_edit_global_menus %}
           <div id="gedit-{{ loop.index }}" class="card-body d-none">
             <form method="post" action="/ipxe-menus/{{ mf.name }}/save">
               <textarea name="content" class="form-control font-monospace mb-2"
@@ -118,6 +123,7 @@
               </div>
             </form>
           </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -294,6 +300,7 @@
   </div><!-- /pane-custom -->
 
   <!-- ══ Onglet : Serveurs distants ══ -->
+  {% if can_manage_chains %}
   <div class="tab-pane fade {% if active_tab == 'chains' %}show active{% endif %}"
        id="pane-chains" role="tabpanel">
 
@@ -375,6 +382,7 @@
     </div>
 
   </div><!-- /pane-chains -->
+  {% endif %}
 
 </div><!-- /tab-content -->
 {% endblock %}

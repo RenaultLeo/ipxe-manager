@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import is_authenticated, hash_password
+from app.auth import auth_redirect_admin, hash_password
 from app.models.models import AppSetting, OsType
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.menu_generator import MENU_LOGO_UPLOAD_NAME
@@ -34,9 +34,7 @@ class OsTypeReorderBody(BaseModel):
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_admin(request)
 
 
 def _get_setting(db: Session, key: str, default: str = "") -> str:
@@ -310,7 +308,14 @@ async def update_password(
     redir = _auth(request)
     if redir:
         return redir
-    _set_setting(db, "admin_password_hash", hash_password(new_password))
+    hashed = hash_password(new_password)
+    _set_setting(db, "admin_password_hash", hashed)
+    from app.models.models import User
+
+    admin_user = db.query(User).filter(User.username == "admin").first()
+    if admin_user:
+        admin_user.password_hash = hashed
+        db.commit()
     return RedirectResponse("/settings?msg=password_updated", status_code=302)
 
 

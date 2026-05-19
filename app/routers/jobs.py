@@ -9,7 +9,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import auth_redirect_admin, auth_redirect_login, get_session_user
+from app.services.ownership import get_upload
 from app.models.models import Upload, IsoVersion
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,7 @@ router = APIRouter(prefix="/jobs")
 
 
 def _auth(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_login(request)
 
 
 def _revoke(task_id: str):
@@ -58,7 +57,8 @@ async def kill_job(upload_id: int, request: Request, db: Session = Depends(get_d
     if redir:
         return redir
 
-    upload = db.query(Upload).get(upload_id)
+    user = get_session_user(request)
+    upload = get_upload(db, user, upload_id)
     if not upload:
         return RedirectResponse("/?killed=notfound", status_code=302)
 
@@ -77,7 +77,7 @@ async def kill_all_get(request: Request):
 
 @router.post("/kill-all")
 async def kill_all_jobs(request: Request, db: Session = Depends(get_db)):
-    redir = _auth(request)
+    redir = auth_redirect_admin(request)
     if redir:
         return redir
 

@@ -30,6 +30,9 @@ def init_db():
     from app.models import models  # noqa: F401 — registers models with Base.metadata
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
+    from app.services.user_bootstrap import bootstrap_users
+
+    bootstrap_users()
 
 
 def _migrate_columns():
@@ -66,6 +69,8 @@ def _migrate_columns():
     _ensure_os_types_ui_order_when_collapsed()
     _backfill_iso_was_extracted()
     _backfill_builtin_extract_full_iso()
+    _add_column_if_missing("iso_versions", "owner_user_id", "INTEGER")
+    _add_column_if_missing("uploads", "owner_user_id", "INTEGER")
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
 
 

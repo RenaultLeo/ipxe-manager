@@ -3,7 +3,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import is_authenticated
+from app.auth import auth_redirect_login, get_session_user, is_admin
+from app.services.ownership import filter_iso_versions, filter_uploads
 from app.services.disk_info import get_disk_usage, fmt_size
 from app.models.models import OsType, IsoVersion, Upload
 from app.services.os_type_order import visible_on_dashboard
@@ -14,10 +15,7 @@ router = APIRouter()
 
 
 def _auth_redirect(request: Request):
-    from fastapi.responses import RedirectResponse
-    if not is_authenticated(request):
-        return RedirectResponse("/login", status_code=302)
-    return None
+    return auth_redirect_login(request)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -32,19 +30,22 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         os_types = visible_on_dashboard(all_os_types)
         os_type_count = len(all_os_types)
 
+        user = get_session_user(request)
         stats = []
         for ot in os_types:
-            total = db.query(IsoVersion).filter(IsoVersion.os_type_id == ot.id).count()
-            ready = db.query(IsoVersion).filter(
-                IsoVersion.os_type_id == ot.id, IsoVersion.status == "ready"
-            ).count()
+            base = filter_iso_versions(db, user).filter(IsoVersion.os_type_id == ot.id)
+            total = base.count()
+            ready = base.filter(IsoVersion.status == "ready").count()
             stats.append({"os": ot, "total": total, "ready": ready})
 
         recent_uploads = (
-            db.query(Upload).order_by(Upload.created_at.desc()).limit(10).all()
+            filter_uploads(db, user)
+            .order_by(Upload.created_at.desc())
+            .limit(10)
+            .all()
         )
         active_jobs_list = (
-            db.query(Upload)
+            filter_uploads(db, user)
             .filter(Upload.status.in_(["pending", "processing"]))
             .order_by(Upload.created_at.desc())
             .all()
@@ -69,5 +70,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             active_jobs_list=active_jobs_list,
             timeout_h=round(settings.extract_timeout / 3600, 1),
             os_type_count=os_type_count,
+            show_kill_all=is_admin(request),
         ),
     )
