@@ -37,7 +37,15 @@ def get_dir_size(path: str | Path) -> int:
     return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
 
 
-def fmt_size(size_bytes: int) -> str:
+def fmt_size(size_bytes: int | None) -> str:
+    if size_bytes is None:
+        return "—"
+    try:
+        size_bytes = int(size_bytes)
+    except (TypeError, ValueError):
+        return "—"
+    if size_bytes < 0:
+        size_bytes = 0
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size_bytes < 1024:
             return f"{size_bytes:.1f} {unit}"

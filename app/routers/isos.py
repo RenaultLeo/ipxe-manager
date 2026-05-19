@@ -660,7 +660,11 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
                 boot_extra_linux = []
     iso_raw = (version.iso_path or "").strip()
     iso_file_exists = bool(iso_raw and Path(iso_raw).is_file())
-    if not iso_file_exists and getattr(version, "delete_iso_after_next_extract", False):
+    if (
+        can_modify
+        and not iso_file_exists
+        and getattr(version, "delete_iso_after_next_extract", False)
+    ):
         version.delete_iso_after_next_extract = False
         db.add(version)
         db.commit()

@@ -11,10 +11,12 @@ from urllib.parse import quote
 from app.database import get_db
 from app.auth import auth_redirect_admin, auth_redirect_login, get_session_user
 from app.services.ownership import (
-    filter_autoconfigs,
+    can_modify_iso_version,
     filter_iso_versions,
     get_autoconfig,
+    get_autoconfig_view,
     get_iso_version,
+    get_iso_version_view,
 )
 from app.models.models import IsoVersion, AutoConfig
 from app.services.config_scanner import OS_CONFIG_TYPE, FORCED_CONFIGS
@@ -250,10 +252,15 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
     if redir:
         return redir
     user = get_session_user(request)
-    cfg = get_autoconfig(db, user, config_id)
+    cfg = get_autoconfig_view(db, user, config_id)
     if not cfg:
         raise HTTPException(404)
-    versions = filter_iso_versions(db, user).all()
+    ver = get_iso_version_view(db, user, cfg.iso_version_id)
+    can_modify = can_modify_iso_version(user, ver) if ver else False
+    if can_modify:
+        versions = filter_iso_versions(db, user).all()
+    else:
+        versions = [ver] if ver else []
     lang = getattr(request.state, "locale", "fr")
     types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
@@ -269,6 +276,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
             os_config_type=OS_CONFIG_TYPE,
             forced_configs=FORCED_CONFIGS,
             config_type_labels=_config_type_labels(lang, types_combo),
+            can_modify=can_modify,
         ),
     )
 

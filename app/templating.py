@@ -31,13 +31,19 @@ def template_context(request: Request, **extra):
     def can_modify_iso(version) -> bool:
         return can_modify_iso_version(current_user, version)
 
+    def iso_public_http_url(fs_path) -> str:
+        try:
+            return settings.iso_public_http_url(fs_path)
+        except Exception:
+            return ""
+
     return {
         "request": request,
         "lang": lang,
         "t": t,
         "i18n_next": quote(raw_next, safe=""),
         "locale_choices": sorted(SUPPORTED_LOCALES),
-        "iso_public_http_url": settings.iso_public_http_url,
+        "iso_public_http_url": iso_public_http_url,
         "current_user": current_user,
         "is_admin": is_admin(request),
         "can_modify_iso": can_modify_iso,
