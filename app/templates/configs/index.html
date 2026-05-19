@@ -53,7 +53,8 @@
           <td>{{ config_menu_labels[c.id] }}</td>
           <td class="font-monospace small text-muted">{{ c.file_path or '—' }}</td>
           <td class="text-muted small">{{ c.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>
-          <td class="text-end">
+          <td class="text-end text-nowrap">
+            {% if can_modify_iso(c.iso_version) %}
             <a href="/ipxe-configs/{{ c.id }}/edit" class="btn btn-sm btn-outline-warning me-1">
               <i class="bi bi-pencil"></i>
             </a>
@@ -61,6 +62,11 @@
                   onsubmit="return confirm({{ t('cfg.delete_confirm')|tojson }})">
               <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
             </form>
+            {% else %}
+            <a href="/ipxe-configs/{{ c.id }}/edit" class="btn btn-sm btn-outline-info">
+              <i class="bi bi-eye me-1"></i>{{ t('iso.action_view') }}
+            </a>
+            {% endif %}
           </td>
         </tr>
         {% else %}

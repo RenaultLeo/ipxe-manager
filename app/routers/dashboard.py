@@ -30,10 +30,9 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         os_types = visible_on_dashboard(all_os_types)
         os_type_count = len(all_os_types)
 
-        user = get_session_user(request)
         stats = []
         for ot in os_types:
-            base = filter_iso_versions(db, user).filter(IsoVersion.os_type_id == ot.id)
+            base = db.query(IsoVersion).filter(IsoVersion.os_type_id == ot.id)
             total = base.count()
             ready = base.filter(IsoVersion.status == "ready").count()
             stats.append({"os": ot, "total": total, "ready": ready})

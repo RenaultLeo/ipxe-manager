@@ -7,8 +7,10 @@ from app.auth import ROLE_ADMIN, SessionUser
 from app.models.models import AutoConfig, BootEntry, IsoVersion, Upload
 
 
-def filter_iso_versions(db: Session, user: SessionUser) -> Query:
+def filter_iso_versions(db: Session, user: SessionUser | None) -> Query:
     q = db.query(IsoVersion)
+    if not user:
+        return q.filter(IsoVersion.id < 0)
     if user.role != ROLE_ADMIN:
         q = q.filter(IsoVersion.owner_user_id == user.id)
     return q
@@ -43,8 +45,10 @@ def get_iso_version(db: Session, user: SessionUser, version_id: int) -> IsoVersi
     return None
 
 
-def filter_autoconfigs(db: Session, user: SessionUser) -> Query:
+def filter_autoconfigs(db: Session, user: SessionUser | None) -> Query:
     q = db.query(AutoConfig)
+    if not user:
+        return q.filter(AutoConfig.id < 0)
     if user.role != ROLE_ADMIN:
         ids = owned_iso_version_ids(db, user)
         if not ids:
@@ -80,8 +84,10 @@ def get_boot_entry(db: Session, user: SessionUser, entry_id: int) -> BootEntry |
     return entry
 
 
-def filter_uploads(db: Session, user: SessionUser) -> Query:
+def filter_uploads(db: Session, user: SessionUser | None) -> Query:
     q = db.query(Upload)
+    if not user:
+        return q.filter(Upload.id < 0)
     if user.role != ROLE_ADMIN:
         q = q.filter(Upload.owner_user_id == user.id)
     return q

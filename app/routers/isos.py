@@ -8,7 +8,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -96,7 +96,16 @@ def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> 
     user = get_session_user(request)
     if not user:
         raise HTTPException(status_code=401)
-    version = get_iso_version_view(db, user, version_id)
+    version = (
+        db.query(IsoVersion)
+        .options(
+            joinedload(IsoVersion.os_type),
+            joinedload(IsoVersion.boot_entry),
+            joinedload(IsoVersion.autoconfigs),
+        )
+        .filter(IsoVersion.id == version_id)
+        .first()
+    )
     if not version:
         raise HTTPException(status_code=404)
     return version
@@ -149,10 +158,10 @@ async def iso_list(
     redir = _auth(request)
     if redir:
         return redir
-    user = get_session_user(request)
     os_types = sort_os_types_for_ui(db.query(OsType).all())
     versions = (
-        filter_iso_versions(db, user)
+        db.query(IsoVersion)
+        .options(joinedload(IsoVersion.os_type))
         .order_by(IsoVersion.created_at.desc())
         .all()
     )

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from urllib.parse import quote
 
@@ -79,16 +79,18 @@ async def config_list(request: Request, db: Session = Depends(get_db),
     redir = _auth(request)
     if redir:
         return redir
-    user = get_session_user(request)
     configs = (
-        filter_autoconfigs(db, user)
+        db.query(AutoConfig)
+        .options(
+            joinedload(AutoConfig.iso_version).joinedload(IsoVersion.os_type),
+        )
         .order_by(AutoConfig.updated_at.desc())
         .all()
     )
     config_menu_labels = {
         c.id: resolve_autoconfig_menu_label(c) for c in configs
     }
-    versions = filter_iso_versions(db, user).all()
+    versions = db.query(IsoVersion).order_by(IsoVersion.version_label).all()
     types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
         "configs/index.html",
