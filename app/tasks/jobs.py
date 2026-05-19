@@ -307,6 +307,28 @@ def compile_ipxe_task(self, menu_url: str):
         _patch_ipxe_graphical_console_headers(src_dir, logs)
         completed_steps.append("patch_ipxe_config")
 
+        trust_pem = Path(settings.ipxe_tls_trusted_pem).expanduser()
+        # Embarquer le PEM serveur avec CERT= (voir ipxe.org/crypto — embedded certificates).
+        make_tls_cert_args: list[str] = []
+        if trust_pem.is_file():
+            resolved_pem = trust_pem.resolve()
+            logs.append(f"TLS iPXE — embarquer certificat : make … CERT={resolved_pem}")
+            self.update_state(
+                state="PROGRESS",
+                meta={
+                    "step": "trust_https",
+                    "completed_steps": list(completed_steps),
+                    "logs": logs,
+                },
+            )
+            make_tls_cert_args = [f"CERT={resolved_pem}"]
+            completed_steps.append("trust_https")
+        else:
+            logs.append(
+                f"Aucun PEM ({trust_pem}) — compilation sans CERT= "
+                "(chainload HTTPS peut échouer si menu/embed utilise https://)."
+            )
+
         # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
         logs.append("Compilation undionly.kpxe (BIOS)…")
         self.update_state(
@@ -314,7 +336,7 @@ def compile_ipxe_task(self, menu_url: str):
             meta={"step": "compile_bios", "completed_steps": list(completed_steps), "logs": logs},
         )
         run(
-            ["make", "bin/undionly.kpxe", "EMBED=embed.ipxe"],
+            ["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_tls_cert_args],
             cwd=make_dir,
         )
         completed_steps.append("compile_bios")
@@ -328,14 +350,14 @@ def compile_ipxe_task(self, menu_url: str):
             meta={"step": "compile_efi", "completed_steps": list(completed_steps), "logs": logs},
         )
         run(
-            ["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe"],
+            ["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_tls_cert_args],
             cwd=make_dir,
         )
 
         # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
         logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
         run(
-            ["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe"],
+            ["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *make_tls_cert_args],
             cwd=make_dir,
         )
         completed_steps.append("compile_efi")
