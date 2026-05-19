@@ -619,6 +619,17 @@ def _build_kernel_args(
             if init_bn:
                 args = f"{args} initrd={init_bn}".strip()
 
+    # Proxmox VE : installateur réseau (answer.toml via proxmox-installer.answer-file=)
+    if os_slug == "proxmox" and be:
+        if not _has_ip_kernel_arg(args):
+            args = f"ip=dhcp {args}".strip()
+        if not re.search(r"(?:^|\s)ramdisk_size=", args):
+            args = f"{args} ramdisk_size={cfg.proxmox_ramdisk_size}".strip()
+        iso_url = _ubuntu_iso_http_url(iso_version, cfg)
+        if iso_url and not re.search(r"(?:^|\s)url=", args):
+            args = f"{args} url={iso_url}".strip()
+        return args.strip()
+
     # Ubuntu : NFS optionnel (UBUNTU_NFS_ENABLED), sinon HTTP autoinstall (défaut).
     if os_slug.lower() == "ubuntu":
         if nfsroot_pair:

@@ -14,6 +14,11 @@ from app.services.os_type_order import UI_OS_SLUG_ORDER
 
 _SLUG_ORDER_RANK = {s: i for i, s in enumerate(UI_OS_SLUG_ORDER)}
 
+# Extraction ISO complète (7z → boot/<os>/<version>/…) pour install réseau
+_FULL_EXTRACT_SLUGS = frozenset(
+    {"windows", "winpe", "ubuntu", "rocky", "alma", "centos", "fedora", "proxmox", "esxi"}
+)
+
 DEFAULT_OS = [
     {"slug": "windows", "label": "Windows",     "icon": "bi-windows",  "boot_type": "windows", "is_builtin": True},
     {"slug": "ubuntu",  "label": "Ubuntu",      "icon": "bi-ubuntu",   "boot_type": "linux",   "is_builtin": True},
@@ -44,6 +49,7 @@ if __name__ == "__main__":
                     **entry,
                     ui_sort_order=ui_order,
                     show_on_dashboard=True,
+                    extract_full_iso=slug in _FULL_EXTRACT_SLUGS,
                 )
             )
             added += 1
@@ -51,6 +57,8 @@ if __name__ == "__main__":
             # Mettre à jour is_builtin / boot_type depuis la liste de référence
             existing.is_builtin = entry["is_builtin"]
             existing.boot_type = entry["boot_type"]
+            if slug in _FULL_EXTRACT_SLUGS:
+                existing.extract_full_iso = True
             updated += 1
     db.commit()
     db.close()

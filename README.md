@@ -149,7 +149,9 @@ Tu crées une **version** pour un type d’OS (label lisible : « 22.04 LTS », 
 - Uploader **une ISO** (stockée sous `/srv/ipxe/isos/...`) puis, quand tu es prêt, lancer **Extraire depuis l’ISO** : une tâche Celery décompresse avec **7z** et peuple `http/boot/<os>/<slug-version>/` selon les règles de la distribution.
 - Ou **ne pas** fournir d’ISO et uploader uniquement **vmlinuz**, **initrd**, etc. (chemins enregistrés tels quels, **sans forcer** des noms génériques quand ce n’est pas voulu).
 
-Pour **Windows**, l’extraction est **complète** (toute l’arborescence ISO) afin que les chemins d’installation réseau fonctionnent ; tu peux ensuite **remplacer uniquement `boot.wim`** depuis la fiche version. Un **`autounattend.xml`** à la racine du dossier version peut être pris en charge par le menu si présent.
+Pour **Windows** et **WinPE**, l’extraction est **complète** : détection de **BCD**, **boot.sdi** et **boot.wim** (priorité `sources/` / `boot/`), menus **wimboot** (`http://…/wimboot` installé par `setup.sh`). Tu peux **remplacer uniquement `boot.wim`** depuis la fiche version. Config auto : **`autounattend.xml`** / **`unattend.xml`**.
+
+Pour **Proxmox VE**, l’ISO est extraite **en entier** ; noyau **`boot/linux26`** ou **`boot/vmlinuz`** + **`initrd.img`**. Les menus ajoutent **`ip=dhcp`**, **`ramdisk_size=`** (défaut `16777216`, `.env` **`PROXMOX_RAMDISK_SIZE`**) et **`url=`** vers l’ISO HTTP si elle est encore sur le serveur. Config auto : **`answer.toml`** → argument **`proxmox-installer.answer-file=`** (voir [installation automatisée Proxmox](https://pve.proxmox.com/wiki/Automated_Installation)).
 
 Pour **Ubuntu**, l’ISO est aussi extraite **en entier** ; noyau et initrd dans **`casper/`**. Par défaut les menus utilisent le mode **HTTP autoinstall** (`root=/dev/ram0`, `url=` vers l’ISO si elle est encore sur le serveur, `autoinstall ds=nocloud-net` + `cloud-config-url=/dev/null` sur les configs auto). Option **`UBUNTU_NFS_ENABLED=true`** pour l’ancien mode NFS.
 

@@ -18,9 +18,11 @@ from app.config import settings
 from app.models.models import OsType
 from app.services.iso_extractor import (
     ExtractionError,
+    DISTRO_RULES,
     _GENERIC_RULE,
     _extract_esxi_from_full_dest,
     _find_in_dest,
+    _find_proxmox_in_dest,
     _find_windows_in_dest,
     _fix_permissions,
 )
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Si l’admin coche « extraction complète » sur le type d’OS sans liste de noms, on évite l’erreur
 # « Configuration vide » et on délègue au moteur intégré (Fedora / EL / Ubuntu / Windows comme en seed).
 _BUILTIN_FULL_ISO_SLUGS = frozenset(
-    {"windows", "ubuntu", "rocky", "alma", "centos", "fedora"}
+    {"windows", "winpe", "ubuntu", "rocky", "alma", "centos", "fedora", "proxmox"}
 )
 
 
@@ -251,6 +253,16 @@ def try_extract_with_plan(
             os_slug, specs_raw, unified, basename_report, base, result
         )
         _fallback_kernel_initrd_in_dest(dest, os_slug, version_slug, result)
+        if os_slug == "proxmox" and (
+            not result.get("kernel_path") or not result.get("initrd_path")
+        ):
+            try:
+                pve = _find_proxmox_in_dest(
+                    dest, os_slug, version_slug, DISTRO_RULES.get("proxmox", _GENERIC_RULE)
+                )
+                result.update(pve)
+            except Exception as exc:
+                logger.warning("Détection Proxmox après plan personnalisé : %s", exc)
 
     elif bt == "esxi":
         if not ot.extract_full_iso:

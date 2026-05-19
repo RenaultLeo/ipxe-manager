@@ -65,6 +65,7 @@ def _migrate_columns():
         _backfill_os_types_ui_order()
     _ensure_os_types_ui_order_when_collapsed()
     _backfill_iso_was_extracted()
+    _backfill_builtin_extract_full_iso()
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
 
 
@@ -112,6 +113,39 @@ def _ensure_os_types_ui_order_when_collapsed() -> None:
         _backfill_os_types_ui_order()
     except Exception:
         logger.exception("Migration : ensure os_types ui_sort_order")
+
+
+def _backfill_builtin_extract_full_iso() -> None:
+    """OS intégrés : extraction 7z complète (Windows, WinPE, Proxmox, Ubuntu, EL, ESXi…)."""
+    slugs = (
+        "windows",
+        "winpe",
+        "ubuntu",
+        "rocky",
+        "alma",
+        "centos",
+        "fedora",
+        "proxmox",
+        "esxi",
+    )
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            placeholders = ", ".join(f"'{s}'" for s in slugs)
+            conn.execute(
+                text(
+                    f"""
+                    UPDATE os_types
+                    SET extract_full_iso = 1
+                    WHERE slug IN ({placeholders})
+                      AND (extract_full_iso = 0 OR extract_full_iso IS NULL)
+                    """
+                )
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Migration : backfill extract_full_iso (OS intégrés)")
 
 
 def _backfill_iso_was_extracted() -> None:

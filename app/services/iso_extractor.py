@@ -89,9 +89,9 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
-    # Proxmox VE — linux26 (v7) ou vmlinuz (v8) + initrd.img
+    # Proxmox VE — extraction complète ; noyau sous boot/ (linux26 v7, vmlinuz v8+)
     "proxmox": {
-        "type":    "linux",
+        "type":    "proxmox",
         "kernel":  ["linux26", "vmlinuz"],
         "initrd":  ["initrd.img"],
         "extra":   {},
@@ -189,11 +189,20 @@ def extract_iso(
         logger.info("Extraction terminée : %s", paths)
         return paths
 
-    if rule["type"] in ("windows", "ubuntu", "rocky", "alma", "centos", "fedora"):
+    if rule["type"] in (
+        "windows",
+        "ubuntu",
+        "rocky",
+        "alma",
+        "centos",
+        "fedora",
+        "proxmox",
+    ):
         # Extraction COMPLÈTE de l'ISO directement dans dest
-        # Windows : tous les fichiers nécessaires pour setup.exe via Samba/HTTP
-        # Ubuntu  : contenu ISO nécessaire pour cloud-init autoinstall via HTTP
-        # Rocky / Alma / CentOS / Fedora : arbre DVD pour Anaconda (inst.repo)
+        # Windows / WinPE : BCD, boot.sdi, boot.wim (wimboot)
+        # Ubuntu  : cloud-init autoinstall via HTTP
+        # Rocky / Alma / CentOS / Fedora : Anaconda (inst.repo / inst.stage2)
+        # Proxmox : installateur + answer.toml (proxmox-installer.answer-file=)
         logger.info("Extraction complète %s → %s", os_slug, dest)
         proc = subprocess.run(
             [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
@@ -209,6 +218,8 @@ def extract_iso(
             paths = _find_windows_in_dest(dest, os_slug, version_slug)
         elif rule["type"] == "ubuntu":
             paths = _find_ubuntu_in_dest(dest, os_slug, version_slug, rule)
+        elif rule["type"] == "proxmox":
+            paths = _find_proxmox_in_dest(dest, os_slug, version_slug, rule)
         else:
             paths = _find_el_anaconda_iso_in_dest(dest, os_slug, version_slug, rule)
     else:
@@ -929,17 +940,33 @@ def _find_windows_in_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     for label, match_fn, field in searches:
         candidates = [f for f in dest.rglob("*") if f.is_file() and match_fn(f)]
         if candidates:
-            chosen = max(candidates, key=lambda f: f.stat().st_size)
-            # Chemin relatif à partir de dest
+            # WinPE / Windows : préférer sources/ ou boot/ (layout ADK / ISO retail)
+            def _win_rank(p: Path) -> tuple[int, int]:
+                parts = {x.lower() for x in p.parts}
+                pref = 0
+                if "sources" in parts:
+                    pref -= 4
+                if "boot" in parts:
+                    pref -= 2
+                if "efi" in parts and "microsoft" in parts:
+                    pref -= 1
+                return (pref, -p.stat().st_size)
+
+            chosen = min(candidates, key=_win_rank)
             rel = chosen.relative_to(dest)
             result[field] = f"{base}/{rel.as_posix()}"
             logger.info("%s détecté : %s", label, rel)
         else:
             logger.warning("%s non trouvé après extraction", label)
 
-    if not result:
+    if not result.get("boot_wim_path"):
         raise ExtractionError(
-            "Aucun fichier Windows (BCD / boot.sdi / boot.wim) trouvé dans l'ISO."
+            "boot.wim introuvable — requis pour wimboot (Windows / WinPE)."
+        )
+    if not result.get("bcd_path") or not result.get("boot_sdi_path"):
+        raise ExtractionError(
+            "BCD et boot.sdi requis pour wimboot. Vérifiez que l'ISO contient un "
+            "environnement WinPE/Windows bootable (pas une simple image data)."
         )
     logger.info("Extraction Windows complète — %d fichiers de boot détectés", len(result))
     return result
@@ -984,6 +1011,50 @@ def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
         )
     logger.info("Extraction Ubuntu complète — kernel=%s initrd=%s",
                 result.get("kernel_path"), result.get("initrd_path"))
+    return result
+
+
+def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
+    """
+    Après extraction complète de l'ISO Proxmox VE : noyau + initrd sous ``boot/``
+    (linux26 ou vmlinuz + initrd.img). L'arborescence complète reste servie en HTTP
+    pour l'installateur (cf. doc autoinstall / iPXE communautaire).
+    """
+    result: dict = {}
+    base = f"boot/{os_slug}/{version_slug}"
+    kernel_names: list[str] = rule.get("kernel") or ["linux26", "vmlinuz"]
+    initrd_names: list[str] = rule.get("initrd") or ["initrd.img"]
+    pve_boot_pref = frozenset({"boot", "efi", "grub"})
+
+    kernel = _find_in_dest(
+        dest, kernel_names, mode="kernel", preferred_parent_names=pve_boot_pref
+    )
+    if kernel:
+        rel = kernel.relative_to(dest)
+        result["kernel_path"] = f"{base}/{rel.as_posix()}"
+        logger.info("Proxmox kernel : %s", rel)
+    else:
+        logger.warning("Proxmox : noyau non trouvé (essayé : %s)", ", ".join(kernel_names))
+
+    initrd = _find_in_dest(
+        dest, initrd_names, mode="initrd", preferred_parent_names=pve_boot_pref
+    )
+    if initrd:
+        rel = initrd.relative_to(dest)
+        result["initrd_path"] = f"{base}/{rel.as_posix()}"
+        logger.info("Proxmox initrd : %s", rel)
+    else:
+        logger.warning("Proxmox : initrd non trouvé")
+
+    if not result.get("kernel_path") or not result.get("initrd_path"):
+        raise ExtractionError(
+            "Aucun fichier de boot Proxmox (linux26 ou vmlinuz + initrd.img) trouvé dans l'ISO."
+        )
+    logger.info(
+        "Extraction Proxmox complète — kernel=%s initrd=%s",
+        result.get("kernel_path"),
+        result.get("initrd_path"),
+    )
     return result
 
 
