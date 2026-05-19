@@ -190,15 +190,41 @@ body {
 
 .user-card-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
 }
 
-.user-card-actions .form-control {
-  min-width: 10rem;
-  flex: 1 1 10rem;
-  max-width: 14rem;
+.user-card-password-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.user-password-input {
+  width: 8.5rem;
+  max-width: 8.5rem;
+  flex: 0 0 auto;
+}
+
+.user-card-delete-form {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+@media (max-width: 575.98px) {
+  .user-card-actions {
+    flex-wrap: wrap;
+  }
+
+  .user-card-delete-form {
+    margin-left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
 }
 
 /* ── Path list ── */

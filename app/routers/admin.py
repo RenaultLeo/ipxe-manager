@@ -7,6 +7,7 @@ import subprocess
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.auth import ROLE_ADMIN, ROLE_USER, auth_redirect_admin, hash_password
@@ -32,7 +33,14 @@ async def users_page(request: Request, db: Session = Depends(get_db), msg: str =
     redir = auth_redirect_admin(request)
     if redir:
         return redir
-    users = db.query(User).order_by(User.role.desc(), User.username.asc()).all()
+    users = (
+        db.query(User)
+        .order_by(
+            case((User.role == ROLE_ADMIN, 0), else_=1),
+            User.username.asc(),
+        )
+        .all()
+    )
     return templates.TemplateResponse(
         "admin/users.html",
         template_context(request, users=users, msg=msg),
