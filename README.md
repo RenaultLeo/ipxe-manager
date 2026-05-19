@@ -107,7 +107,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 - **Ports** après install : HTTP **80** (Nginx), TFTP **69/UDP**, **Redis** en local (**6379**), éventuellement **SMB** (**445**) et **NFS** (**2049** si `nfs-kernel-server` démarre). Ouvre/adapte le pare-feu sur la VM ou le VLAN.
 - **Branche Git** : le premier clonage tente `main`, puis `master`, puis clone par défaut — un `git pull` ultérieur suit la **branche suivie**. Si tu as un flux personnalisé, clone la bonne branche **avant** de lancer `setup.sh` dans ce répertoire (le script ne supprime alors pas le dossier tant que `.git` est présent).
 - **PostgreSQL** : le `.env` généré cible du **SQLite** sous `/srv/ipxe/app/` ; passer en Postgres se fait à la main en `.env`, sans script dédié.
-- **Ubuntu NFS** : si le service NFS passe vert, `setup.sh` force **`UBUNTU_NFS_ENABLED=true`** dans `.env` pour aligner menus et casper NFS ; désactive puis redémarre les services si tu ne veux pas d’export NFS tout de suite.
+- **Ubuntu NFS** (optionnel) : export NFS disponible après `setup.sh` ; les menus utilisent par défaut le **mode HTTP autoinstall**. Mets **`UBUNTU_NFS_ENABLED=true`** dans `.env` seulement si tu veux l’ancien boot `netboot=nfs`.
 
 ### Référence `deploy/` (noms systemd)
 

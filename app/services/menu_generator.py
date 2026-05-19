@@ -488,6 +488,27 @@ def _has_ip_kernel_arg(s: str) -> bool:
     return bool(re.search(r"(?:^|\s)ip=", s))
 
 
+# Retirés avant d’appliquer l’autre mode (évite NFS + HTTP mélangés si .env ou kernel_args changent).
+_UBUNTU_NFS_KERNEL_TOKENS = (
+    r"\bboot=casper\b",
+    r"\bnetboot=nfs\b",
+    r"\bnfsroot=\S+",
+    r"\bnfsopts=\S+",
+)
+_UBUNTU_HTTP_KERNEL_TOKENS = (
+    r"\broot=/dev/ram0\b",
+    r"\bramdisk_size=\S+",
+    r"\burl=\S+",
+)
+
+
+def _strip_kernel_arg_tokens(args: str, patterns: tuple[str, ...]) -> str:
+    out = args or ""
+    for pat in patterns:
+        out = re.sub(pat, "", out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
 def _ubuntu_iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
     """URL HTTP de l’ISO Ubuntu si ``iso_path`` est sous ``iso_root``."""
     if iso_version is None:
@@ -589,17 +610,20 @@ def _build_kernel_args(
             if init_bn:
                 args = f"{args} initrd={init_bn}".strip()
 
-    # Ubuntu : NFS optionnel, sinon mode HTTP autoinstall (défaut).
+    # Ubuntu : NFS optionnel (UBUNTU_NFS_ENABLED), sinon HTTP autoinstall (défaut).
     if os_slug.lower() == "ubuntu":
-        if nfsroot_pair and "nfsroot=" not in args:
-            nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
-            if not _has_ip_kernel_arg(args):
-                nfs_bits.insert(0, "ip=dhcp")
-            opts = cfg.ubuntu_nfs_mount_opts.strip().strip(",").strip()
-            if opts and "nfsopts=" not in args:
-                nfs_bits.append(f"nfsopts={opts}")
-            args = f"{args} {' '.join(nfs_bits)}".strip()
+        if nfsroot_pair:
+            args = _strip_kernel_arg_tokens(args, _UBUNTU_HTTP_KERNEL_TOKENS)
+            if "nfsroot=" not in args:
+                nfs_bits = ["boot=casper", "netboot=nfs", f"nfsroot={nfsroot_pair}"]
+                if not _has_ip_kernel_arg(args):
+                    nfs_bits.insert(0, "ip=dhcp")
+                opts = cfg.ubuntu_nfs_mount_opts.strip().strip(",").strip()
+                if opts and "nfsopts=" not in args:
+                    nfs_bits.append(f"nfsopts={opts}")
+                args = f"{args} {' '.join(nfs_bits)}".strip()
         else:
+            args = _strip_kernel_arg_tokens(args, _UBUNTU_NFS_KERNEL_TOKENS)
             args = _append_ubuntu_http_casper_args(
                 args, cfg, _ubuntu_iso_http_url(iso_version, cfg) or None
             )
