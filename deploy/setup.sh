@@ -196,7 +196,9 @@ chmod -R 755 "$DATA_DIR/tftpboot"
 echo "[10/15] Certificats TLS + configuration Nginx…"
 mkdir -p "$DATA_DIR/certs/ipxe-manager"
 if [ -f "$APP_DIR/deploy/https_cert_gen.sh" ]; then
-    bash "$APP_DIR/deploy/https_cert_gen.sh" "$SERVER_IP" "$DATA_DIR/certs/ipxe-manager"
+    # AUTO : FQDN depuis DHCP/resolver + IPv4 locale ; si IPXE_TLS_EXTRA_SAN vide, ajoute SERVER_IP aux SAN.
+    export IPXE_TLS_EXTRA_SAN="${IPXE_TLS_EXTRA_SAN:-$SERVER_IP}"
+    bash "$APP_DIR/deploy/https_cert_gen.sh" AUTO "$DATA_DIR/certs/ipxe-manager"
 else
     echo "  ! deploy/https_cert_gen.sh absent — HTTPS et TRUST iPXE non générés automatiquement."
 fi
