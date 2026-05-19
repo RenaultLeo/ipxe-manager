@@ -49,8 +49,8 @@ fi
 
 # Sudoers : ipxe peut lancer 7z en sudo pour l'extraction ISO
 cat > /etc/sudoers.d/ipxe-manager <<'EOF'
-# iPXE Manager — permissions sudo pour l'extraction d'ISO
-ipxe ALL=(ALL) NOPASSWD: /usr/bin/7z, /usr/bin/7za, /bin/mount, /bin/umount
+# iPXE Manager — extraction ISO + relance services (page Supervision)
+ipxe ALL=(ALL) NOPASSWD: /usr/bin/7z, /usr/bin/7za, /bin/mount, /bin/umount, /usr/bin/systemctl restart ipxe-manager, /usr/bin/systemctl restart ipxe-celery, /usr/bin/systemctl restart tftpd-hpa, /usr/bin/systemctl reload nginx
 EOF
 chmod 440 /etc/sudoers.d/ipxe-manager
 echo "  Sudoers configuré."

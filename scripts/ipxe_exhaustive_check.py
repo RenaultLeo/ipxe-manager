@@ -413,25 +413,31 @@ def run_menu_phase(audit: Audit) -> None:
     print()
 
 
-def run_authenticated_pages(audit: Audit, password: str) -> bool:
+def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "") -> bool:
     """Établit la session et vérifie les pages. Retourne False si login impossible."""
-    if not password:
+    cookie_in = (session_cookie or "").strip()
+    if cookie_in:
+        print("=== Session admin (cookie fourni — interface Supervision) ===")
+        audit.set_category("HTTP — Session admin")
+        audit.cookie = cookie_in if "=" in cookie_in else f"session={cookie_in}"
+        audit.ok(True, "Cookie de session navigateur réutilisé")
+    elif not password:
         print(
-            "=== Pages authentifiées — saut (fournissez --password ou la variable "
+            "=== Pages authentifiées — saut (fournissez --password, --session-cookie ou la variable "
             "d’environnement IPXE_AUDIT_PASSWORD) ===\n"
         )
         return True
+    else:
+        print("=== Session admin (pages HTML / JSON légers) ===")
+        audit.set_category("HTTP — Session admin")
+        status, ck = post_login_cookie(audit.base, password, audit.timeout, audit.insecure)
+        if status != 302 or not ck:
+            audit.ok(False, f"Connexion POST /login : statut={status}, cookie défini={'oui' if ck else 'non'}")
+            print()
+            return False
 
-    print("=== Session admin (pages HTML / JSON légers) ===")
-    audit.set_category("HTTP — Session admin")
-    status, ck = post_login_cookie(audit.base, password, audit.timeout, audit.insecure)
-    if status != 302 or not ck:
-        audit.ok(False, f"Connexion POST /login : statut={status}, cookie défini={'oui' if ck else 'non'}")
-        print()
-        return False
-
-    audit.ok(True, f"POST /login → {status}, cookie session reçu")
-    audit.cookie = ck
+        audit.ok(True, f"POST /login → {status}, cookie session reçu")
+        audit.cookie = ck
 
     html_paths = (
         ("/", "dashboard"),
@@ -444,6 +450,8 @@ def run_authenticated_pages(audit: Audit, password: str) -> bool:
         ("/firmware", "firmware"),
         ("/settings", "paramètres"),
         ("/settings/os-types/new", "nouveau type d’OS"),
+        ("/admin/supervision", "supervision admin"),
+        ("/admin/users", "comptes utilisateurs"),
     )
     for path, title in html_paths:
         audit.check_get(path, (200,), auth=True, name=f"HTML — {title} [{path}]", substring=b"<html")
@@ -948,6 +956,11 @@ def main() -> int:
     )
     p.add_argument("--password", default="", help="Mot de passe admin (sinon env IPXE_AUDIT_PASSWORD)")
     p.add_argument(
+        "--session-cookie",
+        default="",
+        help="Cookie session Starlette (ex. session=…) — alternative à --password (Supervision UI)",
+    )
+    p.add_argument(
         "--skip-menus",
         action="store_true",
         help="Ne pas télécharger ni analyser /menus/menu.ipxe",
@@ -1033,6 +1046,7 @@ def main() -> int:
         return 2
 
     pw = (args.password or os.environ.get("IPXE_AUDIT_PASSWORD") or "").strip()
+    session_ck = (args.session_cookie or os.environ.get("IPXE_AUDIT_SESSION_COOKIE") or "").strip()
 
     default_units = ["nginx", "redis-server", "tftpd-hpa", "ipxe-manager", "ipxe-celery"]
     extended_units = default_units + ["smbd", "nmbd"]
@@ -1080,7 +1094,7 @@ def main() -> int:
         print("────────────────────────────────────────\nContrôles locaux (--check-* / --full-local)")
         run_full_local_audits(args.app_dir, audit, flags=args)
 
-    auth_ok = run_authenticated_pages(audit, pw)
+    auth_ok = run_authenticated_pages(audit, pw, session_cookie=session_ck)
     if not auth_ok:
         print_audit_recap_by_category(audit)
         print("Résultat : impossible d’obtenir une session admin — code 2.", file=sys.stderr)

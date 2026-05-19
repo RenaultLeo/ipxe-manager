@@ -7,7 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings, sync_settings_server_base_url_from_db
 from app.database import init_db, SessionLocal
 from app.models.models import Upload, IsoVersion
-from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware, locale, admin
+from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware, locale, admin, admin_supervision
 from app.routers import settings as settings_router
 
 BASE_DIR = Path(__file__).parent
@@ -81,6 +81,7 @@ app.include_router(jobs.router)
 app.include_router(firmware.router)
 app.include_router(settings_router.router)
 app.include_router(admin.router)
+app.include_router(admin_supervision.router)
 
 
 def _cleanup_stale_uploads():

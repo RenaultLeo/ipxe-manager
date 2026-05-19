@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{{ t('super.page_title') }} — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+  <div>
+    <h1 class="page-title h3 mb-1"><i class="bi bi-activity me-2 text-primary"></i>{{ t('super.title') }}</h1>
+    <p class="page-subtitle text-muted small mb-0">{{ t('super.subtitle') }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2" id="actions">
+    <button type="button" class="btn btn-outline-primary btn-sm" id="btn-refresh-snapshot">
+      <i class="bi bi-arrow-clockwise me-1"></i>{{ t('super.refresh') }}
+    </button>
+  </div>
+</div>
+
+{% if msg %}
+<div class="alert alert-info alert-dismissible app-alert fade show mb-3" role="alert">
+  <span class="app-alert-text">{{ msg }}</span>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
+<ul class="nav nav-tabs super-tabs mb-3" role="tablist">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-health" type="button">
+      <i class="bi bi-heart-pulse me-1"></i>{{ t('super.tab_health') }}
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-integrity" type="button" id="integrity">
+      <i class="bi bi-shield-check me-1"></i>{{ t('super.tab_integrity') }}
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-health">
+  <div class="row g-3 mb-3">
+    <div class="col-md-3 col-6">
+      <div class="card panel-card super-stat h-100">
+        <div class="card-body py-3">
+          <div class="super-stat-label text-muted small">{{ t('super.chart_services') }}</div>
+          <div class="super-stat-value" id="stat-services">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 col-6">
+      <div class="card panel-card super-stat h-100">
+        <div class="card-body py-3">
+          <div class="super-stat-label text-muted small">CPU</div>
+          <div class="super-stat-value" id="stat-cpu">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 col-6">
+      <div class="card panel-card super-stat h-100">
+        <div class="card-body py-3">
+          <div class="super-stat-label text-muted small">RAM</div>
+          <div class="super-stat-value" id="stat-ram">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 col-6">
+      <div class="card panel-card super-stat h-100">
+        <div class="card-body py-3">
+          <div class="super-stat-label text-muted small">{{ t('super.chart_ports') }}</div>
+          <div class="super-stat-value" id="stat-ports">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-4">
+      <div class="card panel-card h-100">
+        <div class="card-header"><i class="bi bi-pie-chart me-2"></i>{{ t('super.chart_services') }}</div>
+        <div class="card-body"><canvas id="chart-services" height="200"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card panel-card h-100">
+        <div class="card-header"><i class="bi bi-hdd-network me-2"></i>{{ t('super.chart_ports') }}</div>
+        <div class="card-body"><canvas id="chart-ports" height="200"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card panel-card h-100">
+        <div class="card-header"><i class="bi bi-speedometer2 me-2"></i>{{ t('super.chart_resources') }}</div>
+        <div class="card-body"><canvas id="chart-resources" height="200"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card panel-card h-100">
+        <div class="card-header"><i class="bi bi-bar-chart me-2"></i>{{ t('super.chart_disk') }}</div>
+        <div class="card-body"><canvas id="chart-disk" height="160"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card panel-card h-100">
+        <div class="card-header"><i class="bi bi-pc-display me-2"></i>{{ t('super.host') }}</div>
+        <div class="card-body small" id="host-details"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card panel-card">
+        <div class="card-header"><i class="bi bi-folder2 me-2"></i>{{ t('super.paths') }}</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-dark table-sm mb-0" id="table-paths">
+              <thead><tr><th></th><th>Chemin</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card panel-card">
+        <div class="card-header"><i class="bi bi-grid me-2"></i>{{ t('super.checks') }}</div>
+        <div class="card-body" id="checks-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-muted small mt-3 mb-0">
+    <i class="bi bi-clock me-1"></i>{{ t('super.last_update') }} : <span id="last-update">{{ snapshot.generated_at }}</span>
+    <span class="ms-2" id="sudo-hint"></span>
+  </p>
+  </div>
+
+  <div class="tab-pane fade" id="tab-integrity">
+    <div class="card panel-card mb-3">
+      <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+        <form method="post" action="/admin/supervision/verification/quick" class="m-0">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-lightning me-1"></i>{{ t('super.run_quick') }}
+          </button>
+        </form>
+        <form method="post" action="/admin/supervision/verification/full" class="m-0"
+              onsubmit="return confirm({{ t('super.run_full')|tojson }} + ' ?');">
+          <button type="submit" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-search me-1"></i>{{ t('super.run_full') }}
+          </button>
+        </form>
+        <form method="post" action="/admin/supervision/services/restart" class="m-0 ms-lg-auto"
+              onsubmit="return confirm({{ t('admin.restart_confirm')|tojson }});">
+          <button type="submit" class="btn btn-outline-warning btn-sm">
+            <i class="bi bi-arrow-repeat me-1"></i>{{ t('super.restart_services') }}
+          </button>
+        </form>
+      </div>
+      <div class="card-footer text-muted small py-2">{{ t('super.restart_hint') }}</div>
+    </div>
+
+    {% if last_verification %}
+    <div class="card panel-card mb-3">
+      <div class="card-header d-flex justify-content-between">
+        <span>
+          {% if last_verification.mode == 'full' %}{{ t('super.run_full') }}{% else %}{{ t('super.run_quick') }}{% endif %}
+          — {% if last_verification.ok %}<span class="text-success">OK</span>{% else %}<span class="text-danger">KO</span>{% endif %}
+        </span>
+        <span class="text-muted small">{{ last_verification.duration_sec }} s</span>
+      </div>
+      {% if last_verification.items %}
+      <div class="card-body p-0 max-h-320 overflow-auto">
+        <table class="table table-dark table-sm mb-0">
+          <tbody>
+            {% for it in last_verification.items[-40:] %}
+            <tr>
+              <td class="text-muted small">{{ it.category }}</td>
+              <td>{{ it.name }}</td>
+              <td class="text-end">
+                {% if it.ok %}<i class="bi bi-check-circle text-success"></i>
+                {% elif it.ok is none %}<i class="bi bi-exclamation-triangle text-warning"></i>
+                {% else %}<i class="bi bi-x-circle text-danger"></i>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      {% if last_verification.log %}
+      <div class="card-footer">
+        <div class="small text-muted mb-1">{{ t('super.log_title') }}</div>
+        <pre class="super-log mb-0">{{ last_verification.log[-12000:] }}</pre>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="text-muted">{{ t('super.no_verification_yet') }}</p>
+    {% endif %}
+  </div>
+</div>
+
+<script type="application/json" id="initial-snapshot">{{ snapshot | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/static/js/supervision.js"></script>
+{% endblock %}

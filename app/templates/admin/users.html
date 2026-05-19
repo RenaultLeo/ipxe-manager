@@ -2,17 +2,9 @@
 {% block title %}{{ t('admin.users_title') }} — iPXE Manager{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
-  <div>
-    <h1 class="page-title h3 mb-1"><i class="bi bi-people me-2 text-primary"></i>{{ t('admin.users_title') }}</h1>
-    <p class="page-subtitle text-muted small mb-0">{{ t('admin.subtitle') }}</p>
-  </div>
-  <form method="post" action="/admin/services/restart" class="m-0"
-        onsubmit="return confirm('{{ t('admin.restart_confirm')|e }}');">
-    <button type="submit" class="btn btn-outline-warning btn-sm">
-      <i class="bi bi-arrow-repeat me-1"></i>{{ t('admin.restart_services') }}
-    </button>
-  </form>
+<div class="page-header mb-3">
+  <h1 class="page-title h3 mb-1"><i class="bi bi-people me-2 text-primary"></i>{{ t('admin.users_title') }}</h1>
+  <p class="page-subtitle text-muted small mb-0">{{ t('admin.users_subtitle') }}</p>
 </div>
 
 {% if msg %}
@@ -73,22 +65,23 @@
               <span class="badge bg-secondary">{{ t('admin.role_user') }}</span>
               {% endif %}
             </div>
-            <div class="user-card-tools">
-            <form method="post" action="/admin/users/{{ u.id }}/password" class="user-card-password-form">
+            <form id="user-pw-{{ u.id }}" method="post" action="/admin/users/{{ u.id }}/password" class="user-card-password-input-form m-0">
               <input type="password" name="new_password" class="form-control form-control-sm user-password-input"
                      placeholder="{{ t('admin.new_password') }}" minlength="6" required autocomplete="new-password">
-              <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap" title="{{ t('admin.change_password') }}">
+            </form>
+            <div class="user-card-actions-end">
+              <button type="submit" form="user-pw-{{ u.id }}" class="btn btn-sm btn-outline-primary text-nowrap"
+                      title="{{ t('admin.change_password') }}">
                 <i class="bi bi-key me-1"></i>{{ t('admin.change_password') }}
               </button>
-            </form>
-            {% if current_user and u.id != current_user.id %}
-            <form method="post" action="/admin/users/{{ u.id }}/delete" class="user-card-delete-form m-0"
-                  onsubmit="return confirm('{{ t('admin.delete_confirm')|e }}');">
-              <button type="submit" class="btn btn-sm btn-outline-danger" title="{{ t('admin.delete_confirm') }}">
-                <i class="bi bi-trash"></i>
-              </button>
-            </form>
-            {% endif %}
+              {% if current_user and u.id != current_user.id %}
+              <form method="post" action="/admin/users/{{ u.id }}/delete" class="user-card-delete-form m-0"
+                    onsubmit="return confirm('{{ t('admin.delete_confirm')|e }}');">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="{{ t('admin.delete_confirm') }}">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+              {% endif %}
             </div>
           </div>
         </div>
