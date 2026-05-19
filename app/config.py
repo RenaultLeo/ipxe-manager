@@ -176,8 +176,6 @@ class Settings(BaseSettings):
 
     def ubuntu_nfs_server_hostname(self) -> str | None:
         """Hostname ou IP utilisé dans nfsroot= (côté client)."""
-        if not self.ubuntu_nfs_enabled:
-            return None
         manual = self.ubuntu_nfs_host.strip()
         if manual:
             return manual.rstrip("/")
@@ -202,7 +200,7 @@ class Settings(BaseSettings):
         Casper / Ubuntu live attend les options NFS dans un paramètre séparé ``nfsopts=…``
         (voir casper(7)) ; mettre ``,vers=3`` dans nfsroot peut provoquer un ENOENT côté client.
         """
-        if os_slug.lower() != "ubuntu" or not self.ubuntu_nfs_enabled:
+        if os_slug.lower() != "ubuntu":
             return None
         host = self.ubuntu_nfs_server_hostname()
         if not host:

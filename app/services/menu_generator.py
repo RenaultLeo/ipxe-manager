@@ -120,14 +120,20 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     """Construit le dict d'une version pour les templates Jinja2."""
     be = v.boot_entry
     version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
-    nfs_pair = cfg.ubuntu_nfsroot_pair(os_type.slug, version_slug)
-    if os_type.slug.lower() == "ubuntu" and cfg.ubuntu_nfs_enabled and not nfs_pair:
+    use_ubuntu_nfs = (
+        os_type.slug.lower() == "ubuntu"
+        and bool(getattr(v, "ubuntu_nfs_boot", False))
+    )
+    nfs_pair = (
+        cfg.ubuntu_nfsroot_pair(os_type.slug, version_slug) if use_ubuntu_nfs else None
+    )
+    if use_ubuntu_nfs and not nfs_pair:
         logger.warning(
-            "Ubuntu NFS: UBUNTU_NFS_ENABLED mais nfsroot vide pour \"%s\". "
-            "Vérifier HTTP_ROOT et boot/ubuntu/<slug> sur le serveur, puis régénérer les menus.",
+            "Ubuntu NFS: boot NFS activé pour \"%s\" mais nfsroot vide. "
+            "Vérifier HTTP_ROOT, boot/ubuntu/<slug> et UBUNTU_NFS_HOST, puis régénérer les menus.",
             v.version_label,
         )
-    elif os_type.slug.lower() == "ubuntu" and cfg.ubuntu_nfs_enabled and nfs_pair:
+    elif use_ubuntu_nfs and nfs_pair:
         nfs_dir = cfg.ubuntu_boot_version_dir(version_slug)
         if not nfs_dir.is_dir():
             logger.warning(
@@ -198,6 +204,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             for ac in v.autoconfigs
         ],
         "ipxe_item_tag": f"v{v.id}",
+        "ubuntu_nfs_boot": use_ubuntu_nfs,
     }
 
 
@@ -432,7 +439,9 @@ def regenerate_all(db: Session) -> list[str]:
                     has_autres=has_autres,
                     server_url=base,
                     has_menu_theme=has_menu_theme,
-                    ubuntu_nfs_enabled=cfg.ubuntu_nfs_enabled,
+                    ubuntu_nfs_enabled=any(
+                        e.get("ubuntu_nfs_boot") for e in standard_entries
+                    ),
                     ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
                     ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
                 )

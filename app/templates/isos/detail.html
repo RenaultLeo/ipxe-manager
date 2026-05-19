@@ -86,6 +86,21 @@
               </div>
             </div>
           {% endif %}
+          {% if version.os_type.slug == 'ubuntu' %}
+            <div id="ubuntu-nfs-boot-opt"
+                 class="d-flex align-items-center gap-2 rounded border border-secondary px-2 py-1{% if not version.boot_entry %} user-select-none opacity-50{% endif %}"
+                 {% if not version.boot_entry %}title="{{ t('iso.ubuntu_nfs_toggle_unavailable') }}"{% else %}title="{{ t('iso.ubuntu_nfs_toggle_help') }}" data-can-save="1"{% endif %}
+                 data-version-id="{{ version.id }}"
+                 data-save-err="{{ t('iso.ubuntu_nfs_pref_save_error')|e }}">
+              <label class="small mb-0" for="ubuntuNfsSwitch" style="max-width:220px;line-height:1.2;cursor:pointer">{{ t('iso.ubuntu_nfs_toggle_label') }}</label>
+              <div class="form-check form-switch m-0 flex-shrink-0">
+                <input class="form-check-input ubuntu-nfs-cb mt-0" type="checkbox" role="switch"
+                       id="ubuntuNfsSwitch"
+                       {% if version.ubuntu_nfs_boot %}checked{% endif %}
+                       {% if not version.boot_entry %}disabled{% endif %}>
+              </div>
+            </div>
+          {% endif %}
           {% if version.os_type.boot_type == 'windows' %}
           <button class="btn btn-outline-info btn-sm" type="button"
                   onclick="document.getElementById('wim-replace-form').classList.toggle('d-none')">
@@ -361,8 +376,48 @@
     background-color: #198754;
     border-color: #198754;
   }
+  .ubuntu-nfs-cb:focus { box-shadow: 0 0 0 .2rem rgba(13,202,240,.35); }
+  .ubuntu-nfs-cb:checked {
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+  }
 </style>
 <script>
+(function () {
+  var root = document.getElementById('ubuntu-nfs-boot-opt');
+  if (root && root.dataset.canSave === '1') {
+    var cb = document.getElementById('ubuntuNfsSwitch');
+    if (cb) {
+      var vid = root.dataset.versionId;
+      var saveErrFallback = root.dataset.saveErr || 'Error';
+      cb.addEventListener('change', async function () {
+        var on = cb.checked;
+        var res = await fetch('/isos/' + encodeURIComponent(vid) + '/ubuntu-nfs-boot', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ enabled: !!on }),
+        });
+        if (res.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (!res.ok) {
+          var msg = saveErrFallback;
+          try {
+            var j = await res.json();
+            var d = j.detail;
+            if (typeof d === 'string') msg = d;
+            else if (Array.isArray(d) && d.length && d[0].msg) msg = d[0].msg;
+          } catch (e) { /* ignore */ }
+          window.alert(msg);
+          cb.checked = !on;
+        }
+      });
+    }
+  }
+})();
+
 (function () {
   var root = document.getElementById('purge-iso-opt');
   if (!root || root.dataset.canSave !== '1') return;
