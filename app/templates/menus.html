@@ -342,6 +342,7 @@
         <thead>
           <tr>
             <th>{{ t('menu.chain_col_name') }}</th>
+            <th class="super-col-status text-center">{{ t('menu.chain_col_status') }}</th>
             <th>{{ t('menu.chain_col_url') }}</th>
             <th class="text-center" style="width:100px">{{ t('menu.chain_col_active') }}</th>
             <th class="text-center" style="width:80px">{{ t('menu.chain_col_action') }}</th>
@@ -355,6 +356,9 @@
             <td>
               <i class="bi bi-diagram-3 me-2 text-info"></i>
               <strong>{{ rc.name }}</strong>
+            </td>
+            <td class="text-center chain-status-cell">
+              <span class="status-led status-led-unknown" aria-hidden="true"></span>
             </td>
             <td>
               <code class="small text-break">{{ rc.url }}</code>
@@ -470,6 +474,10 @@ function chainCreateRow(c) {
   strong.textContent = c.name;
   td1.appendChild(strong);
 
+  const tdStatus = document.createElement('td');
+  tdStatus.className = 'text-center chain-status-cell';
+  tdStatus.innerHTML = chainLedHtml(null);
+
   const td2 = document.createElement('td');
   const code = document.createElement('code');
   code.className = 'small text-break';
@@ -495,6 +503,7 @@ function chainCreateRow(c) {
   td4.appendChild(dbtn);
 
   tr.appendChild(td1);
+  tr.appendChild(tdStatus);
   tr.appendChild(td2);
   tr.appendChild(td3);
   tr.appendChild(td4);
@@ -535,6 +544,37 @@ async function chainFetch(url, init) {
     emptyHint.classList.add('d-none');
   }
 
+  var chainStatusTimer = null;
+
+  async function refreshChainStatuses() {
+    const rows = tbody.querySelectorAll('tr[data-chain-id]');
+    if (!rows.length) return;
+    rows.forEach(function (tr) {
+      chainSetLed(tr, null);
+    });
+    const r = await chainFetch('/ipxe-menus/chains/status');
+    if (!r) return;
+    let data = {};
+    try {
+      data = await r.json();
+    } catch (e) {
+      return;
+    }
+    if (!r.ok || !data.ok || !Array.isArray(data.chains)) return;
+    data.chains.forEach(function (item) {
+      const tr = tbody.querySelector('tr[data-chain-id="' + item.id + '"]');
+      if (tr) chainSetLed(tr, !!item.online);
+    });
+  }
+
+  function scheduleChainStatusRefresh() {
+    if (chainStatusTimer) clearInterval(chainStatusTimer);
+    refreshChainStatuses();
+    chainStatusTimer = setInterval(refreshChainStatuses, 45000);
+  }
+
+  if (tbody.children.length) scheduleChainStatusRefresh();
+
   if (addForm) {
     addForm.addEventListener('submit', async function(ev) {
       ev.preventDefault();
@@ -548,8 +588,11 @@ async function chainFetch(url, init) {
       try { data = await r.json(); } catch (e) {}
       if (r.ok && data.ok && data.chain) {
         hideEmptyState();
-        tbody.appendChild(chainCreateRow(data.chain));
+        const newRow = chainCreateRow(data.chain);
+        tbody.appendChild(newRow);
         addForm.reset();
+        refreshChainStatuses();
+        if (!chainStatusTimer) scheduleChainStatusRefresh();
         return;
       }
       const err = (data && (data.detail || data.error)) ? (data.detail || data.error) : ('HTTP ' + r.status);

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import traceback
 from pathlib import Path
@@ -261,6 +262,25 @@ async def custom_script_delete(
 
 
 # ── Chainloads distants ───────────────────────────────────────────────────────
+
+def _probe_chains_status(chains: list[RemoteChain]) -> list[dict]:
+    from app.services.server_diagnostics import probe_urls_parallel
+
+    online_map = probe_urls_parallel([(c.id, c.url) for c in chains], timeout=3.0)
+    return [{"id": c.id, "online": online_map.get(c.id, False)} for c in chains]
+
+
+@router.get("/chains/status")
+async def chains_status(request: Request, db: Session = Depends(get_db)):
+    """État joignable des serveurs distants (sonde async, ne bloque pas le rendu HTML)."""
+    redir = auth_redirect_admin(request)
+    unauth = _json_or_redirect_unauth(request, redir)
+    if unauth is not None:
+        return unauth
+    chains = db.query(RemoteChain).order_by(RemoteChain.id).all()
+    statuses = await asyncio.to_thread(_probe_chains_status, chains)
+    return JSONResponse({"ok": True, "chains": statuses})
+
 
 @router.post("/chains/add")
 async def chain_add(

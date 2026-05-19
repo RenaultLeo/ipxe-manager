@@ -554,6 +554,50 @@ def _probe_sudo_systemctl() -> bool:
     return code == 0
 
 
+def probe_full_url(url: str, timeout: float = 3.0) -> dict[str, Any]:
+    """Sonde HTTP GET sur une URL complète (chainload iPXE distant, etc.)."""
+    raw = (url or "").strip()
+    if not raw:
+        return {"ok": False, "status": -1, "detail": "URL vide"}
+    if "://" not in raw:
+        raw = "http://" + raw
+    p = urlparse(raw)
+    if not p.scheme or not p.hostname:
+        return {"ok": False, "status": -1, "detail": "URL invalide"}
+    path = p.path or "/"
+    if p.query:
+        path = f"{path}?{p.query}"
+    port = p.port or (443 if p.scheme == "https" else 80)
+    base = f"{p.scheme}://{p.hostname}"
+    if port not in (80, 443):
+        base = f"{base}:{port}"
+    return http_probe(base, path, timeout=timeout)
+
+
+def probe_urls_parallel(urls: list[tuple[int, str]], timeout: float = 3.0) -> dict[int, bool]:
+    """Sonde plusieurs URLs en parallèle ; retourne {id: online}."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    out: dict[int, bool] = {}
+    if not urls:
+        return out
+
+    def _one(item: tuple[int, str]) -> tuple[int, bool]:
+        chain_id, url = item
+        return chain_id, bool(probe_full_url(url, timeout=timeout).get("ok"))
+
+    workers = min(8, len(urls))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_one, item) for item in urls]
+        for fut in as_completed(futures):
+            try:
+                chain_id, online = fut.result()
+                out[chain_id] = online
+            except Exception:
+                logger.exception("probe_urls_parallel")
+    return out
+
+
 def http_probe(base_url: str, path: str = "/login", timeout: float = 8.0) -> dict[str, Any]:
     import http.client
     from urllib.parse import urlparse
