@@ -22,7 +22,7 @@
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="nav">
-      <ul class="navbar-nav nav-main me-auto">
+      <ul class="navbar-nav nav-main">
         <li class="nav-item d-lg-none"><span class="nav-group-label">{{ t('nav.group_main') }}</span></li>
         <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
@@ -49,29 +49,25 @@
             <i class="bi bi-list-ul me-1"></i>{{ t('nav.menus') }}
           </a>
         </li>
+        {% if is_admin %}
+        <li class="nav-item d-lg-none"><span class="nav-group-label">{{ t('nav.group_admin') }}</span></li>
+        <li class="nav-item nav-item-admin-first">
+          <a class="nav-link {% if '/firmware' in request.url.path %}active{% endif %}" href="/firmware">
+            <i class="bi bi-cpu me-1"></i>{{ t('nav.firmware') }}
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if '/admin' in request.url.path %}active{% endif %}" href="/admin/users">
+            <i class="bi bi-people me-1"></i>{{ t('nav.admin_users') }}
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if '/settings' in request.url.path %}active{% endif %}" href="/settings">
+            <i class="bi bi-gear me-1"></i>{{ t('nav.settings') }}
+          </a>
+        </li>
+        {% endif %}
       </ul>
-      {% if is_admin %}
-      <div class="nav-admin-wrap d-lg-flex align-items-lg-center">
-        <ul class="navbar-nav nav-admin">
-          <li class="nav-item d-lg-none"><span class="nav-group-label">{{ t('nav.group_admin') }}</span></li>
-          <li class="nav-item">
-            <a class="nav-link {% if '/firmware' in request.url.path %}active{% endif %}" href="/firmware">
-              <i class="bi bi-cpu me-1"></i>{{ t('nav.firmware') }}
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if '/admin' in request.url.path %}active{% endif %}" href="/admin/users">
-              <i class="bi bi-people me-1"></i>{{ t('nav.admin_users') }}
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if '/settings' in request.url.path %}active{% endif %}" href="/settings">
-              <i class="bi bi-gear me-1"></i>{{ t('nav.settings') }}
-            </a>
-          </li>
-        </ul>
-      </div>
-      {% endif %}
       <div class="d-flex align-items-center gap-2 flex-wrap ms-lg-auto pt-2 pt-lg-0 border-top border-secondary border-lg-0 mt-2 mt-lg-0">
         <div class="dropdown">
           <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"

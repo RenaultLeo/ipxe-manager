@@ -70,8 +70,7 @@ body {
     align-self: center;
   }
 
-  .navbar-nav.nav-main,
-  .navbar-nav.nav-admin {
+  .navbar-nav.nav-main {
     flex-direction: row;
     align-items: center;
   }
@@ -80,10 +79,10 @@ body {
     white-space: nowrap;
   }
 
-  .nav-admin-wrap {
+  .nav-item-admin-first .nav-link {
     border-left: 1px solid var(--ipxe-card-border);
-    margin-left: 0.5rem;
-    padding-left: 0.5rem;
+    margin-left: 0.35rem;
+    padding-left: 0.85rem !important;
   }
 }
 
@@ -165,64 +164,67 @@ body {
 .user-card {
   border: 1px solid var(--ipxe-card-border);
   border-radius: 0.5rem;
-  padding: 0.85rem 1rem;
+  padding: 0.55rem 0.85rem;
   background: rgba(0, 0, 0, 0.15);
 }
 
 .user-card + .user-card {
-  margin-top: 0.65rem;
+  margin-top: 0.5rem;
 }
 
-.user-card-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.65rem;
-}
-
-.user-card-name {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.95rem;
-  color: #f472b6;
-}
-
-.user-card-actions {
+.user-card-row {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
 }
 
-.user-card-password-form {
+.user-card-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95rem;
+  color: #f472b6;
+  flex-shrink: 0;
+}
+
+.user-card-row .badge {
+  flex-shrink: 0;
+}
+
+.user-card-tools {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.user-password-input {
-  width: 8.5rem;
-  max-width: 8.5rem;
-  flex: 0 0 auto;
-}
-
-.user-card-delete-form {
   margin-left: auto;
   flex-shrink: 0;
 }
 
-@media (max-width: 575.98px) {
-  .user-card-actions {
+.user-card-password-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.user-password-input {
+  width: 7rem;
+  min-width: 7rem;
+  max-width: 7rem;
+  flex: 0 0 7rem;
+}
+
+.user-card-delete-form {
+  flex-shrink: 0;
+}
+
+@media (max-width: 991.98px) {
+  .user-card-row {
     flex-wrap: wrap;
   }
 
-  .user-card-delete-form {
+  .user-card-tools {
     margin-left: 0;
     width: 100%;
-    display: flex;
     justify-content: flex-end;
   }
 }

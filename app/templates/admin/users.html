@@ -60,30 +60,30 @@
       <div class="card-body">
         {% for u in users %}
         <div class="user-card">
-          <div class="user-card-header">
+          <div class="user-card-row">
             <span class="user-card-name">{{ u.username }}</span>
             {% if u.role == 'admin' %}
             <span class="badge bg-danger">{{ t('admin.role_admin') }}</span>
             {% else %}
             <span class="badge bg-secondary">{{ t('admin.role_user') }}</span>
             {% endif %}
-          </div>
-          <div class="user-card-actions">
+            <div class="user-card-tools">
             <form method="post" action="/admin/users/{{ u.id }}/password" class="user-card-password-form">
               <input type="password" name="new_password" class="form-control form-control-sm user-password-input"
                      placeholder="{{ t('admin.new_password') }}" minlength="6" required autocomplete="new-password">
-              <button type="submit" class="btn btn-sm btn-outline-primary flex-shrink-0" title="{{ t('admin.change_password') }}">
+              <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap" title="{{ t('admin.change_password') }}">
                 <i class="bi bi-key me-1"></i>{{ t('admin.change_password') }}
               </button>
             </form>
             {% if current_user and u.id != current_user.id %}
-            <form method="post" action="/admin/users/{{ u.id }}/delete" class="user-card-delete-form"
+            <form method="post" action="/admin/users/{{ u.id }}/delete" class="user-card-delete-form m-0"
                   onsubmit="return confirm('{{ t('admin.delete_confirm')|e }}');">
               <button type="submit" class="btn btn-sm btn-outline-danger" title="{{ t('admin.delete_confirm') }}">
                 <i class="bi bi-trash"></i>
               </button>
             </form>
             {% endif %}
+            </div>
           </div>
         </div>
         {% else %}
