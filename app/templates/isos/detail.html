@@ -24,6 +24,12 @@
   {% endif %}
 </div>
 
+{% if not can_modify %}
+<div class="alert alert-secondary py-2 mb-4">
+  <i class="bi bi-eye me-2"></i>{{ t('iso.readonly_banner') }}
+</div>
+{% endif %}
+
 <div class="row g-4">
   <!-- Info -->
   <div class="col-md-5">
@@ -59,7 +65,7 @@
         <span class="fw-medium"><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
       </div>
       <div class="card-body">
-        {% if version.iso_path and version.status != 'extracting' %}
+        {% if can_modify and version.iso_path and version.status != 'extracting' %}
         <div class="iso-boot-toolbar mb-3 pb-3 border-bottom border-secondary border-opacity-50">
           <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
             <form method="post" action="/isos/{{ version.id }}/extract" class="m-0"
@@ -179,7 +185,7 @@
           {% endif %}
         </dl>
 
-        {% if version.os_type.slug == 'fedora' and be %}
+        {% if can_modify and version.os_type.slug == 'fedora' and be %}
         <div class="mt-3 pt-3 border-top border-secondary">
           <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.detail_fedora_live_title') }}</h6>
           <p class="small text-muted mb-2">{{ t('iso.detail_fedora_live_intro') }}</p>
@@ -194,7 +200,7 @@
         </div>
         {% endif %}
 
-        {% if version.os_type.slug == 'alpine' and be %}
+        {% if can_modify and version.os_type.slug == 'alpine' and be %}
         <div class="mt-3 pt-3 border-top border-secondary">
           <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.detail_alpine_repo_title') }}</h6>
           <p class="small mb-3">
@@ -229,11 +235,15 @@
         {% else %}
         <p class="text-muted mb-0">
           Aucun fichier de boot extrait.
+          {% if can_modify %}
           <a href="/boot-files">Uploader manuellement</a> ou lancer l'extraction.
+          {% else %}
+          {{ t('iso.readonly_no_boot') }}
+          {% endif %}
         </p>
         {% endif %}
 
-        {% if version.os_type.boot_type == 'windows' %}
+        {% if can_modify and version.os_type.boot_type == 'windows' %}
         <!-- Formulaire remplacement boot.wim (masqué par défaut) -->
         <div id="wim-replace-form" class="d-none mt-3 pt-3 border-top border-secondary">
           <p class="text-info small mb-2">
@@ -284,6 +294,7 @@
   </div>
   {% endif %}
 
+  {% if can_modify %}
   <!-- Script iPXE personnalisé (téléversement depuis la fiche ISO) -->
   <div class="col-12">
     <div class="card border-secondary border-warning">
@@ -327,9 +338,11 @@
     <div class="card border-secondary">
       <div class="card-header d-flex justify-content-between">
         <span><i class="bi bi-file-code me-2"></i>Configurations automatiques</span>
+        {% if can_modify %}
         <a href="/ipxe-configs/new?preset_version={{ version.id }}" class="btn btn-outline-success btn-sm">
           <i class="bi bi-plus me-1"></i>{{ t('sett.add') }}
         </a>
+        {% endif %}
       </div>
       <div class="card-body p-0">
         {% if version.autoconfigs %}
@@ -341,7 +354,8 @@
               <td><span class="badge bg-info text-dark">{{ ac.config_type }}</span></td>
               <td>{{ ac.label }}</td>
               <td class="font-monospace small text-muted">{{ ac.file_path or '—' }}</td>
-              <td class="text-end">
+              <td class="text-end text-nowrap">
+                {% if can_modify %}
                 <a href="/ipxe-configs/{{ ac.id }}/edit" class="btn btn-sm btn-outline-warning me-1">
                   <i class="bi bi-pencil"></i>
                 </a>
@@ -349,6 +363,9 @@
                       onsubmit="return confirm('Supprimer cette config ?')">
                   <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
+                {% else %}
+                <span class="text-muted small">—</span>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -362,6 +379,7 @@
   </div>
 </div>
 
+{% if can_modify %}
 <!-- Delete -->
 <div class="mt-4 pt-3 border-top border-secondary">
   <form method="post" action="/isos/{{ version.id }}/delete"
@@ -371,6 +389,7 @@
     </button>
   </form>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.auth import auth_redirect_login, get_session_user
-from app.services.ownership import filter_iso_versions, get_iso_version
+from app.services.ownership import can_modify_iso_version, get_iso_version, get_iso_version_view
 from app.i18n import translate
 from app.models.models import OsType, IsoVersion, Upload, BootEntry
 from app.services.disk_info import fmt_size
@@ -92,13 +92,23 @@ def _auth(request: Request):
     return auth_redirect_login(request)
 
 
+def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> IsoVersion:
+    user = get_session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    version = get_iso_version_view(db, user, version_id)
+    if not version:
+        raise HTTPException(status_code=404)
+    return version
+
+
 def _get_version_or_404(db: Session, request: Request, version_id: int) -> IsoVersion:
     user = get_session_user(request)
     if not user:
         raise HTTPException(status_code=401)
     version = get_iso_version(db, user, version_id)
     if not version:
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=403, detail="forbidden")
     return version
 
 
@@ -616,9 +626,8 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
     redir = _auth(request)
     if redir:
         return redir
-    version = _get_version_or_404(db, request, version_id)
-    if not version:
-        raise HTTPException(404, "Version introuvable")
+    version = _get_version_view_or_404(db, request, version_id)
+    can_modify = can_modify_iso_version(get_session_user(request), version)
     basename_report: dict[str, list[str]] = {}
     raw = getattr(version, "extract_basename_report_json", "") or ""
     if raw.strip():
@@ -658,6 +667,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             boot_extra_linux=boot_extra_linux,
             iso_file_exists=iso_file_exists,
             alpine_repo_default_public=ALPINE_REPO_DEFAULT_PUBLIC,
+            can_modify=can_modify,
         ),
     )
 
@@ -834,9 +844,7 @@ async def iso_status(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    version = _get_version_or_404(db, request, version_id)
-    if not version:
-        raise HTTPException(404)
+    version = _get_version_view_or_404(db, request, version_id)
     return JSONResponse({"status": version.status})
 
 
@@ -848,9 +856,7 @@ async def iso_status_fragment(
     db: Session = Depends(get_db),
 ):
     """HTMX endpoint — retourne uniquement le badge de statut HTML."""
-    version = _get_version_or_404(db, request, version_id)
-    if not version:
-        raise HTTPException(404)
+    version = _get_version_view_or_404(db, request, version_id)
     pull_end = align == "end"
     return templates.TemplateResponse(
         "isos/status_badge.html",

@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
 from app.auth import get_session_user, is_admin
+from app.services.ownership import can_modify_iso_version
 from app.i18n import translate, SUPPORTED_LOCALES
 from app.config import settings
 
@@ -26,6 +27,10 @@ def template_context(request: Request, **extra):
     if request.url.query:
         raw_next += "?" + request.url.query
     current_user = get_session_user(request)
+
+    def can_modify_iso(version) -> bool:
+        return can_modify_iso_version(current_user, version)
+
     return {
         "request": request,
         "lang": lang,
@@ -35,5 +40,6 @@ def template_context(request: Request, **extra):
         "iso_public_http_url": settings.iso_public_http_url,
         "current_user": current_user,
         "is_admin": is_admin(request),
+        "can_modify_iso": can_modify_iso,
         **extra,
     }
