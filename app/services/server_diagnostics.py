@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -22,6 +23,11 @@ from app.services.disk_info import get_disk_usage, get_dir_size, fmt_size
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SERVICE_CTL = Path("/usr/local/sbin/ipxe-service-ctl")
+
+
+def _systemctl_bin() -> str:
+    return shutil.which("systemctl") or "/usr/bin/systemctl"
 
 DEFAULT_SYSTEMD_UNITS = (
     "nginx",
@@ -80,11 +86,12 @@ def _run_cmd(
 
 
 def _systemctl_argv(*args: str) -> list[list[str]]:
-    """Essaie sudo -n puis systemctl direct."""
+    """Essaie sudo -n puis systemctl direct (chemin absolu pour sudoers)."""
+    sc = _systemctl_bin()
     base = list(args)
     return [
-        ["sudo", "-n", "systemctl", *base],
-        ["systemctl", *base],
+        ["sudo", "-n", sc, *base],
+        [sc, *base],
     ]
 
 
@@ -125,6 +132,33 @@ def systemctl_is_active(unit: str) -> dict[str, Any]:
 
 
 def systemctl_restart(unit: str) -> dict[str, Any]:
+    """Relance via /usr/local/sbin/ipxe-service-ctl (sudo) si installé, sinon systemctl."""
+    allowed = {"ipxe-manager", "ipxe-celery", "tftpd-hpa"}
+    if unit not in allowed:
+        return {"unit": unit, "ok": False, "detail": "unité non autorisée", "sudo": False}
+
+    if SERVICE_CTL.is_file():
+        for cmd in (
+            ["sudo", "-n", str(SERVICE_CTL), "restart", unit],
+        ):
+            code, out, err = _run_cmd(cmd, timeout=90)
+            if code == 0:
+                return {
+                    "unit": unit,
+                    "ok": True,
+                    "detail": (out or "OK")[:200],
+                    "sudo": True,
+                    "via": "ipxe-service-ctl",
+                }
+            last_err = err or out or f"exit {code}"
+        hint = (
+            "sudo refusé — exécutez sur le serveur : "
+            "sudo bash deploy/install-service-sudo.sh"
+        )
+        if "password" in (last_err or "").lower() or code == 1:
+            return {"unit": unit, "ok": False, "detail": hint[:300], "sudo": False}
+        return {"unit": unit, "ok": False, "detail": (last_err or hint)[:300], "sudo": False}
+
     last_err = ""
     for cmd in _systemctl_argv("restart", unit):
         code, out, err = _run_cmd(cmd, timeout=90)
@@ -133,7 +167,12 @@ def systemctl_restart(unit: str) -> dict[str, Any]:
         if code == 0:
             return {"unit": unit, "ok": True, "detail": (out or "OK")[:200], "sudo": cmd[0] == "sudo"}
         last_err = err or out or f"exit {code}"
-    return {"unit": unit, "ok": False, "detail": last_err[:300], "sudo": False}
+    return {
+        "unit": unit,
+        "ok": False,
+        "detail": (last_err or "install-service-sudo.sh requis")[:300],
+        "sudo": False,
+    }
 
 
 def check_port_open(proto: str, port: int, host: str = "127.0.0.1") -> bool | None:
@@ -433,7 +472,10 @@ def collect_snapshot(db: Session, *, extended_units: bool = True) -> dict[str, A
 
 
 def _probe_sudo_systemctl() -> bool:
-    code, _, _ = _run_cmd(["sudo", "-n", "systemctl", "is-active", "nginx"], timeout=5)
+    if SERVICE_CTL.is_file():
+        code, out, _ = _run_cmd(["sudo", "-n", "-l"], timeout=5)
+        return code == 0 and "ipxe-service-ctl" in (out or "")
+    code, _, _ = _run_cmd(["sudo", "-n", _systemctl_bin(), "is-active", "nginx"], timeout=5)
     return code == 0
 
 

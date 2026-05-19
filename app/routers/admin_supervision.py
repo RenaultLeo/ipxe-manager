@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.auth import auth_redirect_admin
-from app.database import get_db
+from app.config import sync_settings_server_base_url_from_db
+from app.database import get_db, init_db
 from app.i18n import translate
 from app.services.server_diagnostics import collect_snapshot, http_probe, systemctl_restart
 from app.services.server_verification import (
@@ -84,6 +85,26 @@ async def supervision_full_verify(request: Request):
         msg = translate(lang, "super.verify_full_ok", sec=result.get("duration_sec", 0))
     else:
         msg = translate(lang, "super.verify_full_fail", sec=result.get("duration_sec", 0))
+    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
+
+
+@router.post("/supervision/database/sync")
+async def supervision_sync_database(request: Request, db: Session = Depends(get_db)):
+    redir = auth_redirect_admin(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    try:
+        init_db()
+        sync_settings_server_base_url_from_db()
+        from app.models.models import OsType, User
+
+        users = db.query(User).count()
+        os_types = db.query(OsType).count()
+        msg = translate(lang, "super.sync_db_ok", users=users, os_types=os_types)
+    except Exception as exc:
+        logger.exception("sync database")
+        msg = translate(lang, "super.sync_db_fail", detail=str(exc)[:200])
     return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
 
 

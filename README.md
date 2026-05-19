@@ -323,7 +323,16 @@ python3 scripts/ipxe_exhaustive_check.py --base-url http://127.0.0.1 --password 
 **Interface web (administrateurs)** — menu **Supervision** (`/admin/supervision`) :
 
 - **État du serveur** : graphiques (services systemd, ports, CPU/RAM, disques), chemins, Redis/Celery/DB, actualisation automatique.
-- **Contrôle d'intégrité** : vérification rapide ou audit exhaustif (réutilise le script ci-dessus avec votre session admin), relance des services via `sudo systemctl` si le sudoers de `deploy/setup.sh` est installé.
+- **Contrôle d'intégrité** : vérification rapide, audit exhaustif, **synchronisation BDD** (`init_db` + migrations), relance des services.
+
+**Droits relance services** (si « Access denied ») — une fois sur le serveur :
+
+```bash
+cd /srv/ipxe/app
+sudo git pull   # récupérer deploy/install-service-sudo.sh
+sudo bash deploy/install-service-sudo.sh
+sudo systemctl restart ipxe-manager
+```
 
 ---
 

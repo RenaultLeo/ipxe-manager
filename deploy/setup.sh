@@ -47,14 +47,6 @@ else
     echo "  Utilisateur $APP_USER déjà présent."
 fi
 
-# Sudoers : ipxe peut lancer 7z en sudo pour l'extraction ISO
-cat > /etc/sudoers.d/ipxe-manager <<'EOF'
-# iPXE Manager — extraction ISO + relance services (page Supervision)
-ipxe ALL=(ALL) NOPASSWD: /usr/bin/7z, /usr/bin/7za, /bin/mount, /bin/umount, /usr/bin/systemctl restart ipxe-manager, /usr/bin/systemctl restart ipxe-celery, /usr/bin/systemctl restart tftpd-hpa, /usr/bin/systemctl reload nginx
-EOF
-chmod 440 /etc/sudoers.d/ipxe-manager
-echo "  Sudoers configuré."
-
 # ── 3. Arborescence des données ───────────────────────────────────────────────
 echo "[3/15] Création de l'arborescence…"
 mkdir -p \
@@ -86,6 +78,13 @@ else
     else
         git clone "$REPO_URL" "$APP_DIR"
     fi
+fi
+
+# Sudoers + script de relance services (page Supervision)
+if [ -f "$APP_DIR/deploy/install-service-sudo.sh" ]; then
+    bash "$APP_DIR/deploy/install-service-sudo.sh"
+else
+    echo "  ! deploy/install-service-sudo.sh absent — relance services UI indisponible jusqu'à install manuel."
 fi
 
 # ── 5. Environnement Python ───────────────────────────────────────────────────
