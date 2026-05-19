@@ -56,61 +56,65 @@
   <div class="col-md-7">
     <div class="card border-secondary h-100">
       <div class="card-header">
-        <div class="d-flex flex-column flex-xl-row gap-2 justify-content-between align-items-xl-center">
-          <span class="fw-medium"><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
-          <div class="d-flex flex-wrap align-items-center gap-2 justify-content-xl-end">
-          {% if version.iso_path and version.status != 'extracting' %}
-            <form method="post" action="/isos/{{ version.id }}/extract" class="d-inline"
+        <span class="fw-medium"><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
+      </div>
+      <div class="card-body">
+        {% if version.iso_path and version.status != 'extracting' %}
+        <div class="iso-boot-toolbar mb-3 pb-3 border-bottom border-secondary border-opacity-50">
+          <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
+            <form method="post" action="/isos/{{ version.id }}/extract" class="m-0"
                   {% if version.iso_was_extracted %}
                   data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
                   onsubmit="return confirm(this.dataset.confirmReextract)"
                   {% endif %}>
-              <button class="btn btn-warning btn-sm"
+              <button class="btn btn-outline-warning btn-sm"
                       {% if not iso_file_exists %}type="button" disabled title="{{ t('iso.extract_missing_iso') }}"{% else %}type="submit"{% endif %}>
                 <i class="bi bi-box-arrow-in-down me-1"></i>Extraire depuis l'ISO
               </button>
             </form>
+            {% if version.os_type.boot_type == 'windows' %}
+            <button class="btn btn-outline-info btn-sm" type="button"
+                    onclick="document.getElementById('wim-replace-form').classList.toggle('d-none')">
+              <i class="bi bi-recycle me-1"></i>Remplacer boot.wim
+            </button>
+            {% endif %}
+            <div class="iso-boot-toggles ms-md-auto d-flex flex-wrap align-items-center">
             <div id="purge-iso-opt"
-                 class="d-flex align-items-center gap-2 rounded border border-secondary px-2 py-1{% if not iso_file_exists %} user-select-none opacity-50{% endif %}"
+                 class="iso-boot-toggle{% if not iso_file_exists %} is-disabled{% endif %}"
                  {% if not iso_file_exists %}title="{{ t('iso.purge_iso_toggle_unavailable') }}"{% endif %}
                  data-version-id="{{ version.id }}"
                  data-confirm-msg="{{ t('iso.purge_iso_toggle_confirm')|e }}"
                  data-save-err="{{ t('iso.purge_iso_pref_save_error')|e }}"
                  {% if iso_file_exists %}data-can-save="1"{% endif %}>
-              <label class="small mb-0" for="purgeIsoSwitch" style="max-width:260px;line-height:1.2;cursor:pointer">{{ t('iso.purge_iso_toggle_label') }}</label>
-              <div class="form-check form-switch m-0 flex-shrink-0">
-                <input class="form-check-input purge-iso-cb mt-0" type="checkbox" role="switch"
-                       id="purgeIsoSwitch"
+              <label class="iso-boot-toggle-label" for="purgeIsoSwitch">
+                <i class="bi bi-trash3 me-1 opacity-75"></i>{{ t('iso.purge_iso_toggle_short') }}
+              </label>
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="purgeIsoSwitch"
                        {% if version.delete_iso_after_next_extract %}checked{% endif %}
                        {% if not iso_file_exists %}disabled{% endif %}>
               </div>
             </div>
-          {% endif %}
-          {% if version.os_type.slug == 'ubuntu' %}
+            {% if version.os_type.slug == 'ubuntu' %}
             <div id="ubuntu-nfs-boot-opt"
-                 class="d-flex align-items-center gap-2 rounded border border-secondary px-2 py-1{% if not version.boot_entry %} user-select-none opacity-50{% endif %}"
+                 class="iso-boot-toggle{% if not version.boot_entry %} is-disabled{% endif %}"
                  {% if not version.boot_entry %}title="{{ t('iso.ubuntu_nfs_toggle_unavailable') }}"{% else %}title="{{ t('iso.ubuntu_nfs_toggle_help') }}" data-can-save="1"{% endif %}
                  data-version-id="{{ version.id }}"
                  data-save-err="{{ t('iso.ubuntu_nfs_pref_save_error')|e }}">
-              <label class="small mb-0" for="ubuntuNfsSwitch" style="max-width:220px;line-height:1.2;cursor:pointer">{{ t('iso.ubuntu_nfs_toggle_label') }}</label>
-              <div class="form-check form-switch m-0 flex-shrink-0">
-                <input class="form-check-input ubuntu-nfs-cb mt-0" type="checkbox" role="switch"
-                       id="ubuntuNfsSwitch"
+              <label class="iso-boot-toggle-label" for="ubuntuNfsSwitch">
+                <i class="bi bi-hdd-network me-1 opacity-75"></i>{{ t('iso.ubuntu_nfs_toggle_short') }}
+              </label>
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="ubuntuNfsSwitch"
                        {% if version.ubuntu_nfs_boot %}checked{% endif %}
                        {% if not version.boot_entry %}disabled{% endif %}>
               </div>
             </div>
-          {% endif %}
-          {% if version.os_type.boot_type == 'windows' %}
-          <button class="btn btn-outline-info btn-sm" type="button"
-                  onclick="document.getElementById('wim-replace-form').classList.toggle('d-none')">
-            <i class="bi bi-recycle me-1"></i>Remplacer boot.wim
-          </button>
-          {% endif %}
+            {% endif %}
+            </div>
           </div>
         </div>
-      </div>
-      <div class="card-body">
+        {% endif %}
         {% if version.boot_entry %}
         {% set be = version.boot_entry %}
         {% set is_esxi = (version.os_type.slug == 'esxi') or (version.os_type.boot_type == 'esxi') %}
@@ -371,15 +375,37 @@
 
 {% block scripts %}
 <style>
-  .purge-iso-cb:focus { box-shadow: 0 0 0 .2rem rgba(25,135,84,.35); }
-  .purge-iso-cb:checked {
-    background-color: #198754;
-    border-color: #198754;
+  .iso-boot-toolbar .btn { white-space: nowrap; }
+  .iso-boot-toggles {
+    gap: 0.75rem 1.25rem;
+    padding-left: 0.25rem;
   }
-  .ubuntu-nfs-cb:focus { box-shadow: 0 0 0 .2rem rgba(13,202,240,.35); }
-  .ubuntu-nfs-cb:checked {
-    background-color: #0dcaf0;
-    border-color: #0dcaf0;
+  @media (min-width: 768px) {
+    .iso-boot-toggles {
+      border-left: 1px solid rgba(var(--bs-secondary-rgb), 0.35);
+      padding-left: 1.25rem;
+    }
+  }
+  .iso-boot-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem 0.65rem;
+  }
+  .iso-boot-toggle.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .iso-boot-toggle-label {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    line-height: 1.25;
+    user-select: none;
+  }
+  .iso-boot-toggle .form-check-input {
+    margin: 0;
+    cursor: pointer;
   }
 </style>
 <script>
