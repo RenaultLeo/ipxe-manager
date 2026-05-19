@@ -22,6 +22,12 @@ from app.services.autoconfig_types import (
     all_config_types_for_ui,
     config_type_labels as _config_type_labels,
 )
+from app.services.autoconfig_label import (
+    label_from_ubuntu_cloud_slug,
+    next_ubuntu_cloud_slug,
+    normalize_new_config_label,
+    resolve_autoconfig_menu_label,
+)
 
 router = APIRouter(prefix="/ipxe-configs")
 
@@ -70,6 +76,9 @@ async def config_list(request: Request, db: Session = Depends(get_db),
     if redir:
         return redir
     configs = db.query(AutoConfig).order_by(AutoConfig.updated_at.desc()).all()
+    config_menu_labels = {
+        c.id: resolve_autoconfig_menu_label(c) for c in configs
+    }
     versions = db.query(IsoVersion).all()
     types_combo = all_config_types_for_ui(db)
     return templates.TemplateResponse(
@@ -77,6 +86,7 @@ async def config_list(request: Request, db: Session = Depends(get_db),
         template_context(
             request,
             configs=configs,
+            config_menu_labels=config_menu_labels,
             versions=versions,
             config_types=types_combo,
             scan_result=scan_result,
@@ -120,6 +130,7 @@ async def config_new(
         template_context(
             request,
             config=None,
+            menu_display_label="",
             versions=versions,
             preset_iso_version_id=preset_version,
             config_types=types_combo,
@@ -167,10 +178,12 @@ async def config_create(
         elif config_type not in allowed_types:
             raise HTTPException(400, "Type de configuration non autorisé.")
 
+    menu_label = normalize_new_config_label(db, iso_version_id, label)
+
     cfg = AutoConfig(
         iso_version_id=iso_version_id,
         config_type=config_type,
-        label=label or "user-data",
+        label=menu_label,
         content=content,
     )
 
@@ -179,12 +192,17 @@ async def config_create(
         and version.os_type.is_builtin
         and config_type == "cloud-init"
     ):
-        slug = slugify(cloud_bundle_name.strip())
-        if not slug:
-            raise HTTPException(
-                400,
-                "Pour Ubuntu, indiquez un nom de dossier de configuration (slug non vide).",
-            )
+        raw_slug = cloud_bundle_name.strip()
+        if raw_slug:
+            slug = slugify(raw_slug)
+            if not slug:
+                raise HTTPException(
+                    400,
+                    "Nom de dossier invalide (utilisez lettres, chiffres, tirets).",
+                )
+        else:
+            slug = next_ubuntu_cloud_slug(db, iso_version_id)
+            cfg.label = label_from_ubuntu_cloud_slug(slug)
         dup = (
             db.query(AutoConfig)
             .filter(
@@ -229,6 +247,7 @@ async def config_edit(config_id: int, request: Request, db: Session = Depends(ge
         template_context(
             request,
             config=cfg,
+            menu_display_label=resolve_autoconfig_menu_label(cfg),
             versions=versions,
             preset_iso_version_id=None,
             config_types=types_combo,
@@ -256,7 +275,13 @@ async def config_update(
     if not cfg:
         raise HTTPException(404)
 
-    cfg.label = label or cfg.label or "user-data"
+    cfg.label = normalize_new_config_label(
+        db,
+        cfg.iso_version_id,
+        label,
+        exclude_id=cfg.id,
+        ubuntu_cloud_slug=cfg.ubuntu_cloud_slug,
+    )
     cfg.content = content
     cfg.updated_at = datetime.utcnow()
 

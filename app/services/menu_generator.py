@@ -13,6 +13,7 @@ from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
+from app.services.autoconfig_label import resolve_autoconfig_menu_label
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "autoconfigs": [
             {
                 "id":       ac.id,
-                "label":    ac.label or ac.config_type,
+                "label":    resolve_autoconfig_menu_label(ac),
                 "url":      h(ac.file_path) if ac.file_path else "",
                 "type":     ac.config_type,
                 "boot_arg": config_boot_arg(

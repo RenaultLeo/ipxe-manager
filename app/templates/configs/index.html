@@ -50,7 +50,7 @@
             {% else %}
             <span class="badge bg-info text-dark">{{ c.config_type }}</span>
             {% endif %}</td>
-          <td>{{ c.label }}</td>
+          <td>{{ config_menu_labels[c.id] }}</td>
           <td class="font-monospace small text-muted">{{ c.file_path or '—' }}</td>
           <td class="text-muted small">{{ c.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>
           <td class="text-end">

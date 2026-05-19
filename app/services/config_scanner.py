@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.models import OsType, IsoVersion, AutoConfig
 from app.services.slugify import slugify
+from app.services.autoconfig_label import (
+    label_from_ubuntu_cloud_slug,
+    next_autoconfig_menu_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +199,8 @@ def scan_and_import(db: Session) -> dict:
 
     # Index des fichiers déjà en base (par file_path)
     existing = {ac.file_path for ac in db.query(AutoConfig).all() if ac.file_path}
+    # Compteur d’imports par version pour libellés config 1, 2, …
+    import_pending: dict[int, int] = {}
 
     # Index des versions : {os_slug: {version_slug: IsoVersion}}
     version_index: dict[str, dict[str, IsoVersion]] = {}
@@ -236,10 +242,16 @@ def scan_and_import(db: Session) -> dict:
                     try:
                         ud_txt = ud_path.read_text(encoding="utf-8", errors="replace")
                         md_txt = md_path.read_text(encoding="utf-8", errors="replace")
+                        menu_label = label_from_ubuntu_cloud_slug(slug)
+                        if menu_label.lower() in ("user-data", "meta-data"):
+                            menu_label = next_autoconfig_menu_label(
+                                db, version.id, extra=import_pending.get(version.id, 0)
+                            )
+                        import_pending[version.id] = import_pending.get(version.id, 0) + 1
                         ac = AutoConfig(
                             iso_version_id=version.id,
                             config_type="cloud-init",
-                            label=slug or sub.name,
+                            label=menu_label,
                             content=ud_txt,
                             meta_data_content=md_txt,
                             ubuntu_cloud_slug=slug,
@@ -274,10 +286,18 @@ def scan_and_import(db: Session) -> dict:
                 )
                 try:
                     content = f.read_text(encoding="utf-8", errors="replace")
+                    stem_l = f.stem.lower()
+                    if stem_l in ("user-data", "meta-data", "cloud-config"):
+                        menu_label = next_autoconfig_menu_label(
+                            db, version.id, extra=import_pending.get(version.id, 0)
+                        )
+                    else:
+                        menu_label = f.stem
+                    import_pending[version.id] = import_pending.get(version.id, 0) + 1
                     ac = AutoConfig(
                         iso_version_id=version.id,
                         config_type=cfg_type,
-                        label=f.stem,
+                        label=menu_label,
                         content=content,
                         file_path=rel,
                     )
