@@ -26,7 +26,7 @@ echo "======================================================"
 echo "[1/15] Installation des paquets système…"
 apt-get update -qq
 apt-get install -y -qq \
-    sudo git curl wget unzip rsync ca-certificates \
+    sudo git curl wget unzip rsync ca-certificates openssl \
     iproute2 procps \
     nginx tftpd-hpa redis-server \
     python3 python3-venv python3-pip nodejs \
@@ -65,6 +65,7 @@ mkdir -p \
     "$DATA_DIR/http/configs" \
     "$DATA_DIR/isos" \
     "$DATA_DIR/build" \
+    "$DATA_DIR/certs/ipxe-manager" \
     "$LOG_DIR"
 
 # Permissions publiques sur http/ pour que Nginx puisse servir les fichiers
@@ -109,7 +110,7 @@ echo "[6/15] Configuration de l'environnement (.env)…"
 if [ ! -f "$APP_DIR/.env" ]; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     cat > "$APP_DIR/.env" <<EOF
-SERVER_BASE_URL=http://$SERVER_IP
+SERVER_BASE_URL=https://$SERVER_IP
 SECRET_KEY=$SECRET
 ADMIN_PASSWORD=admin
 DATABASE_URL=sqlite:////srv/ipxe/app/ipxe.db
@@ -119,6 +120,8 @@ HTTP_ROOT=/srv/ipxe/http
 ISO_ROOT=/srv/ipxe/isos
 ISO_HTTP_ALIAS=isos-ipxe
 BUILD_DIR=/srv/ipxe/build
+# PEM incorporé dans les firmwares (make TRUST=…) pour chainloader HTTPS — défaut dans l’app si absent
+IPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt
 MAX_UPLOAD_SIZE=53687091200
 # Marge disque min. (octets) avant upload ISO — défaut 256 Mo dans l’app si absent (voir UPLOAD_MIN_FREE_BYTES).
 # UPLOAD_MIN_FREE_BYTES=268435456
@@ -137,6 +140,9 @@ else
     grep -q "UPLOAD_MIN_FREE_BYTES" "$APP_DIR/.env" || printf '\n# Upload ISO — marge disque minimale avant acceptation (défaut app : 268435456 = 256 Mo)\n# UPLOAD_MIN_FREE_BYTES=268435456\n' >> "$APP_DIR/.env"
     grep -q "^UBUNTU_NFS_ENABLED" "$APP_DIR/.env" || {
         printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
+    }
+    grep -q "^IPXE_TLS_TRUSTED_PEM" "$APP_DIR/.env" || {
+        printf '\n# PEM pour TRUST= lors de la compilation firmware (HTTPS)\nIPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt\n' >> "$APP_DIR/.env"
     }
 fi
 
@@ -186,83 +192,21 @@ TFTP_OPTIONS="--secure --create --blocksize 1468"
 EOF
 chmod -R 755 "$DATA_DIR/tftpboot"
 
-# ── 10. Nginx ─────────────────────────────────────────────────────────────────
-echo "[10/15] Configuration Nginx…"
-cat > /etc/nginx/sites-available/ipxe-manager <<'NGINX'
-server {
-    listen 80;
-    server_name _;
+# ── 10. TLS + Nginx ─────────────────────────────────────────────────────────────
+echo "[10/15] Certificats TLS + configuration Nginx…"
+mkdir -p "$DATA_DIR/certs/ipxe-manager"
+if [ -f "$APP_DIR/deploy/https_cert_gen.sh" ]; then
+    bash "$APP_DIR/deploy/https_cert_gen.sh" "$SERVER_IP" "$DATA_DIR/certs/ipxe-manager"
+else
+    echo "  ! deploy/https_cert_gen.sh absent — HTTPS et TRUST iPXE non générés automatiquement."
+fi
 
-    access_log /var/log/nginx/ipxe-manager.access.log;
-    error_log  /var/log/nginx/ipxe-manager.error.log;
-
-    sendfile        on;
-    tcp_nopush      on;
-    tcp_nodelay     on;
-    keepalive_timeout 65;
-
-    # Upload ISO volumineux (jusqu'à 60 Go)
-    client_max_body_size 60G;
-
-    # ── Fichiers statiques iPXE (bypasse FastAPI pour les performances) ──
-
-    location /menus/ {
-        alias /srv/ipxe/http/menus/;
-        add_header Content-Type text/plain;
-        expires -1;
-    }
-
-    location /boot/ {
-        alias /srv/ipxe/http/boot/;
-        autoindex off;
-        sendfile on;
-        aio threads;
-        output_buffers 1 128k;
-        expires 1d;
-    }
-
-    location /configs/ {
-        alias /srv/ipxe/http/configs/;
-        add_header Content-Type text/plain;
-        expires -1;
-    }
-
-    # ISO sous ISO_ROOT — préfixe dédié (pas « /isos/ » : évite tout conflit avec les routes UI FastAPI /isos).
-    location /isos-ipxe/ {
-        alias /srv/ipxe/isos/;
-        autoindex off;
-        sendfile on;
-        expires 1d;
-    }
-
-    # wimboot — binaire pour le boot Windows PE
-    location /wimboot {
-        alias /srv/ipxe/http/wimboot;
-        add_header Content-Type application/octet-stream;
-    }
-
-    location /static/ {
-        alias /srv/ipxe/app/static/;
-        expires 7d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # ── Interface web FastAPI ──────────────────────────────────────────────
-    location / {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_set_header   Upgrade           $http_upgrade;
-        proxy_set_header   Connection        "upgrade";
-        proxy_read_timeout  3600;
-        proxy_send_timeout  3600;
-        proxy_request_buffering off;
-    }
-}
-NGINX
+if [ -f "$APP_DIR/deploy/nginx.conf" ]; then
+    cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ipxe-manager
+else
+    echo "  ERREUR : $APP_DIR/deploy/nginx.conf introuvable." >&2
+    exit 1
+fi
 
 ln -sf /etc/nginx/sites-available/ipxe-manager /etc/nginx/sites-enabled/ipxe-manager
 rm -f /etc/nginx/sites-enabled/default
@@ -411,9 +355,11 @@ echo "======================================================"
 echo "  Installation terminée !"
 echo "======================================================"
 echo ""
-echo "  Interface web  : http://$SERVER_IP/"
+echo "  Interface web (HTTPS) : https://$SERVER_IP/"
+echo "  Interface web (HTTP)  : http://$SERVER_IP/"
 echo "  Login          : admin  /  Mot de passe : admin"
-echo "  Menu iPXE HTTP : http://$SERVER_IP/menus/menu.ipxe"
+echo "  Menu iPXE HTTPS : https://$SERVER_IP/menus/menu.ipxe"
+echo "  Menu iPXE HTTP  : http://$SERVER_IP/menus/menu.ipxe"
 echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
 echo "  Samba share    : \\\\$SERVER_IP\\boot"
 echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (menus : UBUNTU_NFS_ENABLED mis à true si NFS actif)"
