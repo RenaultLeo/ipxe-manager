@@ -75,7 +75,18 @@
     <div class="col-lg-4">
       <div class="card panel-card h-100">
         <div class="card-header"><i class="bi bi-pie-chart me-2"></i>{{ t('super.chart_services') }}</div>
-        <div class="card-body"><canvas id="chart-services" height="200"></canvas></div>
+        <div class="card-body pb-0">
+          <canvas id="chart-services" height="160" class="d-block mx-auto mb-2"></canvas>
+          <div class="table-responsive border-top border-secondary">
+            <table class="table table-dark table-sm mb-0 super-status-table" id="table-services">
+              <thead><tr>
+                <th class="super-col-status">{{ t('super.col_status') }}</th>
+                <th>{{ t('super.col_name') }}</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
     <div class="col-lg-4">
@@ -102,7 +113,18 @@
     <div class="col-lg-6">
       <div class="card panel-card h-100">
         <div class="card-header"><i class="bi bi-pc-display me-2"></i>{{ t('super.host') }}</div>
-        <div class="card-body small" id="host-details"></div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-dark table-sm mb-0 super-status-table" id="table-machines">
+              <thead><tr>
+                <th class="super-col-status">{{ t('super.col_status') }}</th>
+                <th>{{ t('super.col_name') }}</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="small px-3 py-2 border-top border-secondary text-muted" id="host-details"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -113,8 +135,12 @@
         <div class="card-header"><i class="bi bi-folder2 me-2"></i>{{ t('super.paths') }}</div>
         <div class="card-body p-0">
           <div class="table-responsive">
-            <table class="table table-dark table-sm mb-0" id="table-paths">
-              <thead><tr><th></th><th>Chemin</th></tr></thead>
+            <table class="table table-dark table-sm mb-0 super-status-table" id="table-paths">
+              <thead><tr>
+                <th class="super-col-status">{{ t('super.col_status') }}</th>
+                <th>{{ t('super.col_name') }}</th>
+                <th>{{ t('super.col_path') }}</th>
+              </tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -157,6 +183,7 @@
         </form>
         <form method="post" action="/admin/supervision/services/restart" class="m-0 ms-lg-auto"
               onsubmit="return confirm({{ t('admin.restart_confirm')|tojson }});">
+          <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}{% if request.url.fragment %}#{{ request.url.fragment }}{% endif %}">
           <button type="submit" class="btn btn-outline-warning btn-sm">
             <i class="bi bi-arrow-repeat me-1"></i>{{ t('super.restart_services') }}
           </button>

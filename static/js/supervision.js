@@ -28,6 +28,34 @@
     return '<i class="bi bi-question-circle text-muted"></i>';
   }
 
+  function statusLed(online, status) {
+    var cls = "status-led-unknown";
+    if (online === true || status === "ok" || status === "active") cls = "status-led-on";
+    else if (online === false || status === "error" || status === "inactive") cls = "status-led-off";
+    else if (status === "warn") cls = "status-led-warn";
+    return '<span class="status-led ' + cls + '"></span>';
+  }
+
+  function renderStatusTable(tableId, rows, nameKey) {
+    var tbody = document.querySelector(tableId + " tbody");
+    if (!tbody) return;
+    tbody.innerHTML = rows
+      .map(function (row) {
+        var name = row[nameKey] || row.name || row.unit || row.label || "—";
+        var ledStatus =
+          row.status ||
+          (row.active === true ? "active" : row.active === false ? "inactive" : null);
+        return (
+          "<tr><td class=\"text-center\">" +
+          statusLed(row.online, ledStatus) +
+          "</td><td>" +
+          name +
+          "</td></tr>"
+        );
+      })
+      .join("");
+  }
+
   function destroyChart(key) {
     if (charts[key]) {
       charts[key].destroy();
@@ -57,53 +85,64 @@
         : '<span class="badge bg-warning-subtle text-warning">' + i18n.sudoNo + "</span>";
     }
 
+    renderStatusTable("#table-machines", snap.machines || [], "name");
+
     var hostHtml = "";
-    if (host.hostname) {
+    if (host.platform) {
+      hostHtml += '<div class="text-muted">' + host.platform + "</div>";
+    }
+    if (host.uptime_human || host.memory_used_gb != null) {
       hostHtml +=
-        "<div><strong>" +
-        host.hostname +
-        "</strong></div><br><span class=\"text-muted\">" +
-        (host.platform || "") +
-        "</span></div>";
-      hostHtml +=
-        "<div class=\"mt-2\">Uptime : " +
+        '<div class="mt-2">Uptime : ' +
         (host.uptime_human || "—") +
         "</div>";
       hostHtml +=
-        "<div class=\"mt-2\">RAM : " +
+        '<div class="mt-1">RAM : ' +
         (host.memory_used_gb || "?") +
         " / " +
         (host.memory_total_gb || "?") +
         " Go</div>";
-      if (host.network && host.network.length) {
-        hostHtml += "<div class=\"mt-2\"><strong>Réseau</strong><ul class=\"mb-0 ps-3\">";
-        host.network.slice(0, 5).forEach(function (n) {
-          hostHtml +=
-            "<li><code>" +
-            n.iface +
-            "</code> " +
-            (n.ips && n.ips.length ? n.ips.join(", ") : "") +
-            " <span class=\"text-muted\">↓" +
-            n.rx_mb +
-            "M ↑" +
-            n.tx_mb +
-            "M</span></li>";
-        });
-        hostHtml += "</ul></div>";
-      }
+    }
+    if (host.network && host.network.length) {
+      hostHtml += '<div class="mt-2"><strong>Réseau</strong><ul class="mb-0 ps-3">';
+      host.network.slice(0, 5).forEach(function (n) {
+        hostHtml +=
+          "<li><code>" +
+          n.iface +
+          "</code> " +
+          (n.ips && n.ips.length ? n.ips.join(", ") : "") +
+          ' <span class="text-muted">↓' +
+          n.rx_mb +
+          "M ↑" +
+          n.tx_mb +
+          "M</span></li>";
+      });
+      hostHtml += "</ul></div>";
     }
     if (el("host-details")) el("host-details").innerHTML = hostHtml;
 
-    var tbody = document.querySelector("#table-paths tbody");
-    if (tbody && snap.paths) {
-      tbody.innerHTML = snap.paths
+    renderStatusTable(
+      "#table-services",
+      (snap.services || []).map(function (s) {
+        return {
+          unit: s.unit,
+          online: s.active,
+          status: s.active ? "ok" : "error",
+        };
+      }),
+      "unit"
+    );
+
+    var tbodyPaths = document.querySelector("#table-paths tbody");
+    if (tbodyPaths && snap.paths) {
+      tbodyPaths.innerHTML = snap.paths
         .map(function (p) {
           return (
-            "<tr><td>" +
-            statusIcon(p.status) +
-            " " +
+            "<tr><td class=\"text-center\">" +
+            statusLed(p.status === "ok", p.status) +
+            "</td><td>" +
             p.label +
-            "</td><td class=\"font-monospace small\">" +
+            "</td><td class=\"font-monospace small text-muted\">" +
             p.path +
             "</td></tr>"
           );

@@ -175,6 +175,35 @@ def systemctl_restart(unit: str) -> dict[str, Any]:
     }
 
 
+RESTART_UNITS_ORDER = ("ipxe-celery", "tftpd-hpa", "ipxe-manager")
+
+
+def schedule_service_restarts() -> None:
+    """
+    Relance les services dans un processus détaché (après la réponse HTTP).
+    ipxe-manager en dernier pour éviter de tuer la requête en cours.
+    """
+    ctl = str(SERVICE_CTL) if SERVICE_CTL.is_file() else ""
+    sc = _systemctl_bin()
+    lines = []
+    for unit in RESTART_UNITS_ORDER:
+        if ctl:
+            lines.append(f"sudo -n {ctl} restart {unit} || true")
+        else:
+            lines.append(f"sudo -n {sc} restart {unit} || true")
+    script = "sleep 0.4\n" + "\n".join(lines) + "\n"
+    try:
+        subprocess.Popen(
+            ["/bin/bash", "-c", script],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info("Relance services planifiée (processus détaché)")
+    except OSError:
+        logger.exception("Impossible de planifier la relance des services")
+
+
 def check_port_open(proto: str, port: int, host: str = "127.0.0.1") -> bool | None:
     try:
         if proto == "udp":
@@ -392,6 +421,47 @@ def _fmt_uptime(seconds: int) -> str:
     return " ".join(parts)
 
 
+def remote_server_reachability(base_url: str) -> dict[str, Any]:
+    """Joignabilité HTTP du serveur PXE (URL publique configurée)."""
+    from urllib.parse import urlparse
+
+    url = (base_url or "").strip().rstrip("/")
+    p = urlparse(url)
+    name = p.hostname or url or "—"
+    if p.port and p.port not in (80, 443):
+        name = f"{name}:{p.port}"
+    probe = http_probe(url, "/login") if url else {"ok": False}
+    online = bool(probe.get("ok"))
+    return {
+        "name": name,
+        "url": url,
+        "online": online,
+        "status": "ok" if online else "error",
+    }
+
+
+def build_machines_list(host: dict[str, Any], server_base_url: str) -> list[dict[str, Any]]:
+    local_name = (host.get("hostname") or "localhost").strip()
+    remote = remote_server_reachability(server_base_url)
+    return [
+        {
+            "id": "local",
+            "name": local_name,
+            "online": True,
+            "status": "ok",
+            "kind": "local",
+        },
+        {
+            "id": "remote",
+            "name": remote["name"],
+            "online": remote["online"],
+            "status": remote["status"],
+            "kind": "remote",
+            "url": remote.get("url", ""),
+        },
+    ]
+
+
 def application_stats(db: Session) -> dict[str, Any]:
     from app.models.models import IsoVersion, Upload, User
 
@@ -452,11 +522,16 @@ def collect_snapshot(db: Session, *, extended_units: bool = True) -> dict[str, A
     svc_active = sum(1 for s in services if s.get("active"))
     svc_total = len(services)
     port_open = sum(1 for p in ports if p.get("open"))
+    host = host_metrics()
+    app = application_stats(db)
+    remote_probe = remote_server_reachability(app.get("server_base_url", ""))
 
     return {
         "generated_at": _utc_now(),
-        "host": host_metrics(),
-        "application": application_stats(db),
+        "host": host,
+        "application": app,
+        "machines": build_machines_list(host, app.get("server_base_url", "")),
+        "remote_server": remote_probe,
         "services": services,
         "services_summary": {"active": svc_active, "total": svc_total, "inactive": svc_total - svc_active},
         "ports": ports,

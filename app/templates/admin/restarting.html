@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ t('super.restarting_title') }} — iPXE Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column align-items-center justify-content-center text-center py-5" style="min-height: 50vh;">
+  <div class="spinner-border text-primary mb-4" role="status" style="width: 3rem; height: 3rem;">
+    <span class="visually-hidden">{{ t('super.running') }}</span>
+  </div>
+  <h1 class="h4 mb-2">{{ t('super.restarting_title') }}</h1>
+  <p class="text-muted mb-0" id="restart-status">{{ t('super.restarting_wait') }}</p>
+</div>
+<script>
+(function () {
+  var nextUrl = {{ return_url | tojson }};
+  var okMsg = {{ success_msg | tojson }};
+  function withMsg(url, msg) {
+    var hash = "";
+    var base = url;
+    var hi = url.indexOf("#");
+    if (hi >= 0) {
+      hash = url.slice(hi);
+      base = url.slice(0, hi);
+    }
+    var sep = base.indexOf("?") >= 0 ? "&" : "?";
+    return base + sep + "msg=" + encodeURIComponent(msg) + hash;
+  }
+  var target = withMsg(nextUrl, okMsg);
+  var attempts = 0;
+  var maxAttempts = 120;
+
+  function poll() {
+    attempts++;
+    fetch("/login", { method: "GET", cache: "no-store", credentials: "same-origin" })
+      .then(function (r) {
+        if (r.ok || r.status === 302) {
+          window.location.replace(target);
+          return;
+        }
+        throw new Error("not ready");
+      })
+      .catch(function () {
+        if (attempts >= maxAttempts) {
+          window.location.replace(nextUrl);
+          return;
+        }
+        setTimeout(poll, 1500);
+      });
+  }
+  setTimeout(poll, 2000);
+})();
+</script>
+{% endblock %}

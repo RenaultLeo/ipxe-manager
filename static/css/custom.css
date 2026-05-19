@@ -404,3 +404,39 @@ pre {
 .max-h-320 {
   max-height: 320px;
 }
+
+.super-status-table th.super-col-status,
+.super-status-table td:first-child {
+  width: 2.75rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  vertical-align: middle;
+}
+
+.status-led {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.status-led-on {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.65);
+}
+
+.status-led-off {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+.status-led-warn {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+}
+
+.status-led-unknown {
+  background: #64748b;
+}

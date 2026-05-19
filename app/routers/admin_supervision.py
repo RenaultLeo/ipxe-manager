@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import logging
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin")
 
-SERVICE_UNITS_RESTART = ("ipxe-manager", "ipxe-celery", "tftpd-hpa")
+def _safe_return_url(raw: str | None, default: str = "/admin/supervision") -> str:
+    """Chemin interne uniquement (évite open redirect)."""
+    if not raw or not str(raw).strip():
+        return default
+    s = str(raw).strip()
+    if s.startswith("/"):
+        path = s.split("#", 1)[0]
+        if path.startswith("/admin/supervision/services/"):
+            return default
+        return s if len(s) <= 512 else s[:512]
+    try:
+        p = urlparse(s)
+    except ValueError:
+        return default
+    if p.scheme or p.netloc:
+        path = p.path or default
+    else:
+        path = s
+    if not path.startswith("/"):
+        return default
+    if path.startswith("/admin/supervision/services/"):
+        return default
+    out = path
+    if p.query:
+        out += "?" + p.query
+    if p.fragment:
+        out += "#" + p.fragment
+    return out[:512]
 
 
 @router.get("/supervision", response_class=HTMLResponse)
@@ -108,32 +135,35 @@ async def supervision_sync_database(request: Request, db: Session = Depends(get_
     return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
 
 
-@router.post("/supervision/services/restart")
-async def supervision_restart_services(request: Request):
+@router.get("/supervision/services/restarting", response_class=HTMLResponse)
+async def supervision_restarting_page(request: Request, next: str = "/admin/supervision"):
     redir = auth_redirect_admin(request)
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    lines: list[str] = []
-    ok_all = True
-    for unit in SERVICE_UNITS_RESTART:
-        info = systemctl_restart(unit)
-        if info.get("ok"):
-            sudo_note = " (sudo)" if info.get("sudo") else ""
-            lines.append(translate(lang, "admin.service_ok", unit=unit) + sudo_note)
-        else:
-            ok_all = False
-            lines.append(
-                translate(
-                    lang,
-                    "admin.service_fail",
-                    unit=unit,
-                    detail=info.get("detail", ""),
-                )
-            )
-    msg = " — ".join(lines)
-    if ok_all:
-        msg = translate(lang, "admin.services_restarted") + " " + msg
-    else:
-        msg = translate(lang, "super.restart_partial") + " " + msg
-    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}", status_code=302)
+    return_url = _safe_return_url(next)
+    success_msg = translate(lang, "admin.services_restarted")
+    return templates.TemplateResponse(
+        "admin/restarting.html",
+        template_context(
+            request,
+            return_url=return_url,
+            success_msg=success_msg,
+        ),
+    )
+
+
+@router.post("/supervision/services/restart")
+async def supervision_restart_services(request: Request, next: str = Form("")):
+    redir = auth_redirect_admin(request)
+    if redir:
+        return redir
+    return_url = _safe_return_url(
+        next or request.headers.get("referer"),
+        "/admin/supervision",
+    )
+    schedule_service_restarts()
+    return RedirectResponse(
+        f"/admin/supervision/services/restarting?next={quote(return_url, safe='')}",
+        status_code=303,
+    )
