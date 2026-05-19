@@ -120,7 +120,7 @@ HTTP_ROOT=/srv/ipxe/http
 ISO_ROOT=/srv/ipxe/isos
 ISO_HTTP_ALIAS=isos-ipxe
 BUILD_DIR=/srv/ipxe/build
-# PEM pour firmware iPXE (make CERT= sur ce fichier — cf. https://ipxe.org/crypto)
+# PEM pour firmware iPXE (make CERT=/TRUST= sur ce fichier — cf. https://ipxe.org/crypto)
 IPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt
 MAX_UPLOAD_SIZE=53687091200
 # Marge disque min. (octets) avant upload ISO — défaut 256 Mo dans l’app si absent (voir UPLOAD_MIN_FREE_BYTES).
@@ -142,7 +142,7 @@ else
         printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
     }
     grep -q "^IPXE_TLS_TRUSTED_PEM" "$APP_DIR/.env" || {
-        printf '\n# PEM pour CERT= lors de la compilation firmware (HTTPS)\nIPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt\n' >> "$APP_DIR/.env"
+        printf '\n# PEM pour CERT=/TRUST= lors de la compilation firmware (HTTPS)\nIPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt\n' >> "$APP_DIR/.env"
     }
 fi
 

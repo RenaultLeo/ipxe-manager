@@ -308,11 +308,15 @@ def compile_ipxe_task(self, menu_url: str):
         completed_steps.append("patch_ipxe_config")
 
         trust_pem = Path(settings.ipxe_tls_trusted_pem).expanduser()
-        # Embarquer le PEM serveur avec CERT= (voir ipxe.org/crypto — embedded certificates).
+        # CA privée / cert auto-signé servi par Nginx : après ipxe.org/crypto, embarquer
+        # le PEM complet (CERT=) et la racine de confiance (TRUST=) — souvent le même fichier.
         make_tls_cert_args: list[str] = []
         if trust_pem.is_file():
             resolved_pem = trust_pem.resolve()
-            logs.append(f"TLS iPXE — embarquer certificat : make … CERT={resolved_pem}")
+            logs.append(
+                f"TLS iPXE (cf. ipxe.org/crypto — CA privée / auto-signé) : "
+                f"CERT={resolved_pem} TRUST={resolved_pem}"
+            )
             self.update_state(
                 state="PROGRESS",
                 meta={
@@ -321,11 +325,14 @@ def compile_ipxe_task(self, menu_url: str):
                     "logs": logs,
                 },
             )
-            make_tls_cert_args = [f"CERT={resolved_pem}"]
+            make_tls_cert_args = [
+                f"CERT={resolved_pem}",
+                f"TRUST={resolved_pem}",
+            ]
             completed_steps.append("trust_https")
         else:
             logs.append(
-                f"Aucun PEM ({trust_pem}) — compilation sans CERT= "
+                f"Aucun PEM ({trust_pem}) — compilation sans CERT=/TRUST= "
                 "(chainload HTTPS peut échouer si menu/embed utilise https://)."
             )
 
