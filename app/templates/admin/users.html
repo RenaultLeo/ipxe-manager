@@ -16,7 +16,10 @@
 </div>
 
 {% if msg %}
-<div class="alert alert-info alert-dismissible fade show py-2 mb-4">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+<div class="alert alert-info alert-dismissible app-alert fade show mb-4" role="alert">
+  <span class="app-alert-text">{{ msg }}</span>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
 {% endif %}
 
 <div class="row g-4">
@@ -61,12 +64,15 @@
         {% for u in users %}
         <div class="user-card">
           <div class="user-card-row">
-            <span class="user-card-name">{{ u.username }}</span>
-            {% if u.role == 'admin' %}
-            <span class="badge bg-danger">{{ t('admin.role_admin') }}</span>
-            {% else %}
-            <span class="badge bg-secondary">{{ t('admin.role_user') }}</span>
-            {% endif %}
+            <div class="user-card-identity">
+              <span class="user-card-name">{{ u.username }}</span>
+              <span class="user-card-sep" aria-hidden="true">·</span>
+              {% if u.role == 'admin' %}
+              <span class="badge bg-danger">{{ t('admin.role_admin') }}</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ t('admin.role_user') }}</span>
+              {% endif %}
+            </div>
             <div class="user-card-tools">
             <form method="post" action="/admin/users/{{ u.id }}/password" class="user-card-password-form">
               <input type="password" name="new_password" class="form-control form-control-sm user-password-input"
