@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -307,37 +308,13 @@ def compile_ipxe_task(self, menu_url: str):
         _patch_ipxe_graphical_console_headers(src_dir, logs)
         completed_steps.append("patch_ipxe_config")
 
-        trust_pem = Path(settings.ipxe_tls_trusted_pem).expanduser()
-        make_trust_args: list[str] = []
-        if trust_pem.is_file():
-            resolved_trust = trust_pem.resolve()
-            logs.append(f"TLS embarqué : make … TRUST={resolved_trust}")
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "step": "trust_https",
-                    "completed_steps": list(completed_steps),
-                    "logs": logs,
-                },
-            )
-            make_trust_args = [f"TRUST={resolved_trust}"]
-            completed_steps.append("trust_https")
-        else:
-            logs.append(
-                f"Aucun PEM TRUST ({trust_pem}) — compilation sans TRUST= "
-                "(chainload HTTPS peut échouer si menu/embed utilise https://)."
-            )
-
         # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
         logs.append("Compilation undionly.kpxe (BIOS)…")
         self.update_state(
             state="PROGRESS",
             meta={"step": "compile_bios", "completed_steps": list(completed_steps), "logs": logs},
         )
-        run(
-            ["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_trust_args],
-            cwd=make_dir,
-        )
+        run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe"], cwd=make_dir)
         completed_steps.append("compile_bios")
 
         # ── 5a. Compiler snponly.efi (UEFI — utilise drivers réseau EFI de la VM) ─
@@ -348,17 +325,11 @@ def compile_ipxe_task(self, menu_url: str):
             state="PROGRESS",
             meta={"step": "compile_efi", "completed_steps": list(completed_steps), "logs": logs},
         )
-        run(
-            ["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_trust_args],
-            cwd=make_dir,
-        )
+        run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe"], cwd=make_dir)
 
         # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
         logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
-        run(
-            ["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *make_trust_args],
-            cwd=make_dir,
-        )
+        run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe"], cwd=make_dir)
         completed_steps.append("compile_efi")
 
         # ── 6. Copier les binaires en TFTP ───────────────────────────────────

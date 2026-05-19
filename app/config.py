@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    server_base_url: str = "https://192.168.2.6"
+    server_base_url: str = "http://192.168.2.6"
     secret_key: str = "changeme_generate_with_openssl_rand_hex_32"
     admin_password: str = "admin"
 
@@ -24,10 +24,6 @@ class Settings(BaseSettings):
     # Évite tout chevauchement avec les routes web « /isos » de l’application.
     iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
-
-    # PEM incorporé dans les firmwares via ``make … TRUST=…`` (chaîne HTTPS menu/embed).
-    # Par défaut : certificat serveur généré par deploy/https_cert_gen.sh (voir deploy/setup.sh).
-    ipxe_tls_trusted_pem: str = "/srv/ipxe/certs/ipxe-manager/server.crt"
 
     upload_min_free_bytes: int = 268_435_456  # 256 Mo — garde fou avant uploads (multipart + fichiers boot)
 
