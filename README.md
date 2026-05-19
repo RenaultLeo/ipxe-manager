@@ -120,24 +120,6 @@ Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.servic
 - Identifiants par défaut : **`admin` / `admin`**.
 - Va dans **Paramètres** et **change immédiatement le mot de passe** (et vérifie **`SERVER_BASE_URL`** / URL de base si ton accès passe par un reverse proxy ou un autre port).
 
-### Menu HTTPS : « Permission denied » — https://ipxe.org/0216eb8f
-
-Ce code chez iPXE correspond en pratique à un **échec de validation TLS** (certificat hors confiance ou **SAN sans l’IP / le nom utilisé** dans `https://…`).
-
-À faire :
-
-1. **Vérifier** que **`/srv/ipxe/certs/ipxe-manager/server.crt`** existe (voir **`IPXE_TLS_TRUSTED_PEM`** dans `.env`) ; sans ce PEM, la compilation depuis **Firmware** n’ajoute pas **`TRUST=`** et un **`chain https://`** peut échouer alors que **`http://`** fonctionne encore.
-2. **Aligner SAN et URL** : si le client charge `https://192.168.2.8/…`, le certificat doit inclure **`IP:192.168.2.8`** dans le Subject Alternative Name. Régénère le cert puis recharge Nginx, par exemple :
-   ```bash
-   sudo bash /srv/ipxe/app/deploy/https_cert_gen.sh 192.168.2.8
-   sudo systemctl reload nginx
-   ```
-   Pour **plusieurs IPs** dans le SAN :  
-   `export IPXE_TLS_EXTRA_SAN="192.168.2.6,10.0.0.12"` puis le même **`https_cert_gen.sh`** (voir commentaires en tête du script).
-3. **Recompiler les binaires iPXE** depuis **Firmware** ; les logs de compilation doivent montrer **`TLS embarqué : make … TRUST=…`**.
-4. **Secours diagnostic** : `http://<IP>/menus/menu.ipxe` sur le port 80.
-5. **Heure BIOS/UEFI** : une date très fausse peut invalider un cert ; le message **`Access Denied`** UEFI après l’erreur peut aussi pointer vers **Secure Boot** ou une politique de boot.
-
 ---
 
 ## DHCP et boot réseau
