@@ -27,8 +27,8 @@ def detect_primary_ipv4() -> str:
 
 
 def default_server_base_url() -> str:
-    """Si ``SERVER_BASE_URL`` absent du .env, URL du serveur = IP/route locale + HTTPS."""
-    return f"https://{detect_primary_ipv4()}"
+    """Si ``SERVER_BASE_URL`` absent du .env, URL publique vue par PXE/menu = HTTP + IP/route locale."""
+    return f"http://{detect_primary_ipv4()}"
 
 
 class Settings(BaseSettings):
@@ -51,10 +51,6 @@ class Settings(BaseSettings):
     # Évite tout chevauchement avec les routes web « /isos » de l’application.
     iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
-
-    # PEM utilisé lors du ``make CERT=…`` (cert présenté par Nginx pour HTTPS).
-    # Par défaut : certificat serveur généré par deploy/https_cert_gen.sh (voir deploy/setup.sh).
-    ipxe_tls_trusted_pem: str = "/srv/ipxe/certs/ipxe-manager/server.crt"
 
     upload_min_free_bytes: int = 268_435_456  # 256 Mo — garde fou avant uploads (multipart + fichiers boot)
 

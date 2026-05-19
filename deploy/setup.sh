@@ -26,7 +26,7 @@ echo "======================================================"
 echo "[1/15] Installation des paquets système…"
 apt-get update -qq
 apt-get install -y -qq \
-    sudo git curl wget unzip rsync ca-certificates openssl \
+    sudo git curl wget unzip rsync ca-certificates \
     iproute2 procps \
     nginx tftpd-hpa redis-server \
     python3 python3-venv python3-pip nodejs \
@@ -65,7 +65,6 @@ mkdir -p \
     "$DATA_DIR/http/configs" \
     "$DATA_DIR/isos" \
     "$DATA_DIR/build" \
-    "$DATA_DIR/certs/ipxe-manager" \
     "$LOG_DIR"
 
 # Permissions publiques sur http/ pour que Nginx puisse servir les fichiers
@@ -110,7 +109,7 @@ echo "[6/15] Configuration de l'environnement (.env)…"
 if [ ! -f "$APP_DIR/.env" ]; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     cat > "$APP_DIR/.env" <<EOF
-SERVER_BASE_URL=https://$SERVER_IP
+SERVER_BASE_URL=http://$SERVER_IP
 SECRET_KEY=$SECRET
 ADMIN_PASSWORD=admin
 DATABASE_URL=sqlite:////srv/ipxe/app/ipxe.db
@@ -120,8 +119,6 @@ HTTP_ROOT=/srv/ipxe/http
 ISO_ROOT=/srv/ipxe/isos
 ISO_HTTP_ALIAS=isos-ipxe
 BUILD_DIR=/srv/ipxe/build
-# PEM pour firmware iPXE (make CERT= sur ce fichier — cf. https://ipxe.org/crypto)
-IPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt
 MAX_UPLOAD_SIZE=53687091200
 # Marge disque min. (octets) avant upload ISO — défaut 256 Mo dans l’app si absent (voir UPLOAD_MIN_FREE_BYTES).
 # UPLOAD_MIN_FREE_BYTES=268435456
@@ -140,9 +137,6 @@ else
     grep -q "UPLOAD_MIN_FREE_BYTES" "$APP_DIR/.env" || printf '\n# Upload ISO — marge disque minimale avant acceptation (défaut app : 268435456 = 256 Mo)\n# UPLOAD_MIN_FREE_BYTES=268435456\n' >> "$APP_DIR/.env"
     grep -q "^UBUNTU_NFS_ENABLED" "$APP_DIR/.env" || {
         printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
-    }
-    grep -q "^IPXE_TLS_TRUSTED_PEM" "$APP_DIR/.env" || {
-        printf '\n# PEM pour CERT= lors de la compilation firmware (HTTPS)\nIPXE_TLS_TRUSTED_PEM=/srv/ipxe/certs/ipxe-manager/server.crt\n' >> "$APP_DIR/.env"
     }
 fi
 
@@ -192,17 +186,8 @@ TFTP_OPTIONS="--secure --create --blocksize 1468"
 EOF
 chmod -R 755 "$DATA_DIR/tftpboot"
 
-# ── 10. TLS + Nginx ─────────────────────────────────────────────────────────────
-echo "[10/15] Certificats TLS + configuration Nginx…"
-mkdir -p "$DATA_DIR/certs/ipxe-manager"
-if [ -f "$APP_DIR/deploy/https_cert_gen.sh" ]; then
-    # AUTO : FQDN depuis DHCP/resolver + IPv4 locale ; si IPXE_TLS_EXTRA_SAN vide, ajoute SERVER_IP aux SAN.
-    export IPXE_TLS_EXTRA_SAN="${IPXE_TLS_EXTRA_SAN:-$SERVER_IP}"
-    bash "$APP_DIR/deploy/https_cert_gen.sh" AUTO "$DATA_DIR/certs/ipxe-manager"
-else
-    echo "  ! deploy/https_cert_gen.sh absent — HTTPS et TRUST iPXE non générés automatiquement."
-fi
-
+# ── 10. Nginx ───────────────────────────────────────────────────────────────────
+echo "[10/15] Configuration Nginx (HTTP uniquement)…"
 if [ -f "$APP_DIR/deploy/nginx.conf" ]; then
     cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ipxe-manager
 else
@@ -357,11 +342,9 @@ echo "======================================================"
 echo "  Installation terminée !"
 echo "======================================================"
 echo ""
-echo "  Interface web (HTTPS) : https://$SERVER_IP/"
-echo "  Interface web (HTTP)  : http://$SERVER_IP/"
-echo "  Login          : admin  /  Mot de passe : admin"
-echo "  Menu iPXE HTTPS : https://$SERVER_IP/menus/menu.ipxe"
-echo "  Menu iPXE HTTP  : http://$SERVER_IP/menus/menu.ipxe"
+echo "  Interface web   : http://$SERVER_IP/"
+echo "  Login           : admin  /  Mot de passe : admin"
+echo "  Menu iPXE       : http://$SERVER_IP/menus/menu.ipxe"
 echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
 echo "  Samba share    : \\\\$SERVER_IP\\boot"
 echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (menus : UBUNTU_NFS_ENABLED mis à true si NFS actif)"
