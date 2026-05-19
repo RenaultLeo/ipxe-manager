@@ -25,6 +25,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         return redir
 
     try:
+        user = get_session_user(request)
         disk = get_disk_usage()
         all_os_types = db.query(OsType).all()
         os_types = visible_on_dashboard(all_os_types)
