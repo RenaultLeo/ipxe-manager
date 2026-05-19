@@ -86,7 +86,8 @@ body {
   }
 }
 
-.user-chip {
+.user-chip,
+.user-bar-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -96,10 +97,41 @@ body {
   border: 1px solid var(--ipxe-card-border);
   font-size: 0.8125rem;
   color: #cbd5e1;
+  line-height: 1.4;
 }
 
-.user-chip i {
+.user-bar-chip {
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+button.user-bar-chip {
+  cursor: pointer;
+}
+
+.user-bar-chip:hover,
+.user-bar-chip:focus,
+.user-bar-chip.show {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+button.user-bar-chip:focus {
+  box-shadow: none;
+  outline: none;
+}
+
+.user-bar-chip.dropdown-toggle::after {
+  margin-left: 0.15rem;
+  vertical-align: 0.12em;
+  opacity: 0.75;
+}
+
+.user-chip i,
+.user-bar-chip i {
   color: var(--ipxe-primary);
+  font-size: 1rem;
 }
 
 .navbar-user-bar {

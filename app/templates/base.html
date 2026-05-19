@@ -75,9 +75,9 @@
       </ul>
       <div class="navbar-user-bar d-flex align-items-center gap-2 flex-wrap ms-lg-auto">
         <div class="dropdown">
-          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+          <button class="user-bar-chip dropdown-toggle" type="button"
                   id="langMenu" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="bi bi-translate me-1"></i>{{ lang|upper }}
+            <i class="bi bi-translate"></i>{{ lang|upper }}
           </button>
           <ul class="dropdown-menu dropdown-menu-end">
             {% for code in locale_choices %}
@@ -94,8 +94,8 @@
           {% if is_admin %}<span class="badge bg-danger ms-1" style="font-size:0.65rem">admin</span>{% endif %}
         </span>
         {% endif %}
-        <a href="/logout" class="btn btn-outline-secondary btn-sm">
-          <i class="bi bi-box-arrow-right me-1"></i><span class="d-none d-sm-inline">{{ t('nav.logout') }}</span>
+        <a href="/logout" class="user-bar-chip">
+          <i class="bi bi-box-arrow-right"></i><span class="d-none d-sm-inline">{{ t('nav.logout') }}</span>
         </a>
       </div>
     </div>
