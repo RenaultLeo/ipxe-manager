@@ -31,6 +31,7 @@ def main() -> int:
         from app.models.models import IsoVersion, OsType, WinpeInstall
         from sqlalchemy.orm import joinedload
         import shutil
+        import subprocess
 
         from app.config import settings
         from app.services.winpe_installs import (
@@ -173,9 +174,39 @@ def main() -> int:
                     print(f"    injecté dans boot.wim → Windows/System32/startnet.cmd (via wimupdate)")
 
                 if v.active_winpe_install_id and not v.winpe_startnet_patched_at:
+                    aid = v.active_winpe_install_id
                     warnings.append(
-                        f"v{v.id}: active_winpe_install_id={v.active_winpe_install_id} "
-                        "mais winpe_startnet_patched_at vide (patch Celery jamais réussi ?)"
+                        f"v{v.id}: active_winpe_install_id={aid} mais winpe_startnet_patched_at vide "
+                        "(injection Celery non confirmée — ancienne BDD ou tâche échouée)"
+                    )
+                    try:
+                        boot_p = boot_wim_filesystem_path(v)
+                        wimdir = shutil.which("wimdir") or shutil.which("wimlib-imagex")
+                        idx = int(getattr(settings, "winpe_boot_wim_index", 1) or 1)
+                        if wimdir and boot_p.is_file():
+                            proc = subprocess.run(
+                                [wimdir, str(boot_p), str(idx), "--path"],
+                                capture_output=True,
+                                text=True,
+                                timeout=120,
+                            )
+                            out = (proc.stdout or "") + (proc.stderr or "")
+                            if "startnet.cmd" in out.lower():
+                                print(
+                                    f"  v{v.id}: startnet.cmd semble présent dans boot.wim "
+                                    "(relancer l'injection pour mettre à jour la BDD, ou vérifier le contenu)"
+                                )
+                            else:
+                                warnings.append(
+                                    f"v{v.id}: startnet.cmd absent de boot.wim — "
+                                    "relancer « Injecter dans boot.wim » dans l'UI"
+                                )
+                    except Exception as exc:
+                        warnings.append(f"v{v.id}: vérif boot.wim impossible : {exc}")
+                    print(
+                        f"  → Relancer : sudo -u ipxe bash -c 'cd /srv/ipxe/app && "
+                        f"/srv/ipxe/venv/bin/celery -A app.tasks.celery_app call patch_winpe_startnet "
+                        f"--args=\"[{v.id}, {aid}]\"'"
                     )
         finally:
             db.close()
