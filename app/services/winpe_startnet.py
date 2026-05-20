@@ -26,14 +26,79 @@ logger = logging.getLogger(__name__)
 STARTNET_WIM_PATH = "Windows/System32/startnet.cmd"
 
 
-def _wimupdate_bin() -> str:
-    for name in ("wimupdate", "wimlib-imagex"):
-        p = shutil.which(name)
-        if p:
-            return p
+def _wimupdate_argv(wim_file: str, image_index: int) -> list[str]:
+    """
+    argv pour injecter dans une WIM : ``wimupdate WIM INDEX`` ou
+    ``wimlib-imagex update WIM INDEX`` (sans « update », code 255 + Usage).
+    """
+    wu = shutil.which("wimupdate")
+    if wu:
+        return [wu, wim_file, str(image_index)]
+    wi = shutil.which("wimlib-imagex")
+    if wi:
+        return [wi, "update", wim_file, str(image_index)]
     raise ExtractionError(
-        "wimupdate introuvable — installez wimtools sur le serveur : apt install wimtools"
+        "wimupdate / wimlib-imagex introuvable — apt install wimtools"
     )
+
+
+def _run_wimupdate_add(
+    boot_wim: Path,
+    image_index: int,
+    src: str,
+    dest_in_wim: str,
+) -> subprocess.CompletedProcess[str]:
+    """Exécute « add SOURCE DEST » via fichier de commandes (man wimupdate)."""
+    add_line = f"add {shlex.quote(src)} {shlex.quote(dest_in_wim)}\n"
+    one_cmd = f"add {shlex.quote(src)} {shlex.quote(dest_in_wim)}"
+    wim_str = str(boot_wim.resolve())
+    attempts: list[list[str]] = [_wimupdate_argv(wim_str, image_index)]
+    # WIM à une seule image : index parfois omis
+    wu = shutil.which("wimupdate")
+    if wu:
+        attempts.append([wu, wim_str])
+    wi = shutil.which("wimlib-imagex")
+    if wi:
+        attempts.append([wi, "update", wim_str])
+
+    last: subprocess.CompletedProcess[str] | None = None
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".wimupdate.txt",
+        delete=False,
+        encoding="utf-8",
+    ) as uf:
+        uf.write(add_line)
+        uf.flush()
+        update_cmd_path = Path(uf.name)
+
+    try:
+        for base_argv in attempts:
+            with open(update_cmd_path, encoding="utf-8") as cmdf:
+                last = subprocess.run(
+                    base_argv,
+                    stdin=cmdf,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+            if last.returncode == 0:
+                return last
+            last = subprocess.run(
+                base_argv + ["--command", one_cmd],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            if last.returncode == 0:
+                return last
+        assert last is not None
+        return last
+    finally:
+        try:
+            update_cmd_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def boot_wim_filesystem_path(version: IsoVersion) -> Path:
@@ -116,7 +181,6 @@ def patch_boot_wim_startnet(
     boot_image_index = int(wim_idx)
 
     content = generate_startnet_cmd(version, install)
-    wimupdate = _wimupdate_bin()
 
     if not install_wim_path(version, install.slug).is_file():
         raise FileNotFoundError(
@@ -135,28 +199,9 @@ def patch_boot_wim_startnet(
         cmd_path = Path(tf.name)
 
     try:
-        # wimlib : commandes lues sur stdin — « add SOURCE DESTINATION » (voir man wimupdate)
         src = str(cmd_path.resolve())
         dest_in_wim = "/" + STARTNET_WIM_PATH.replace("\\", "/").lstrip("/")
-        add_line = f"add {shlex.quote(src)} {shlex.quote(dest_in_wim)}\n"
-        wim_args = [wimupdate, str(boot_wim), str(boot_image_index)]
-
-        proc = subprocess.run(
-            wim_args,
-            input=add_line,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if proc.returncode != 0:
-            # Repli : --command (une seule commande add)
-            one_cmd = f"add {shlex.quote(src)} {shlex.quote(dest_in_wim)}"
-            proc = subprocess.run(
-                wim_args + ["--command", one_cmd],
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
+        proc = _run_wimupdate_add(boot_wim, boot_image_index, src, dest_in_wim)
     finally:
         try:
             cmd_path.unlink(missing_ok=True)
@@ -164,9 +209,10 @@ def patch_boot_wim_startnet(
             pass
 
     if proc.returncode != 0:
-        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-2000:]
+        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-3000:]
         raise ExtractionError(
-            f"wimupdate a échoué (code {proc.returncode}) pour {boot_wim.name} :\n{tail}"
+            f"wimupdate a échoué (code {proc.returncode}) pour {boot_wim} "
+            f"(image index {boot_image_index}) :\n{tail}"
         )
 
     logger.info(
