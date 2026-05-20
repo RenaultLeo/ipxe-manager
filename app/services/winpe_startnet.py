@@ -4,6 +4,7 @@ Génère et injecte ``startnet.cmd`` dans ``boot.wim`` (wimlib ``wimupdate``).
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -134,36 +135,28 @@ def patch_boot_wim_startnet(
         cmd_path = Path(tf.name)
 
     try:
-        # wimlib : « add » + chemin dans la WIM ; repli syntaxe « PATH < file » (anciennes versions)
-        attempts = [
-            [
-                wimupdate,
-                str(boot_wim),
-                str(boot_image_index),
-                "add",
-                STARTNET_WIM_PATH,
-                str(cmd_path),
-            ],
-            [
-                wimupdate,
-                str(boot_wim),
-                str(boot_image_index),
-                STARTNET_WIM_PATH,
-                str(cmd_path),
-            ],
-        ]
-        proc = None
-        for cmd in attempts:
+        # wimlib : commandes lues sur stdin — « add SOURCE DESTINATION » (voir man wimupdate)
+        src = str(cmd_path.resolve())
+        dest_in_wim = "/" + STARTNET_WIM_PATH.replace("\\", "/").lstrip("/")
+        add_line = f"add {shlex.quote(src)} {shlex.quote(dest_in_wim)}\n"
+        wim_args = [wimupdate, str(boot_wim), str(boot_image_index)]
+
+        proc = subprocess.run(
+            wim_args,
+            input=add_line,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if proc.returncode != 0:
+            # Repli : --command (une seule commande add)
+            one_cmd = f"add {shlex.quote(src)} {shlex.quote(dest_in_wim)}"
             proc = subprocess.run(
-                cmd,
+                wim_args + ["--command", one_cmd],
                 capture_output=True,
                 text=True,
                 timeout=600,
             )
-            if proc.returncode == 0:
-                break
-        if proc is None:
-            raise ExtractionError("wimupdate : aucune commande exécutée")
     finally:
         try:
             cmd_path.unlink(missing_ok=True)
