@@ -288,6 +288,7 @@
         {% if request.query_params.get('msg') == 'winpe_install_added' %}
         <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
         {% endif %}
+        <div id="winpe-upload-status-alert" class="alert alert-info py-2 small mb-3 d-none" role="status"></div>
         {% if request.query_params.get('msg') == 'winpe_patch_queued' %}
         <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_patch_queued') }}</div>
         {% endif %}
@@ -306,7 +307,16 @@
         <div class="row g-3 mb-4 pb-3 border-bottom border-secondary">
           <div class="col-lg-5">
             <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_add') }}</h6>
-            <form method="post" action="/isos/{{ version.id }}/winpe-installs" enctype="multipart/form-data" class="row g-2">
+            <form method="post" action="/isos/{{ version.id }}/winpe-installs" enctype="multipart/form-data"
+                  id="winpe-install-form" class="row g-2"
+                  data-version-id="{{ version.id }}"
+                  data-msg-progress="{{ t('iso.winpe_upload_progress') }}"
+                  data-msg-finalize="{{ t('iso.winpe_upload_finalize') }}"
+                  data-msg-started="{{ t('iso.winpe_upload_started') }}"
+                  data-msg-done="{{ t('iso.winpe_upload_done') }}"
+                  data-msg-error="{{ t('iso.winpe_upload_error') }}"
+                  data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
+                  data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
               <div class="col-12">
                 <label class="form-label small mb-1">{{ t('iso.winpe_install_slug') }}</label>
                 <input type="text" name="install_slug" class="form-control form-control-sm font-monospace"
@@ -325,8 +335,18 @@
                 <label class="form-label small mb-1">{{ t('iso.winpe_install_file') }}</label>
                 <input type="file" name="file_install_wim" class="form-control form-control-sm" accept=".wim" required>
               </div>
+              <div id="winpe-upload-progress-wrap" class="col-12 d-none">
+                <div class="d-flex justify-content-between small mb-1">
+                  <span id="winpe-upload-progress-label">{{ t('iso.winpe_upload_progress') }}</span>
+                  <span id="winpe-upload-progress-pct">0%</span>
+                </div>
+                <div class="progress" style="height:14px">
+                  <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                       id="winpe-upload-progress-bar" role="progressbar" style="width:0%"></div>
+                </div>
+              </div>
               <div class="col-12">
-                <button type="submit" class="btn btn-primary btn-sm">
+                <button type="submit" class="btn btn-primary btn-sm" id="winpe-install-submit-btn">
                   <i class="bi bi-upload me-1"></i>{{ t('iso.winpe_install_add') }}
                 </button>
               </div>
@@ -739,6 +759,176 @@
   }
   cb.addEventListener('change', syncDetailAlpine);
   syncDetailAlpine();
+})();
+
+(function () {
+  var form = document.getElementById('winpe-install-form');
+  if (!form) return;
+
+  var versionId = form.dataset.versionId || '';
+  var msgProgress = form.dataset.msgProgress || '…';
+  var msgFinalize = form.dataset.msgFinalize || '…';
+  var msgStarted = form.dataset.msgStarted || '';
+  var msgDone = form.dataset.msgDone || '';
+  var msgError = form.dataset.msgError || '';
+  var msgXhr = form.dataset.msgXhr || 'Error';
+  var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
+
+  var wrap = document.getElementById('winpe-upload-progress-wrap');
+  var bar = document.getElementById('winpe-upload-progress-bar');
+  var pct = document.getElementById('winpe-upload-progress-pct');
+  var plab = document.getElementById('winpe-upload-progress-label');
+  var btn = document.getElementById('winpe-install-submit-btn');
+  var statusAlert = document.getElementById('winpe-upload-status-alert');
+
+  function setProgress(p, label) {
+    if (!wrap || !bar || !pct) return;
+    wrap.classList.remove('d-none');
+    var n = Math.max(0, Math.min(100, Math.round(p)));
+    bar.style.width = n + '%';
+    pct.textContent = n + '%';
+    if (plab && label) plab.textContent = label;
+  }
+
+  function showStatusAlert(text, kind) {
+    if (!statusAlert) return;
+    statusAlert.textContent = text;
+    statusAlert.className = 'alert py-2 small mb-3 alert-' + (kind || 'info');
+    statusAlert.classList.remove('d-none');
+  }
+
+  function parseDetail(detail) {
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail.length && detail[0].msg) return detail[0].msg;
+    return String(detail);
+  }
+
+  async function pollUploadJob(uploadId) {
+    setProgress(100, msgFinalize);
+    if (btn) btn.disabled = true;
+    if (statusAlert && msgStarted) showStatusAlert(msgStarted, 'info');
+
+    var delay = 1500;
+    for (var attempt = 0; attempt < 7200; attempt++) {
+      await new Promise(function (r) { setTimeout(r, delay); });
+      try {
+        var r = await fetch('/isos/uploads/' + encodeURIComponent(uploadId) + '/status', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (r.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (!r.ok) continue;
+        var j = await r.json();
+        var st = (j.status || '').toLowerCase();
+        if (st === 'done') {
+          window.location.href = '/isos/' + versionId + '?msg=winpe_install_added';
+          return;
+        }
+        if (st === 'error') {
+          if (btn) btn.disabled = false;
+          if (wrap) wrap.classList.add('d-none');
+          var err = (j.error_msg || '').trim() || msgError;
+          showStatusAlert(err, 'danger');
+          alert(err);
+          return;
+        }
+      } catch (e) { /* retry */ }
+    }
+    if (btn) btn.disabled = false;
+    if (wrap) wrap.classList.add('d-none');
+    alert(msgError);
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var fileInput = form.querySelector('input[name="file_install_wim"]');
+    var f = fileInput && fileInput.files && fileInput.files[0];
+    if (!f) return;
+
+    var totalBytes = f.size || 0;
+    try {
+      var pu = '/isos/' + versionId + '/winpe-installs/precheck?total_bytes=' + encodeURIComponent(totalBytes);
+      var pr = await fetch(pu, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (pr.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      var pre = null;
+      try { pre = await pr.json(); } catch (err) {}
+      if (!pre || typeof pre !== 'object') {
+        alert(msgXhrStatus.replace('{status}', pr.statusText || String(pr.status)));
+        return;
+      }
+      if (pre.ok === false && pre.detail) {
+        alert(typeof pre.detail === 'string' ? pre.detail : String(pre.detail));
+        return;
+      }
+      if (pre.ok !== true) {
+        alert(msgXhr);
+        return;
+      }
+    } catch (err) {
+      alert(msgXhr);
+      return;
+    }
+
+    var data = new FormData(form);
+    var xhr = new XMLHttpRequest();
+    setProgress(0, msgProgress);
+    if (btn) btn.disabled = true;
+
+    xhr.upload.addEventListener('progress', function (ev) {
+      if (ev.lengthComputable) {
+        setProgress(ev.loaded / ev.total * 100, msgProgress);
+      }
+    });
+
+    xhr.addEventListener('load', function () {
+      if (xhr.status >= 200 && xhr.status < 400) {
+        var uploadId = null;
+        try {
+          var j = JSON.parse(xhr.responseText || '{}');
+          uploadId = j.upload_id;
+        } catch (err) {}
+        if (uploadId) {
+          pollUploadJob(uploadId);
+          return;
+        }
+        window.location.href = '/isos/' + versionId + '?msg=winpe_install_added';
+        return;
+      }
+      if (btn) btn.disabled = false;
+      if (wrap) wrap.classList.add('d-none');
+      var detail = msgXhrStatus.replace('{status}', xhr.statusText || String(xhr.status));
+      try {
+        var j2 = JSON.parse(xhr.responseText || '{}');
+        if (j2.detail !== undefined && j2.detail !== null) {
+          detail = parseDetail(j2.detail);
+        }
+      } catch (err) {}
+      alert(detail || msgXhr);
+    });
+
+    xhr.addEventListener('error', function () {
+      if (btn) btn.disabled = false;
+      if (wrap) wrap.classList.add('d-none');
+      alert(msgXhr);
+    });
+
+    xhr.open('POST', form.action);
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.send(data);
+  });
+
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('msg') === 'winpe_upload_started') {
+    var pendingId = params.get('upload_id');
+    if (pendingId) pollUploadJob(pendingId);
+  }
 })();
 </script>
 {% endblock %}

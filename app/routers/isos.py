@@ -1041,6 +1041,50 @@ def _winpe_windows_version(version: IsoVersion, lang: str) -> None:
         raise HTTPException(400, detail=translate(lang, "iso.winpe_not_windows"))
 
 
+@router.get("/uploads/{upload_id}/status")
+async def upload_job_status(
+    upload_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """État d'un upload (install.wim, extraction, etc.) — polling HTMX / XHR."""
+    if _auth(request):
+        raise HTTPException(401)
+    from app.services.ownership import get_upload
+
+    user = get_session_user(request)
+    row = get_upload(db, user, upload_id)
+    if not row:
+        raise HTTPException(404)
+    return JSONResponse(
+        {
+            "status": row.status,
+            "error_msg": (row.error_msg or "").strip(),
+            "size": row.size or 0,
+        }
+    )
+
+
+@router.get("/{version_id}/winpe-installs/precheck")
+async def winpe_install_precheck(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    total_bytes: int = Query(0, ge=0, le=1_099_511_627_776),
+):
+    """Vérifie l'espace disque avant upload install.wim (comme /isos/upload/precheck)."""
+    if _auth(request):
+        raise HTTPException(401)
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_view_or_404(db, request, version_id)
+    _winpe_windows_version(version, lang)
+    blocked = _multipart_upload_blocked(lang, mf=None, expected_file_bytes=total_bytes)
+    if blocked:
+        _, detail = blocked
+        return JSONResponse({"ok": False, "detail": detail})
+    return JSONResponse({"ok": True})
+
+
 @router.post("/{version_id}/winpe-installs")
 async def upload_winpe_install(
     version_id: int,
@@ -1051,13 +1095,38 @@ async def upload_winpe_install(
     wim_index: int = Form(1),
     file_install_wim: UploadFile = File(...),
 ):
-    """Ajoute install.wim sous boot/<os>/<ver>/installs/<slug>/install.wim."""
+    """
+    Reçoit install.wim (flux HTTP + barre de progression côté client),
+    écrit en .part puis finalise en arrière-plan via Celery (comme ISO → extract).
+    """
     redir = _auth(request)
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    version = _get_version_modify_with_os(db, request, version_id)
     user = get_session_user(request)
+    if not user:
+        raise HTTPException(401)
+
+    mf0 = _minimum_free_near_upload_roots()
+    posted_ul: int | None = None
+    raw_cl = request.headers.get("content-length")
+    if raw_cl:
+        try:
+            n = int(raw_cl)
+            if n > 0:
+                posted_ul = n
+        except ValueError:
+            pass
+    blocked0 = _multipart_upload_blocked(
+        lang,
+        mf=mf0,
+        expected_file_bytes=0,
+        multipart_total_upper=posted_ul,
+    )
+    if blocked0:
+        raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
+
+    version = _get_version_modify_with_os(db, request, version_id)
     _winpe_windows_version(version, lang)
 
     from app.services.winpe_installs import (
@@ -1075,46 +1144,111 @@ async def upload_winpe_install(
     if not fname.lower().endswith(".wim"):
         raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
 
+    decl = _multipart_part_declared_bytes(file_install_wim)
+    decl_need = decl if isinstance(decl, int) and decl > 0 else 0
+    blocked1 = _multipart_upload_blocked(
+        lang, mf=_minimum_free_near_upload_roots(), expected_file_bytes=decl_need
+    )
+    if blocked1:
+        raise HTTPException(status_code=blocked1[0], detail=blocked1[1])
+
     folder = install_folder(version, slug)
     folder.mkdir(parents=True, exist_ok=True)
-    dest = folder / INSTALL_WIM_FILENAME
-    size = 0
-    with open(dest, "wb") as out:
-        while chunk := await file_install_wim.read(1024 * 1024):
-            out.write(chunk)
-            size += len(chunk)
-
+    part_path = folder / f"{INSTALL_WIM_FILENAME}.part"
     label = (install_label or slug).strip() or slug
-    row = (
-        db.query(WinpeInstall)
-        .filter(
-            WinpeInstall.iso_version_id == version.id,
-            WinpeInstall.slug == slug,
-        )
-        .first()
+    wim_idx = max(1, wim_index)
+
+    upload_log = Upload(
+        filename=f"{slug}/{INSTALL_WIM_FILENAME}",
+        file_type="install_wim",
+        size=0,
+        status="pending",
+        owner_user_id=user.id,
     )
-    if not row:
-        row = WinpeInstall(
-            iso_version_id=version.id,
-            slug=slug,
-            label=label,
-            wim_index=max(1, wim_index),
+    db.add(upload_log)
+    db.flush()
+
+    size = 0
+    pending_poll = 0
+    try:
+        if part_path.is_file():
+            part_path.unlink()
+        with open(part_path, "wb") as out:
+            while chunk := await file_install_wim.read(1024 * 1024):
+                out.write(chunk)
+                size += len(chunk)
+                pending_poll += len(chunk)
+                if pending_poll >= _UPLOAD_DISK_POLL_EVERY_BYTES:
+                    pending_poll = 0
+                    blocked = _multipart_upload_blocked(
+                        lang,
+                        mf=_minimum_free_near_upload_roots(),
+                        expected_file_bytes=0,
+                    )
+                    if blocked:
+                        raise HTTPException(
+                            status_code=blocked[0], detail=blocked[1]
+                        )
+        upload_log.size = size
+        upload_log.status = "processing"
+        db.commit()
+
+        from app.tasks.jobs import upload_winpe_install_task
+
+        upload_winpe_install_task.delay(
+            upload_log.id,
+            version.id,
+            slug,
+            label,
+            wim_idx,
+            str(part_path.resolve()),
         )
-        db.add(row)
-    else:
-        row.label = label
-        row.wim_index = max(1, wim_index)
-    db.add(
-        Upload(
-            filename=f"{slug}/{INSTALL_WIM_FILENAME}",
-            file_type="install_wim",
-            size=size,
-            status="done",
-            owner_user_id=user.id,
+    except HTTPException:
+        db.rollback()
+        try:
+            if part_path.is_file():
+                part_path.unlink()
+        except OSError:
+            pass
+        raise
+    except OSError as exc:
+        db.rollback()
+        try:
+            if part_path.is_file():
+                part_path.unlink()
+        except OSError:
+            pass
+        if exc.errno in (errno.ENOSPC, errno.EDQUOT):
+            raise HTTPException(
+                507, detail=translate(lang, "iso.upload.disk_full")
+            ) from exc
+        logger.warning("Erreur I/O upload install.wim : %s", exc)
+        raise HTTPException(
+            500, detail=translate(lang, "iso.upload.io_error")
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        try:
+            if part_path.is_file():
+                part_path.unlink()
+        except OSError:
+            pass
+        logger.exception("Échec réception install.wim")
+        raise HTTPException(
+            500, detail=translate(lang, "iso.upload.io_error")
+        ) from exc
+
+    redirect_url = f"/isos/{version_id}?msg=winpe_upload_started&upload_id={upload_log.id}"
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JSONResponse(
+            {
+                "ok": True,
+                "upload_id": upload_log.id,
+                "redirect": redirect_url,
+            }
         )
-    )
-    db.commit()
-    return RedirectResponse(f"/isos/{version_id}?msg=winpe_install_added", status_code=302)
+    return RedirectResponse(redirect_url, status_code=302)
 
 
 @router.post("/{version_id}/activate-winpe-install")

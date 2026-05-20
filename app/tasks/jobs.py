@@ -200,6 +200,108 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         db.close()
 
 
+@celery.task(bind=True, name="upload_winpe_install", soft_time_limit=7200, time_limit=7500)
+def upload_winpe_install_task(
+    self,
+    upload_id: int,
+    iso_version_id: int,
+    slug: str,
+    label: str,
+    wim_index: int,
+    part_path: str,
+):
+    """
+    Finalise un install.wim reçu en HTTP (fichier .part) : déplacement atomique,
+    enregistrement WinpeInstall, mise à jour du journal Upload.
+    """
+    import os
+    from sqlalchemy.orm import joinedload
+
+    from app.models.models import WinpeInstall
+    from app.services.winpe_installs import INSTALL_WIM_FILENAME, install_wim_path
+
+    db = SessionLocal()
+    part = Path(part_path)
+    try:
+        upload: Upload | None = db.query(Upload).get(upload_id)
+        if not upload:
+            raise ValueError(f"Upload {upload_id} introuvable")
+
+        upload.status = "processing"
+        upload.task_id = self.request.id
+        db.commit()
+
+        version = (
+            db.query(IsoVersion)
+            .options(joinedload(IsoVersion.os_type))
+            .filter(IsoVersion.id == iso_version_id)
+            .first()
+        )
+        if not version:
+            raise ValueError(f"IsoVersion {iso_version_id} introuvable")
+
+        if not part.is_file():
+            raise FileNotFoundError(f"Fichier temporaire absent : {part}")
+
+        dest = install_wim_path(version, slug)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.is_file():
+            dest.unlink()
+        os.replace(part, dest)
+
+        label_s = (label or slug).strip() or slug
+        row = (
+            db.query(WinpeInstall)
+            .filter(
+                WinpeInstall.iso_version_id == version.id,
+                WinpeInstall.slug == slug,
+            )
+            .first()
+        )
+        if not row:
+            row = WinpeInstall(
+                iso_version_id=version.id,
+                slug=slug,
+                label=label_s,
+                wim_index=max(1, int(wim_index or 1)),
+            )
+            db.add(row)
+        else:
+            row.label = label_s
+            row.wim_index = max(1, int(wim_index or 1))
+
+        upload.status = "done"
+        upload.size = dest.stat().st_size
+        upload.filename = f"{slug}/{INSTALL_WIM_FILENAME}"
+        db.commit()
+        logger.info(
+            "install.wim WinPE OK — version %s slug %s (%s octets)",
+            iso_version_id,
+            slug,
+            upload.size,
+        )
+        return {"status": "ok", "slug": slug, "path": str(dest)}
+    except Exception as exc:
+        logger.exception("upload_winpe_install_task failed")
+        db.rollback()
+        try:
+            upload = db.query(Upload).get(upload_id)
+            if upload:
+                upload.status = "error"
+                upload.error_msg = str(exc)[:4000]
+                db.commit()
+        except Exception:
+            pass
+        try:
+            if part.is_file():
+                part.unlink()
+        except OSError:
+            pass
+        raise self.retry(exc=exc, countdown=0, max_retries=0)
+    finally:
+        db.close()
+
+
 @celery.task(bind=True, name="patch_winpe_startnet", soft_time_limit=900, time_limit=1200)
 def patch_winpe_startnet_task(self, iso_version_id: int, winpe_install_id: int):
     """Injecte startnet.cmd dans boot.wim pour l'image install.wim active."""
