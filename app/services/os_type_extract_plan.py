@@ -359,6 +359,25 @@ def _assign_ordered_linux_slots_from_plan(
             result["kernel_path"] = http_rel
             logger.info("Plan slot %s kernel : %s", idx, http_rel)
         elif idx == 1:
+            # Proxmox : 2e nom « vmlinuz » dans le plan = autre noyau, pas l'initrd
+            from app.services.iso_extractor import _PROXMOX_EXTRA_KERNEL_BASENAMES
+
+            if os_slug == "proxmox" and basename_only in _PROXMOX_EXTRA_KERNEL_BASENAMES:
+                if not result.get("kernel_path"):
+                    result["kernel_path"] = http_rel
+                    logger.info(
+                        "Plan slot %s kernel Proxmox (secours, pas initrd) : %s",
+                        idx,
+                        http_rel,
+                    )
+                else:
+                    extras.append({"basename": term, "path": http_rel})
+                    logger.info(
+                        "Plan slot %s noyau Proxmox supplémentaire : %s",
+                        idx,
+                        http_rel,
+                    )
+                continue
             result["initrd_path"] = http_rel
             logger.info("Plan slot %s initrd : %s", idx, http_rel)
         elif os_slug == "alpine" and (
@@ -379,12 +398,28 @@ def _assign_ordered_linux_slots_from_plan(
 def _fallback_kernel_initrd_in_dest(dest: Path, os_slug: str, version_slug: str, result: dict) -> None:
     base = f"boot/{os_slug}/{version_slug}"
     if not result.get("kernel_path"):
-        k = _find_in_dest(dest, _GENERIC_RULE["kernel"], "kernel")
-        if k:
-            result["kernel_path"] = f"{base}/{k.relative_to(dest).as_posix()}"
-            logger.info("Fallback kernel : %s", k.relative_to(dest))
+        if os_slug == "proxmox":
+            try:
+                pve = _find_proxmox_in_dest(
+                    dest, os_slug, version_slug, DISTRO_RULES.get("proxmox", _GENERIC_RULE)
+                )
+                if pve.get("kernel_path"):
+                    result["kernel_path"] = pve["kernel_path"]
+                    logger.info("Fallback kernel Proxmox : %s", pve["kernel_path"])
+            except ExtractionError:
+                pass
+        else:
+            k = _find_in_dest(dest, _GENERIC_RULE["kernel"], "kernel")
+            if k:
+                result["kernel_path"] = f"{base}/{k.relative_to(dest).as_posix()}"
+                logger.info("Fallback kernel : %s", k.relative_to(dest))
     if not result.get("initrd_path"):
-        i = _find_in_dest(dest, _GENERIC_RULE["initrd"], "initrd")
+        initrd_names = (
+            (DISTRO_RULES.get("proxmox") or {}).get("initrd")
+            if os_slug == "proxmox"
+            else _GENERIC_RULE["initrd"]
+        )
+        i = _find_in_dest(dest, initrd_names or ["initrd.img"], "initrd")
         if i:
             result["initrd_path"] = f"{base}/{i.relative_to(dest).as_posix()}"
             logger.info("Fallback initrd : %s", i.relative_to(dest))

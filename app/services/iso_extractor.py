@@ -89,10 +89,10 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd":  list(_ANACONDA_INITRD_CANDIDATES),
         "extra":   {},
     },
-    # Proxmox VE — extraction complète ; noyau sous boot/ (linux26 v7, vmlinuz v8+)
+    # Proxmox VE — extraction complète ; noyau sous boot/ (linux26 ; vmlinuz seulement en secours PVE 8+)
     "proxmox": {
         "type":    "proxmox",
-        "kernel":  ["linux26", "vmlinuz"],
+        "kernel":  ["linux26"],
         "initrd":  ["initrd.img"],
         "extra":   {},
     },
@@ -1014,27 +1014,46 @@ def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
     return result
 
 
+_PROXMOX_KERNEL_FALLBACK = ("vmlinuz",)
+_PROXMOX_EXTRA_KERNEL_BASENAMES = frozenset(
+    {"linux26", "vmlinuz", "vmlinux", "bzimage", "kernel"}
+)
+
+
 def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
     """
     Après extraction complète de l'ISO Proxmox VE : noyau + initrd sous ``boot/``
-    (linux26 ou vmlinuz + initrd.img). L'arborescence complète reste servie en HTTP
-    pour l'installateur (cf. doc autoinstall / iPXE communautaire).
+    (linux26 en priorité ; vmlinuz uniquement si linux26 absent — PVE 8+).
+    L'arborescence complète reste servie en HTTP pour l'installateur.
     """
     result: dict = {}
     base = f"boot/{os_slug}/{version_slug}"
-    kernel_names: list[str] = rule.get("kernel") or ["linux26", "vmlinuz"]
+    kernel_names: list[str] = rule.get("kernel") or ["linux26"]
     initrd_names: list[str] = rule.get("initrd") or ["initrd.img"]
     pve_boot_pref = frozenset({"boot", "efi", "grub"})
 
     kernel = _find_in_dest(
         dest, kernel_names, mode="kernel", preferred_parent_names=pve_boot_pref
     )
+    if not kernel:
+        kernel = _find_in_dest(
+            dest,
+            list(_PROXMOX_KERNEL_FALLBACK),
+            mode="kernel",
+            preferred_parent_names=pve_boot_pref,
+        )
+        if kernel:
+            logger.info(
+                "Proxmox : linux26 absent — repli sur %s",
+                kernel.name,
+            )
     if kernel:
         rel = kernel.relative_to(dest)
         result["kernel_path"] = f"{base}/{rel.as_posix()}"
         logger.info("Proxmox kernel : %s", rel)
     else:
-        logger.warning("Proxmox : noyau non trouvé (essayé : %s)", ", ".join(kernel_names))
+        tried = list(kernel_names) + list(_PROXMOX_KERNEL_FALLBACK)
+        logger.warning("Proxmox : noyau non trouvé (essayé : %s)", ", ".join(tried))
 
     initrd = _find_in_dest(
         dest, initrd_names, mode="initrd", preferred_parent_names=pve_boot_pref
@@ -1048,7 +1067,7 @@ def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dic
 
     if not result.get("kernel_path") or not result.get("initrd_path"):
         raise ExtractionError(
-            "Aucun fichier de boot Proxmox (linux26 ou vmlinuz + initrd.img) trouvé dans l'ISO."
+            "Aucun fichier de boot Proxmox (linux26 ou vmlinuz en secours + initrd.img) trouvé dans l'ISO."
         )
     logger.info(
         "Extraction Proxmox complète — kernel=%s initrd=%s",
