@@ -179,6 +179,7 @@ if errorlevel 1 (
   goto :eof
 )
 echo Image appliquee. Redemarrage dans 10 secondes...
+timeout /t 10 /nobreak >nul
 wpeutil reboot
 """
 
