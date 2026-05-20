@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     # Proxmox VE installateur réseau (doc / iPXE : souvent 16777216 = 16 Go en KiB)
     proxmox_ramdisk_size: int = 16_777_216
 
+    # WinPE : partage Samba (nom du share, chemin = http/boot) et index image dans boot.wim
+    winpe_smb_share: str = "boot"
+    winpe_boot_wim_index: int = 1
+
     @property
     def ipxe_src_dir(self) -> Path:
         return Path(self.build_dir) / "ipxe-src"

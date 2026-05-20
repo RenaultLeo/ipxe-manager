@@ -276,6 +276,142 @@
     </div>
   </div>
 
+  {% if version.os_type.boot_type == 'windows' and can_modify %}
+  <div class="col-12">
+    <div class="card border-secondary border-info">
+      <div class="card-header">
+        <i class="bi bi-windows me-2"></i>{{ t('iso.winpe_install_title') }}
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">{{ t('iso.winpe_install_intro') }}</p>
+
+        {% if request.query_params.get('msg') == 'winpe_install_added' %}
+        <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
+        {% endif %}
+        {% if request.query_params.get('msg') == 'winpe_patch_queued' %}
+        <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_patch_queued') }}</div>
+        {% endif %}
+
+        {% if winpe_smb_host %}
+        <p class="small mb-3">
+          <strong>{{ t('iso.winpe_install_smb') }}</strong>
+          <code class="ms-1">\\{{ winpe_smb_host }}\{{ winpe_smb_share }}\{{ version.os_type.slug }}\…\installs\&lt;nom&gt;\install.wim</code>
+          {% if winpe_installs_root %}
+          <span class="d-block text-muted mt-1 font-monospace">{{ winpe_installs_root }}</span>
+          {% endif %}
+        </p>
+        {% endif %}
+
+        {% if version.boot_entry and version.boot_entry.boot_wim_path %}
+        <div class="row g-3 mb-4 pb-3 border-bottom border-secondary">
+          <div class="col-lg-5">
+            <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_add') }}</h6>
+            <form method="post" action="/isos/{{ version.id }}/winpe-installs" enctype="multipart/form-data" class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1">{{ t('iso.winpe_install_slug') }}</label>
+                <input type="text" name="install_slug" class="form-control form-control-sm font-monospace"
+                       placeholder="win11-pro" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*">
+              </div>
+              <div class="col-12">
+                <label class="form-label small mb-1">{{ t('iso.winpe_install_label') }}</label>
+                <input type="text" name="install_label" class="form-control form-control-sm"
+                       placeholder="Windows 11 Pro">
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1">{{ t('iso.winpe_install_wim_index') }}</label>
+                <input type="number" name="wim_index" class="form-control form-control-sm" value="1" min="1" max="99">
+              </div>
+              <div class="col-12">
+                <label class="form-label small mb-1">{{ t('iso.winpe_install_file') }}</label>
+                <input type="file" name="file_install_wim" class="form-control form-control-sm" accept=".wim" required>
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="bi bi-upload me-1"></i>{{ t('iso.winpe_install_add') }}
+                </button>
+              </div>
+            </form>
+          </div>
+          <div class="col-lg-7">
+            <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_select') }}</h6>
+            {% if version.winpe_installs %}
+            <form method="post" action="/isos/{{ version.id }}/activate-winpe-install" class="row g-2 align-items-end mb-2">
+              <div class="col-12">
+                <select name="install_id" class="form-select form-select-sm" required>
+                  <option value="">{{ t('common.choose') }}</option>
+                  {% for wi in version.winpe_installs %}
+                  <option value="{{ wi.id }}" {% if version.active_winpe_install_id == wi.id %}selected{% endif %}>
+                    {{ wi.label or wi.slug }} — installs/{{ wi.slug }}/install.wim (index {{ wi.wim_index }})
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn btn-success btn-sm w-100">
+                  <i class="bi bi-pencil-square me-1"></i>{{ t('iso.winpe_install_apply') }}
+                </button>
+              </div>
+            </form>
+            {% if version.active_winpe_install_id %}
+            <form method="post" action="/isos/{{ version.id }}/clear-winpe-install" class="mb-3">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">{{ t('iso.winpe_install_clear') }}</button>
+            </form>
+            {% endif %}
+            {% if version.winpe_startnet_patched_at %}
+            <p class="small text-success mb-2">
+              <i class="bi bi-check-circle me-1"></i>{{ t('iso.winpe_install_current') }} —
+              {{ version.winpe_startnet_patched_at.strftime('%d/%m/%Y %H:%M') }} UTC
+            </p>
+            {% endif %}
+            {% else %}
+            <p class="small text-muted mb-0">{{ t('iso.winpe_install_list') }} : —</p>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if version.winpe_installs %}
+        <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_list') }}</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-dark table-borderless mb-0">
+            <thead>
+              <tr class="text-muted small">
+                <th>Dossier</th>
+                <th>Libellé</th>
+                <th>Index</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for wi in version.winpe_installs %}
+              <tr>
+                <td class="font-monospace">installs/{{ wi.slug }}/</td>
+                <td>{{ wi.label or wi.slug }}{% if version.active_winpe_install_id == wi.id %}
+                  <span class="badge bg-success ms-1">{{ t('iso.winpe_install_current') }}</span>{% endif %}</td>
+                <td>{{ wi.wim_index }}</td>
+                <td class="text-end">
+                  {% if can_modify %}
+                  <form method="post" action="/isos/{{ version.id }}/winpe-installs/{{ wi.id }}/delete"
+                        class="d-inline" onsubmit="return confirm('Supprimer installs/{{ wi.slug }} ?');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">{{ t('iso.winpe_install_delete') }}</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-warning small mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.winpe_need_boot_wim') }}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if basename_report_items %}
   <div class="col-12">
     <div class="card border-secondary border-info">

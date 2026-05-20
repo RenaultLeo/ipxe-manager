@@ -3,13 +3,14 @@
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
 # Boot HTTP via wimboot (BCD + boot.sdi + boot.wim)
+# WinPE : startnet.cmd dans boot.wim est patché côté serveur (install.wim SMB + DISM)
 ########################################
 
 :start
 {% include '_theme.inc.j2' %}
 menu === {{ os_type.label }} — Choisissez une version ===
 {% for e in entries %}
-item v{{ e.id }} {{ e.label }}{% if e.autoconfigs %} [+conf]{% endif %}
+item v{{ e.id }} {{ e.label }}{% if e.winpe_active_label %} [{{ e.winpe_active_label }}]{% endif %}{% if e.autoconfigs %} [+conf]{% endif %}
 
 {% endfor %}
 item --gap

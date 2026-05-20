@@ -1066,6 +1066,23 @@ def _find_windows_in_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
         else:
             logger.warning("%s non trouvé après extraction", label)
 
+    bootmgr_cands = [
+        f
+        for f in dest.rglob("*")
+        if f.is_file() and f.name.lower() in ("bootmgr.efi", "bootmgr")
+    ]
+    if bootmgr_cands:
+        chosen_mgr = min(
+            bootmgr_cands,
+            key=lambda p: (
+                0 if "efi" in {x.lower() for x in p.parts} else 1,
+                len(str(p)),
+            ),
+        )
+        rel_mgr = chosen_mgr.relative_to(dest)
+        result["bootmgr_path"] = f"{base}/{rel_mgr.as_posix()}"
+        logger.info("bootmgr détecté : %s", rel_mgr)
+
     if not result.get("boot_wim_path"):
         raise ExtractionError(
             "boot.wim introuvable — requis pour wimboot (Windows / WinPE)."

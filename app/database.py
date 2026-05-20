@@ -59,6 +59,8 @@ def _migrate_columns():
     _add_column_if_missing("iso_versions", "ubuntu_nfs_boot", "BOOLEAN DEFAULT 0")
     _add_column_if_missing("iso_versions", "extract_basename_report_json", "TEXT DEFAULT ''")
     _add_column_if_missing("iso_versions", "active_autoconfig_id", "INTEGER")
+    _add_column_if_missing("iso_versions", "active_winpe_install_id", "INTEGER")
+    _add_column_if_missing("iso_versions", "winpe_startnet_patched_at", "DATETIME")
     _add_column_if_missing("os_types", "extract_full_iso", "BOOLEAN DEFAULT 0")
     _add_column_if_missing("os_types", "extract_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("os_types", "ipxe_roles_json", "TEXT DEFAULT '[]'")

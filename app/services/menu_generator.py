@@ -6,7 +6,7 @@ import logging
 import re
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import Settings, resolve_server_base_url
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
@@ -215,9 +215,16 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
                 be.kernel_path.replace("\\", "/").rstrip("/").split("/")[-1]
             )
 
+    winpe_active_label = ""
+    if be and (os_type.boot_type or "").lower() == "windows":
+        awi = getattr(v, "active_winpe_install", None)
+        if awi:
+            winpe_active_label = (awi.label or awi.slug or "").strip()
+
     return {
         "id":           v.id,
         "label":        f"{os_type.label} {v.version_label}",
+        "winpe_active_label": winpe_active_label,
         "kernel":       h(be.kernel_path) if be and be.kernel_path else "",
         "initrd":       h(be.initrd_path) if be and be.initrd_path else "",
         "boot_wim":     h(be.boot_wim_path) if be and be.boot_wim_path else "",
@@ -379,6 +386,11 @@ def regenerate_all(db: Session) -> list[str]:
         try:
             versions = (
                 db.query(IsoVersion)
+                .options(
+                    joinedload(IsoVersion.boot_entry),
+                    joinedload(IsoVersion.autoconfigs),
+                    joinedload(IsoVersion.active_winpe_install),
+                )
                 .filter(
                     IsoVersion.os_type_id == os_type.id,
                     IsoVersion.status == "ready",

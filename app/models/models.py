@@ -58,6 +58,8 @@ class IsoVersion(Base):
     ubuntu_nfs_boot = Column(Boolean, default=False)  # menu iPXE : netboot=nfs au lieu de HTTP autoinstall
     extract_basename_report_json = Column(Text, default="")  # dernier rapport recherche par nom { "init": ["a/b",…] }
     active_autoconfig_id = Column(Integer, ForeignKey("autoconfigs.id"), nullable=True, index=True)
+    active_winpe_install_id = Column(Integer, ForeignKey("winpe_installs.id"), nullable=True, index=True)
+    winpe_startnet_patched_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     os_type = relationship("OsType", back_populates="versions")
@@ -67,6 +69,17 @@ class IsoVersion(Base):
         back_populates="iso_version",
         cascade="all, delete",
         foreign_keys="AutoConfig.iso_version_id",
+    )
+    winpe_installs = relationship(
+        "WinpeInstall",
+        back_populates="iso_version",
+        cascade="all, delete",
+        foreign_keys="WinpeInstall.iso_version_id",
+    )
+    active_winpe_install = relationship(
+        "WinpeInstall",
+        foreign_keys=[active_winpe_install_id],
+        post_update=True,
     )
 
 
@@ -116,6 +129,24 @@ class BootEntry(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     iso_version = relationship("IsoVersion", back_populates="boot_entry")
+
+
+class WinpeInstall(Base):
+    """Image Windows ``install.wim`` sous ``boot/<os>/<ver>/installs/<slug>/install.wim``."""
+    __tablename__ = "winpe_installs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    iso_version_id = Column(Integer, ForeignKey("iso_versions.id"), nullable=False, index=True)
+    slug = Column(String(128), nullable=False)
+    label = Column(String(128), default="")
+    wim_index = Column(Integer, default=1)  # index DISM dans install.wim
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    iso_version = relationship(
+        "IsoVersion",
+        back_populates="winpe_installs",
+        foreign_keys=[iso_version_id],
+    )
 
 
 class AutoConfig(Base):

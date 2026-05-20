@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form
+from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ from app.database import get_db
 from app.auth import auth_redirect_login, get_session_user
 from app.services.ownership import can_modify_iso_version, get_iso_version, get_iso_version_view
 from app.i18n import translate
-from app.models.models import OsType, IsoVersion, Upload, BootEntry, AutoConfig
+from app.models.models import OsType, IsoVersion, Upload, BootEntry, AutoConfig, WinpeInstall
 from app.services.disk_info import fmt_size
 from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC, regenerate_all
 from app.services.os_type_order import sort_os_types_for_ui
@@ -102,6 +102,8 @@ def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> 
             joinedload(IsoVersion.os_type),
             joinedload(IsoVersion.boot_entry),
             joinedload(IsoVersion.autoconfigs),
+            joinedload(IsoVersion.winpe_installs),
+            joinedload(IsoVersion.active_winpe_install),
         )
         .filter(IsoVersion.id == version_id)
         .first()
@@ -707,12 +709,32 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
     if version.status == "error":
         extract_error_msg = _last_extract_error_msg(db, version)
 
+    winpe_smb_host = ""
+    winpe_smb_share = ""
+    winpe_installs_root = ""
+    if version.os_type.boot_type == "windows":
+        try:
+            from app.services.winpe_installs import (
+                installs_root,
+                smb_host_from_settings,
+                smb_share_name,
+            )
+
+            winpe_smb_host = smb_host_from_settings()
+            winpe_smb_share = smb_share_name()
+            winpe_installs_root = str(installs_root(version))
+        except Exception:
+            pass
+
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
             request,
             version=version,
             active_autoconfig=active_autoconfig,
+            winpe_smb_host=winpe_smb_host,
+            winpe_smb_share=winpe_smb_share,
+            winpe_installs_root=winpe_installs_root,
             extract_error_msg=extract_error_msg,
             fmt_size=fmt_size,
             basename_report=basename_report,
@@ -995,6 +1017,201 @@ async def iso_status_fragment(
 # ── Delete ────────────────────────────────────────────────────────────────────
 
 @router.post("/{version_id}/delete")
+def _winpe_windows_version(version: IsoVersion, lang: str) -> None:
+    if (version.os_type.boot_type or "").lower() != "windows":
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_not_windows"))
+
+
+@router.post("/{version_id}/winpe-installs")
+async def upload_winpe_install(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    install_slug: str = Form(...),
+    install_label: str = Form(""),
+    wim_index: int = Form(1),
+    file_install_wim: UploadFile = File(...),
+):
+    """Ajoute install.wim sous boot/<os>/<ver>/installs/<slug>/install.wim."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_or_404(db, request, version_id)
+    if not version:
+        raise HTTPException(404)
+    user = get_session_user(request)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(403)
+    _winpe_windows_version(version, lang)
+
+    from app.services.winpe_installs import (
+        INSTALL_WIM_FILENAME,
+        install_folder,
+        normalize_install_slug,
+    )
+
+    try:
+        slug = normalize_install_slug(install_slug)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    fname = Path(file_install_wim.filename or "").name
+    if not fname.lower().endswith(".wim"):
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
+
+    folder = install_folder(version, slug)
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / INSTALL_WIM_FILENAME
+    size = 0
+    with open(dest, "wb") as out:
+        while chunk := await file_install_wim.read(1024 * 1024):
+            out.write(chunk)
+            size += len(chunk)
+
+    label = (install_label or slug).strip() or slug
+    row = (
+        db.query(WinpeInstall)
+        .filter(
+            WinpeInstall.iso_version_id == version.id,
+            WinpeInstall.slug == slug,
+        )
+        .first()
+    )
+    if not row:
+        row = WinpeInstall(
+            iso_version_id=version.id,
+            slug=slug,
+            label=label,
+            wim_index=max(1, wim_index),
+        )
+        db.add(row)
+    else:
+        row.label = label
+        row.wim_index = max(1, wim_index)
+    db.add(
+        Upload(
+            filename=f"{slug}/{INSTALL_WIM_FILENAME}",
+            file_type="install_wim",
+            size=size,
+            status="done",
+            owner_user_id=user.id,
+        )
+    )
+    db.commit()
+    return RedirectResponse(f"/isos/{version_id}?msg=winpe_install_added", status_code=302)
+
+
+@router.post("/{version_id}/activate-winpe-install")
+async def activate_winpe_install_route(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    install_id: int = Form(...),
+):
+    """Injecte startnet.cmd dans boot.wim pour l'install.wim choisie (SMB + DISM)."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_or_404(db, request, version_id)
+    if not version:
+        raise HTTPException(404)
+    user = get_session_user(request)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(403)
+    _winpe_windows_version(version, lang)
+
+    install = (
+        db.query(WinpeInstall)
+        .filter(
+            WinpeInstall.id == install_id,
+            WinpeInstall.iso_version_id == version.id,
+        )
+        .first()
+    )
+    if not install:
+        raise HTTPException(404, detail=translate(lang, "iso.winpe_install_not_found"))
+
+    try:
+        from app.tasks.jobs import patch_winpe_startnet_task
+
+        patch_winpe_startnet_task.delay(version.id, install.id)
+        version.active_winpe_install_id = install.id
+        db.add(version)
+        db.commit()
+    except Exception as exc:
+        raise HTTPException(500, detail=str(exc)) from exc
+
+    return RedirectResponse(
+        f"/isos/{version_id}?msg=winpe_patch_queued",
+        status_code=302,
+    )
+
+
+@router.post("/{version_id}/clear-winpe-install")
+async def clear_winpe_install_route(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    version = _get_version_or_404(db, request, version_id)
+    if not version:
+        raise HTTPException(404)
+    user = get_session_user(request)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(403)
+
+    version.active_winpe_install_id = None
+    version.winpe_startnet_patched_at = None
+    db.add(version)
+    db.commit()
+    return RedirectResponse(f"/isos/{version_id}", status_code=302)
+
+
+@router.post("/{version_id}/winpe-installs/{install_id}/delete")
+async def delete_winpe_install_route(
+    version_id: int,
+    install_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    version = _get_version_or_404(db, request, version_id)
+    if not version:
+        raise HTTPException(404)
+    user = get_session_user(request)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(403)
+
+    install = (
+        db.query(WinpeInstall)
+        .filter(
+            WinpeInstall.id == install_id,
+            WinpeInstall.iso_version_id == version.id,
+        )
+        .first()
+    )
+    if not install:
+        raise HTTPException(404)
+
+    from app.services.winpe_installs import delete_install_folder
+
+    slug = install.slug
+    if version.active_winpe_install_id == install.id:
+        version.active_winpe_install_id = None
+        version.winpe_startnet_patched_at = None
+    db.delete(install)
+    db.commit()
+    delete_install_folder(version, slug)
+    return RedirectResponse(f"/isos/{version_id}", status_code=302)
+
+
 async def delete_iso(version_id: int, request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:

@@ -200,6 +200,41 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         db.close()
 
 
+@celery.task(bind=True, name="patch_winpe_startnet", soft_time_limit=900, time_limit=1200)
+def patch_winpe_startnet_task(self, iso_version_id: int, winpe_install_id: int):
+    """Injecte startnet.cmd dans boot.wim pour l'image install.wim active."""
+    db = SessionLocal()
+    try:
+        from app.models.models import IsoVersion, WinpeInstall
+        from app.services.winpe_startnet import patch_boot_wim_startnet
+        from sqlalchemy.orm import joinedload
+
+        version = (
+            db.query(IsoVersion)
+            .options(
+                joinedload(IsoVersion.os_type),
+                joinedload(IsoVersion.boot_entry),
+            )
+            .filter(IsoVersion.id == iso_version_id)
+            .first()
+        )
+        install = db.query(WinpeInstall).get(winpe_install_id)
+        if not version or not install:
+            raise ValueError("Version ou install WinPE introuvable")
+
+        patch_boot_wim_startnet(version, install)
+        version.active_winpe_install_id = install.id
+        version.winpe_startnet_patched_at = datetime.utcnow()
+        db.commit()
+        return {"status": "ok", "install": install.slug}
+    except Exception as exc:
+        logger.exception("patch_winpe_startnet_task failed")
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @celery.task(name="regenerate_menus")
 def regenerate_menus_task():
     db = SessionLocal()

@@ -262,11 +262,12 @@ cat > /etc/samba/smb.conf <<EOF
    server role = standalone server
 
 [boot]
-   comment = iPXE Boot Files (Windows install)
+   comment = iPXE boot tree (WinPE: \\host\\boot\\winpe\\<ver>\\installs\\<slug>\\install.wim)
    path = $DATA_DIR/http/boot
    browseable = yes
    read only = yes
    guest ok = yes
+   force user = $APP_USER
 
 [isos]
    comment = ISO Images

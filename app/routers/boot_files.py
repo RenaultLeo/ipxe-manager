@@ -219,6 +219,13 @@ async def replace_boot_wim(
     # Mettre à jour le chemin en base
     rel = f"boot/{os_slug}/{version_slug}/sources/boot.wim"
     be.boot_wim_path = rel
+    if getattr(version, "active_winpe_install_id", None):
+        try:
+            from app.tasks.jobs import patch_winpe_startnet_task
+
+            patch_winpe_startnet_task.delay(version.id, version.active_winpe_install_id)
+        except Exception:
+            pass
     db.commit()
 
     try:
