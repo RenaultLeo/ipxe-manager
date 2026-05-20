@@ -103,7 +103,6 @@ def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> 
             joinedload(IsoVersion.boot_entry),
             joinedload(IsoVersion.autoconfigs),
             joinedload(IsoVersion.winpe_installs),
-            joinedload(IsoVersion.active_winpe_install),
         )
         .filter(IsoVersion.id == version_id)
         .first()

@@ -70,6 +70,7 @@ class IsoVersion(Base):
         cascade="all, delete",
         foreign_keys="AutoConfig.iso_version_id",
     )
+    # Deux liens vers WinpeInstall (liste + active_winpe_install_id) : primaryjoin explicites
     winpe_installs = relationship(
         "WinpeInstall",
         back_populates="iso_version",
@@ -78,8 +79,11 @@ class IsoVersion(Base):
     )
     active_winpe_install = relationship(
         "WinpeInstall",
-        foreign_keys=[active_winpe_install_id],
+        primaryjoin="IsoVersion.active_winpe_install_id == WinpeInstall.id",
+        foreign_keys="IsoVersion.active_winpe_install_id",
+        uselist=False,
         post_update=True,
+        viewonly=True,
     )
 
 

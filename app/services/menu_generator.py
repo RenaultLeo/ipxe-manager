@@ -217,9 +217,14 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
     winpe_active_label = ""
     if be and (os_type.boot_type or "").lower() == "windows":
-        awi = getattr(v, "active_winpe_install", None)
-        if awi:
-            winpe_active_label = (awi.label or awi.slug or "").strip()
+        active_wid = getattr(v, "active_winpe_install_id", None)
+        if active_wid:
+            awi = next(
+                (w for w in (v.winpe_installs or []) if w.id == active_wid),
+                None,
+            )
+            if awi:
+                winpe_active_label = (awi.label or awi.slug or "").strip()
 
     return {
         "id":           v.id,
@@ -389,7 +394,6 @@ def regenerate_all(db: Session) -> list[str]:
                 .options(
                     joinedload(IsoVersion.boot_entry),
                     joinedload(IsoVersion.autoconfigs),
-                    joinedload(IsoVersion.active_winpe_install),
                 )
                 .filter(
                     IsoVersion.os_type_id == os_type.id,
