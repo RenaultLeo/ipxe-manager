@@ -1280,10 +1280,8 @@ async def activate_winpe_install_route(
     try:
         from app.tasks.jobs import patch_winpe_startnet_task
 
+        # active_winpe_install_id + winpe_startnet_patched_at : mis à jour par Celery après wimupdate OK
         patch_winpe_startnet_task.delay(version.id, install.id)
-        version.active_winpe_install_id = install.id
-        db.add(version)
-        db.commit()
     except Exception as exc:
         raise HTTPException(500, detail=str(exc)) from exc
 

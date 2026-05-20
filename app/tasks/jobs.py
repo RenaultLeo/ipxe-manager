@@ -328,9 +328,19 @@ def patch_winpe_startnet_task(self, iso_version_id: int, winpe_install_id: int):
         version.active_winpe_install_id = install.id
         version.winpe_startnet_patched_at = datetime.utcnow()
         db.commit()
+        logger.info(
+            "patch_winpe_startnet OK — version %s install %s (SMB Z: + DISM dans startnet.cmd)",
+            iso_version_id,
+            install.slug,
+        )
         return {"status": "ok", "install": install.slug}
     except Exception as exc:
-        logger.exception("patch_winpe_startnet_task failed")
+        logger.exception(
+            "patch_winpe_startnet_task failed (version %s install %s) : %s",
+            iso_version_id,
+            winpe_install_id,
+            exc,
+        )
         db.rollback()
         raise
     finally:
