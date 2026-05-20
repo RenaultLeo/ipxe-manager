@@ -127,6 +127,7 @@ def _backfill_builtin_extract_full_iso() -> None:
         "windows",
         "winpe",
         "ubuntu",
+        "debian",
         "rocky",
         "alma",
         "centos",
