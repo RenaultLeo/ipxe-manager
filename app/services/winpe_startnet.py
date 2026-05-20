@@ -13,7 +13,6 @@ from app.config import settings
 from app.models.models import IsoVersion, WinpeInstall
 from app.services.iso_extractor import ExtractionError
 from app.services.winpe_installs import (
-    INSTALL_WIM_FILENAME,
     install_wim_path,
     install_wim_rel_path,
     smb_host_from_settings,

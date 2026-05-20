@@ -394,6 +394,7 @@ def regenerate_all(db: Session) -> list[str]:
                 .options(
                     joinedload(IsoVersion.boot_entry),
                     joinedload(IsoVersion.autoconfigs),
+                    joinedload(IsoVersion.winpe_installs),
                 )
                 .filter(
                     IsoVersion.os_type_id == os_type.id,

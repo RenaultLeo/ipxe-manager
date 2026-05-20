@@ -1013,10 +1013,30 @@ async def iso_status_fragment(
     )
 
 
-# ── Delete ────────────────────────────────────────────────────────────────────
+# ── WinPE — install.wim + startnet.cmd ────────────────────────────────────────
 
-@router.post("/{version_id}/delete")
+def _get_version_modify_with_os(
+    db: Session, request: Request, version_id: int
+) -> IsoVersion:
+    user = get_session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    version = (
+        db.query(IsoVersion)
+        .options(joinedload(IsoVersion.os_type))
+        .filter(IsoVersion.id == version_id)
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=404)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(status_code=403, detail="forbidden")
+    return version
+
+
 def _winpe_windows_version(version: IsoVersion, lang: str) -> None:
+    if not getattr(version, "os_type", None):
+        raise HTTPException(status_code=404)
     if (version.os_type.boot_type or "").lower() != "windows":
         raise HTTPException(400, detail=translate(lang, "iso.winpe_not_windows"))
 
@@ -1036,12 +1056,8 @@ async def upload_winpe_install(
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    version = _get_version_or_404(db, request, version_id)
-    if not version:
-        raise HTTPException(404)
+    version = _get_version_modify_with_os(db, request, version_id)
     user = get_session_user(request)
-    if not can_modify_iso_version(user, version):
-        raise HTTPException(403)
     _winpe_windows_version(version, lang)
 
     from app.services.winpe_installs import (
@@ -1113,12 +1129,7 @@ async def activate_winpe_install_route(
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
-    version = _get_version_or_404(db, request, version_id)
-    if not version:
-        raise HTTPException(404)
-    user = get_session_user(request)
-    if not can_modify_iso_version(user, version):
-        raise HTTPException(403)
+    version = _get_version_modify_with_os(db, request, version_id)
     _winpe_windows_version(version, lang)
 
     install = (
@@ -1211,6 +1222,7 @@ async def delete_winpe_install_route(
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
+@router.post("/{version_id}/delete")
 async def delete_iso(version_id: int, request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:

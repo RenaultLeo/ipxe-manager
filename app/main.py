@@ -106,6 +106,13 @@ def _cleanup_stale_uploads():
 
 @app.on_event("startup")
 async def startup():
-    init_db()
-    sync_settings_server_base_url_from_db()
-    _cleanup_stale_uploads()
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        init_db()
+        sync_settings_server_base_url_from_db()
+        _cleanup_stale_uploads()
+    except Exception:
+        log.exception("Échec au démarrage (init_db / settings / cleanup)")
+        raise
