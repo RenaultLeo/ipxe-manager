@@ -46,6 +46,7 @@ def main() -> int:
             generate_startnet_cmd,
         )
         from app.tasks.celery_app import celery
+        import app.tasks.jobs  # noqa: F401 — enregistre upload_winpe_install + patch_winpe_startnet
 
         init_db()
         db = SessionLocal()
@@ -70,6 +71,25 @@ def main() -> int:
             for required in ("upload_winpe_install", "patch_winpe_startnet"):
                 if required not in task_names:
                     errors.append(f"Tâche Celery « {required} » non enregistrée")
+                else:
+                    print(f"Tâche Celery enregistrée : {required}")
+
+            import os
+
+            uid = os.getuid()
+            print(f"Utilisateur effectif : uid={uid} (worker ipxe-celery = utilisateur ipxe, uid typique du compte système)")
+
+            boot_share = settings.boot_dir
+            if boot_share.is_dir():
+                probe = boot_share / ".celery_write_probe"
+                try:
+                    probe.write_text("ok", encoding="utf-8")
+                    probe.unlink(missing_ok=True)
+                    print(f"Écriture OK sous {boot_share}")
+                except OSError as exc:
+                    errors.append(
+                        f"Pas d'écriture sur {boot_share} (Celery ne pourra pas patcher boot.wim) : {exc}"
+                    )
 
             host = smb_host_from_settings()
             print(f"Hôte SMB startnet : \\\\{host}\\{smb_share_name()}")
@@ -129,9 +149,18 @@ def main() -> int:
                             f"(attendu sous {boot_share}: {under_share})"
                         )
 
-                    if "net use Z:" not in generate_startnet_cmd(v, wi):
-                        errors.append(f"v{v.id} install « {wi.slug} » : startnet.cmd sans net use Z:")
-                    if z not in generate_startnet_cmd(v, wi):
+                    script = generate_startnet_cmd(v, wi)
+                    for needle in (
+                        "wpeinit",
+                        "net use Z:",
+                        "set WIM=",
+                        "Dism /Apply-Image",
+                    ):
+                        if needle not in script:
+                            errors.append(
+                                f"v{v.id} install « {wi.slug} » : startnet.cmd sans « {needle} »"
+                            )
+                    if z not in script:
                         errors.append(
                             f"v{v.id} install « {wi.slug} » : WIM Z: absent du script ({z})"
                         )
@@ -141,6 +170,7 @@ def main() -> int:
                     )
                     print(f"    UNC   {unc}")
                     print(f"    WinPE {z}")
+                    print(f"    injecté dans boot.wim → Windows/System32/startnet.cmd (via wimupdate)")
 
                 if v.active_winpe_install_id and not v.winpe_startnet_patched_at:
                     warnings.append(
