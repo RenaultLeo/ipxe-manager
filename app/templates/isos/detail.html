@@ -30,6 +30,17 @@
 </div>
 {% endif %}
 
+{% if version.status == 'error' %}
+<div class="alert alert-danger mb-4">
+  <strong><i class="bi bi-x-circle me-2"></i>{{ t('iso.extract_error_title') }}</strong>
+  {% if extract_error_msg %}
+  <pre class="mt-2 mb-0 small text-break" style="white-space:pre-wrap">{{ extract_error_msg }}</pre>
+  {% else %}
+  <p class="mb-0 mt-2 small">{{ t('iso.extract_error_no_detail') }}</p>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="row g-4">
   <!-- Info -->
   <div class="col-md-5">

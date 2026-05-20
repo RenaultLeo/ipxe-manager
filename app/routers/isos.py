@@ -628,6 +628,24 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
 
 
+def _last_extract_error_msg(db: Session, version: IsoVersion) -> str:
+    """Dernier message d'échec Celery (table uploads, type extraction)."""
+    iso_name = Path((version.iso_path or "").strip()).name
+    if not iso_name:
+        return ""
+    row = (
+        db.query(Upload)
+        .filter(
+            Upload.file_type == "extraction",
+            Upload.status == "error",
+            Upload.filename == iso_name,
+        )
+        .order_by(Upload.created_at.desc())
+        .first()
+    )
+    return (row.error_msg or "").strip() if row else ""
+
+
 # ── Detail ────────────────────────────────────────────────────────────────────
 
 @router.get("/{version_id}", response_class=HTMLResponse)
@@ -685,12 +703,17 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             except Exception:
                 published_boot_path = ""
 
+    extract_error_msg = ""
+    if version.status == "error":
+        extract_error_msg = _last_extract_error_msg(db, version)
+
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
             request,
             version=version,
             active_autoconfig=active_autoconfig,
+            extract_error_msg=extract_error_msg,
             fmt_size=fmt_size,
             basename_report=basename_report,
             basename_report_items=basename_report_items,
