@@ -68,11 +68,6 @@ class IsoVersion(Base):
         cascade="all, delete",
         foreign_keys="AutoConfig.iso_version_id",
     )
-    active_autoconfig = relationship(
-        "AutoConfig",
-        foreign_keys=[active_autoconfig_id],
-        post_update=True,
-    )
 
 
 class BootEntry(Base):
@@ -136,7 +131,11 @@ class AutoConfig(Base):
     file_path = Column(String(512))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    iso_version = relationship("IsoVersion", back_populates="autoconfigs")
+    iso_version = relationship(
+        "IsoVersion",
+        back_populates="autoconfigs",
+        foreign_keys=[iso_version_id],
+    )
 
 
 class Upload(Base):

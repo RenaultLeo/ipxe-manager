@@ -102,7 +102,6 @@ def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> 
             joinedload(IsoVersion.os_type),
             joinedload(IsoVersion.boot_entry),
             joinedload(IsoVersion.autoconfigs),
-            joinedload(IsoVersion.active_autoconfig),
         )
         .filter(IsoVersion.id == version_id)
         .first()
@@ -670,20 +669,28 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
         db.add(version)
         db.commit()
 
+    active_autoconfig = None
     published_boot_path = ""
-    if getattr(version, "active_autoconfig_id", None) and version.active_autoconfig:
-        try:
-            from app.services.autoconfig_publish import published_seed_dir_rel_path
+    active_id = getattr(version, "active_autoconfig_id", None)
+    if active_id:
+        active_autoconfig = next(
+            (a for a in (version.autoconfigs or []) if a.id == active_id),
+            None,
+        )
+        if active_autoconfig:
+            try:
+                from app.services.autoconfig_publish import published_seed_dir_rel_path
 
-            published_boot_path = published_seed_dir_rel_path(version)
-        except Exception:
-            published_boot_path = ""
+                published_boot_path = published_seed_dir_rel_path(version)
+            except Exception:
+                published_boot_path = ""
 
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
             request,
             version=version,
+            active_autoconfig=active_autoconfig,
             fmt_size=fmt_size,
             basename_report=basename_report,
             basename_report_items=basename_report_items,

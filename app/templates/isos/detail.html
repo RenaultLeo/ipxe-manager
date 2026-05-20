@@ -393,10 +393,10 @@
         {% elif can_modify and not version.boot_entry %}
         <p class="small text-warning mb-3">{{ t('iso.active_config_need_extract') }}</p>
         {% endif %}
-        {% if version.active_autoconfig_id and version.active_autoconfig %}
+        {% if version.active_autoconfig_id and active_autoconfig %}
         <p class="small mb-3">
           <span class="badge bg-success">{{ t('iso.active_config_current') }}</span>
-          <strong class="ms-1">{{ version.active_autoconfig.label }}</strong>
+          <strong class="ms-1">{{ active_autoconfig.label }}</strong>
           {% if published_boot_path %}
           <span class="d-block font-monospace text-muted mt-1">{{ published_boot_path }}/user-data, meta-data</span>
           {% endif %}
