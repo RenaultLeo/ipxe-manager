@@ -153,9 +153,14 @@ def main() -> int:
                     script = generate_startnet_cmd(v, wi)
                     for needle in (
                         "wpeinit",
+                        "diskpart",
+                        "convert gpt",
+                        "assign letter=W",
                         "net use Z:",
                         "set WIM=",
+                        "ApplyDir:W:\\",
                         "Dism /Apply-Image",
+                        "bcdboot W:\\Windows",
                     ):
                         if needle not in script:
                             errors.append(
