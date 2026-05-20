@@ -14,9 +14,20 @@ from app.services.os_type_order import UI_OS_SLUG_ORDER
 
 _SLUG_ORDER_RANK = {s: i for i, s in enumerate(UI_OS_SLUG_ORDER)}
 
-# Extraction ISO complète (7z → boot/<os>/<version>/…) pour install réseau
+# Extraction ISO complète (xorriso/7z → boot/<os>/<version>/…) pour install réseau
 _FULL_EXTRACT_SLUGS = frozenset(
-    {"windows", "winpe", "ubuntu", "rocky", "alma", "centos", "fedora", "proxmox", "esxi"}
+    {
+        "windows",
+        "winpe",
+        "ubuntu",
+        "debian",
+        "rocky",
+        "alma",
+        "centos",
+        "fedora",
+        "proxmox",
+        "esxi",
+    }
 )
 
 DEFAULT_OS = [

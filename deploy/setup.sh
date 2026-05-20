@@ -30,7 +30,7 @@ apt-get install -y -qq \
     iproute2 procps \
     nginx tftpd-hpa redis-server \
     python3 python3-venv python3-pip nodejs \
-    p7zip-full wimtools genisoimage xorriso \
+    p7zip-full wimtools genisoimage xorriso libarchive-tools \
     samba samba-common-bin nfs-kernel-server \
     build-essential gcc binutils make liblzma-dev mtools \
     isolinux || true   # isolinux peut manquer sur certaines archi

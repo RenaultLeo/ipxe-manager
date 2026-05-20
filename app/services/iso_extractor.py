@@ -46,9 +46,9 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd": [],
         "extra":  {},
     },
-    # Debian — vmlinuz + initrd.gz
+    # Debian — extraction complète (dists/ + liens symboliques) ; inst.repo= en menu
     "debian": {
-        "type":    "linux",
+        "type":    "debian",
         "kernel":  ["vmlinuz"],
         "initrd":  ["initrd.gz", "initrd"],
         "extra":   {},
@@ -132,6 +132,127 @@ WIN_EXACT = {
 }
 
 
+_DANGEROUS_LINK_RE = re.compile(r"dangerous\s+(?:symbolic\s+)?link", re.I)
+
+
+def _extract_output_blob(proc: subprocess.CompletedProcess[str]) -> str:
+    return (proc.stdout or "") + (proc.stderr or "")
+
+
+def _output_has_dangerous_links(proc: subprocess.CompletedProcess[str]) -> bool:
+    return bool(_DANGEROUS_LINK_RE.search(_extract_output_blob(proc)))
+
+
+def _acceptable_extract_rc(tool: str, proc: subprocess.CompletedProcess[str]) -> bool:
+    if proc.returncode in (0, 1):
+        return True
+    # xorriso : avertissements fréquents avec code 5 sans échec bloquant
+    if tool == "xorriso" and proc.returncode in (5, 32):
+        return True
+    return False
+
+
+def _wipe_dest_for_retry(dest: Path) -> None:
+    if not dest.exists():
+        dest.mkdir(parents=True, exist_ok=True)
+        return
+    for child in dest.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink(missing_ok=True)
+
+
+def _raise_extract_tool_failed(tool: str, proc: subprocess.CompletedProcess[str]) -> None:
+    blob = _extract_output_blob(proc)
+    if _output_has_dangerous_links(proc):
+        raise ExtractionError(
+            "Extraction ISO incomplète : liens symboliques ignorés "
+            f"(ex. Debian dists/trixie). Installez xorriso (apt install xorriso) "
+            f"ou libarchive-tools pour bsdtar. Dernier outil : {tool}."
+        )
+    tail = blob.strip()[-2000:] if blob.strip() else f"code {proc.returncode}"
+    raise ExtractionError(f"{tool} a échoué (code {proc.returncode}) :\n{tail}")
+
+
+def extract_iso_archive(iso: Path, dest: Path) -> str:
+    """
+    Déploie une image ISO dans ``dest`` en préservant les liens symboliques Rock Ridge
+    (Debian ``dists/``, etc.). Préfère xorriso, puis bsdtar, puis 7z en dernier recours.
+    Retourne le nom de l'outil utilisé.
+    """
+    iso = iso.resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    timeout = settings.extract_timeout
+
+    xorriso = shutil.which("xorriso")
+    bsdtar = shutil.which("bsdtar")
+    seven_z = shutil.which("7z") or shutil.which("7za")
+
+    attempts: list[tuple[str, list[str]]] = []
+    if xorriso:
+        attempts.append(
+            (
+                "xorriso",
+                [
+                    xorriso,
+                    "-osirrox",
+                    "on",
+                    "-indev",
+                    str(iso),
+                    "-extract",
+                    "/",
+                    str(dest),
+                ],
+            )
+        )
+    if bsdtar:
+        attempts.append(("bsdtar", [bsdtar, "-xf", str(iso), "-C", str(dest)]))
+    if seven_z:
+        attempts.append(
+            ("7z", [seven_z, "x", str(iso), f"-o{dest}", "-y", "-snld"])
+        )
+
+    if not attempts:
+        raise ExtractionError(
+            "Aucun outil d'extraction ISO (xorriso, bsdtar ou p7zip-full) sur le serveur."
+        )
+
+    failures: list[str] = []
+    for tool, cmd in attempts:
+        if failures:
+            _wipe_dest_for_retry(dest)
+        logger.info("Extraction ISO %s → %s (%s)", iso.name, dest, tool)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if not _acceptable_extract_rc(tool, proc):
+            failures.append(f"{tool}: code {proc.returncode}")
+            continue
+        if tool == "7z" and _output_has_dangerous_links(proc):
+            failures.append(f"{tool}: liens symboliques ignorés")
+            if xorriso or bsdtar:
+                continue
+            _raise_extract_tool_failed(tool, proc)
+        if tool == "7z":
+            n_ignored = len(_DANGEROUS_LINK_RE.findall(_extract_output_blob(proc)))
+            if n_ignored:
+                logger.warning(
+                    "7z : %d lien(s) symbolique(s) ignoré(s) — préférez xorriso sur le serveur.",
+                    n_ignored,
+                )
+        return tool
+
+    raise ExtractionError(
+        "Impossible d'extraire l'ISO correctement. "
+        + " ; ".join(failures)
+        + ". Installez xorriso : apt install xorriso"
+    )
+
+
 # ── Point d'entrée public ──────────────────────────────────────────────────────
 
 def extract_iso(
@@ -148,9 +269,15 @@ def extract_iso(
     if not iso.exists():
         raise ExtractionError(f"ISO introuvable : {iso_path}")
 
-    seven_z = shutil.which("7z") or shutil.which("7za")
-    if not seven_z:
-        raise ExtractionError("7z non installé — apt-get install -y p7zip-full")
+    if not (
+        shutil.which("xorriso")
+        or shutil.which("bsdtar")
+        or shutil.which("7z")
+        or shutil.which("7za")
+    ):
+        raise ExtractionError(
+            "Aucun outil d'extraction ISO — apt install xorriso p7zip-full libarchive-tools"
+        )
 
     dest = settings.boot_dir / os_slug / version_slug
     dest.mkdir(parents=True, exist_ok=True)
@@ -175,15 +302,7 @@ def extract_iso(
 
     if rule["type"] == "esxi":
         logger.info("Extraction complète ESXi (ISO entière sous http) → %s", dest)
-        proc = subprocess.run(
-            [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
-            capture_output=True, text=True,
-            timeout=settings.extract_timeout,
-        )
-        if proc.returncode not in (0, 1):
-            raise ExtractionError(
-                f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
-            )
+        extract_iso_archive(iso, dest)
         _fix_permissions(dest)
         paths = _extract_esxi_from_full_dest(dest, os_slug, version_slug)
         logger.info("Extraction terminée : %s", paths)
@@ -192,6 +311,7 @@ def extract_iso(
     if rule["type"] in (
         "windows",
         "ubuntu",
+        "debian",
         "rocky",
         "alma",
         "centos",
@@ -201,23 +321,18 @@ def extract_iso(
         # Extraction COMPLÈTE de l'ISO directement dans dest
         # Windows / WinPE : BCD, boot.sdi, boot.wim (wimboot)
         # Ubuntu  : cloud-init autoinstall via HTTP
+        # Debian : dists/ + inst.repo= (xorriso pour les liens symboliques)
         # Rocky / Alma / CentOS / Fedora : Anaconda (inst.repo / inst.stage2)
         # Proxmox : installateur + answer.toml (proxmox-installer.answer-file=)
         logger.info("Extraction complète %s → %s", os_slug, dest)
-        proc = subprocess.run(
-            [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
-            capture_output=True, text=True,
-            timeout=settings.extract_timeout,
-        )
-        if proc.returncode not in (0, 1):
-            raise ExtractionError(
-                f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
-            )
+        extract_iso_archive(iso, dest)
         _fix_permissions(dest)
         if rule["type"] == "windows":
             paths = _find_windows_in_dest(dest, os_slug, version_slug)
         elif rule["type"] == "ubuntu":
             paths = _find_ubuntu_in_dest(dest, os_slug, version_slug, rule)
+        elif rule["type"] == "debian":
+            paths = _find_debian_in_dest(dest, os_slug, version_slug, rule)
         elif rule["type"] == "proxmox":
             paths = _find_proxmox_in_dest(dest, os_slug, version_slug, rule)
         else:
@@ -225,15 +340,7 @@ def extract_iso(
     else:
         # Linux : extraction dans un dossier temp, copie des fichiers de boot seulement
         with tempfile.TemporaryDirectory() as tmp:
-            proc = subprocess.run(
-                [seven_z, "x", str(iso), f"-o{tmp}", "-y"],
-                capture_output=True, text=True,
-                timeout=settings.extract_timeout,
-            )
-            if proc.returncode not in (0, 1):
-                raise ExtractionError(
-                    f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
-                )
+            extract_iso_archive(iso, Path(tmp))
             paths = _find_linux(Path(tmp), dest, os_slug, version_slug, rule)
 
     logger.info("Extraction terminée : %s", paths)
@@ -1011,6 +1118,51 @@ def _find_ubuntu_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
         )
     logger.info("Extraction Ubuntu complète — kernel=%s initrd=%s",
                 result.get("kernel_path"), result.get("initrd_path"))
+    return result
+
+
+def _find_debian_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
+    """
+    Après extraction complète d'une ISO Debian dans ``dest`` :
+    localise vmlinuz / initrd (souvent ``install.amd/`` ou ``isolinux/``).
+    L'arborescence complète (``dists/``, pools, …) reste servie en HTTP pour ``inst.repo=``.
+    """
+    result: dict = {}
+    base = f"boot/{os_slug}/{version_slug}"
+    kernel_names: list[str] = rule.get("kernel") or ["vmlinuz"]
+    initrd_names: list[str] = rule.get("initrd") or ["initrd.gz", "initrd"]
+    deb_pref = frozenset({"install.amd", "install", "isolinux", "boot", "pxelinux"})
+
+    kernel = _find_in_dest(
+        dest, kernel_names, mode="kernel", preferred_parent_names=deb_pref
+    )
+    if kernel:
+        rel = kernel.relative_to(dest)
+        result["kernel_path"] = f"{base}/{rel.as_posix()}"
+        logger.info("Debian kernel : %s", rel)
+    else:
+        logger.warning("Debian kernel non trouvé dans l'ISO")
+
+    initrd = _find_in_dest(
+        dest, initrd_names, mode="initrd", preferred_parent_names=deb_pref
+    )
+    if initrd:
+        rel = initrd.relative_to(dest)
+        result["initrd_path"] = f"{base}/{rel.as_posix()}"
+        logger.info("Debian initrd : %s", rel)
+    else:
+        logger.warning("Debian initrd non trouvé dans l'ISO")
+
+    if not result.get("kernel_path") or not result.get("initrd_path"):
+        raise ExtractionError(
+            "Aucun fichier de boot Debian (vmlinuz + initrd.gz) trouvé dans l'ISO. "
+            "Vérifiez install.amd/ ou isolinux/."
+        )
+    logger.info(
+        "Extraction Debian complète — kernel=%s initrd=%s",
+        result.get("kernel_path"),
+        result.get("initrd_path"),
+    )
     return result
 
 

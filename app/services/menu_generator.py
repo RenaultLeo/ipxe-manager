@@ -22,6 +22,8 @@ TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
 # Rocky, AlmaLinux, CentOS : inst.repo=  |  Fedora : inst.stage2= + rd.neednet=1 (Live / ISO extraite)
 _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma", "centos", "fedora"})
+# Debian netinst : inst.repo= vers la racine HTTP de l'ISO extraite (dists/ intact via xorriso)
+_DEBIAN_NETINST_SLUGS = frozenset({"debian"})
 
 # Dépôt APK public par défaut (installateur netboot Alpine)
 ALPINE_REPO_DEFAULT_PUBLIC = "http://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
@@ -616,6 +618,20 @@ def _build_kernel_args(
             modloop_url = _http(be.modloop_path, cfg)
             if "modloop=" not in args:
                 args = f"{args} modloop={modloop_url}".strip()
+
+    # Debian : inst.repo= (miroir HTTP extrait, liens dists/ préservés)
+    if os_slug in _DEBIAN_NETINST_SLUGS and be:
+        seg = _boot_os_version_segment(be, os_slug)
+        if seg:
+            root_url = _http(f"boot/{os_slug}/{seg}/", cfg)
+            if root_url and not re.search(r"(?:^|\s)inst\.repo=", args):
+                args = f"{args} inst.repo={root_url}".strip()
+        if not _has_ip_kernel_arg(args):
+            args = f"ip=dhcp {args}".strip()
+        if be.initrd_path and not re.search(r"(?:^|\s)initrd=", args):
+            init_bn = be.initrd_path.replace("\\", "/").rstrip("/").split("/")[-1]
+            if init_bn:
+                args = f"{args} initrd={init_bn}".strip()
 
     # Rocky / Alma / CentOS : inst.repo=  |  Fedora : inst.stage2= + rd.neednet=1
     if os_slug in _EL_ANACONDA_FULL_ISO_SLUGS and be:

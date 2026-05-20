@@ -9,7 +9,6 @@ import fnmatch
 import json
 import logging
 import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -25,6 +24,7 @@ from app.services.iso_extractor import (
     _find_proxmox_in_dest,
     _find_windows_in_dest,
     _fix_permissions,
+    extract_iso_archive,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,17 @@ logger = logging.getLogger(__name__)
 # Si l’admin coche « extraction complète » sur le type d’OS sans liste de noms, on évite l’erreur
 # « Configuration vide » et on délègue au moteur intégré (Fedora / EL / Ubuntu / Windows comme en seed).
 _BUILTIN_FULL_ISO_SLUGS = frozenset(
-    {"windows", "winpe", "ubuntu", "rocky", "alma", "centos", "fedora", "proxmox"}
+    {
+        "windows",
+        "winpe",
+        "ubuntu",
+        "debian",
+        "rocky",
+        "alma",
+        "centos",
+        "fedora",
+        "proxmox",
+    }
 )
 
 
@@ -119,9 +129,15 @@ def try_extract_with_plan(
     if not iso.exists():
         raise ExtractionError(f"ISO introuvable : {iso_path}")
 
-    seven_z = shutil.which("7z") or shutil.which("7za")
-    if not seven_z:
-        raise ExtractionError("7z non installé — apt-get install -y p7zip-full")
+    if not (
+        shutil.which("xorriso")
+        or shutil.which("bsdtar")
+        or shutil.which("7z")
+        or shutil.which("7za")
+    ):
+        raise ExtractionError(
+            "Aucun outil d'extraction ISO — apt install xorriso p7zip-full libarchive-tools"
+        )
 
     dest = settings.boot_dir / os_slug / version_slug
     dest.mkdir(parents=True, exist_ok=True)
@@ -161,16 +177,7 @@ def try_extract_with_plan(
         )
 
     if ot.extract_full_iso:
-        proc = subprocess.run(
-            [seven_z, "x", str(iso), f"-o{str(dest)}", "-y"],
-            capture_output=True,
-            text=True,
-            timeout=settings.extract_timeout,
-        )
-        if proc.returncode not in (0, 1):
-            raise ExtractionError(
-                f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
-            )
+        extract_iso_archive(iso, dest)
         for spec in unified:
             if spec.basename:
                 hits = find_by_basename(dest, spec.basename)[: spec.max_n]
@@ -190,16 +197,7 @@ def try_extract_with_plan(
     else:
         with tempfile.TemporaryDirectory() as tmp:
             tmpp = Path(tmp)
-            proc = subprocess.run(
-                [seven_z, "x", str(iso), f"-o{tmpp}", "-y"],
-                capture_output=True,
-                text=True,
-                timeout=settings.extract_timeout,
-            )
-            if proc.returncode not in (0, 1):
-                raise ExtractionError(
-                    f"7z a échoué (code {proc.returncode}) :\n{proc.stderr[-2000:]}"
-                )
+            extract_iso_archive(iso, tmpp)
 
             for spec in unified:
                 if spec.pattern:
