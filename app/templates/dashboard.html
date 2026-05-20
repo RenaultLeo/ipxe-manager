@@ -182,7 +182,7 @@
             {% elif u.status == 'error' %}<span class="badge bg-danger">{{ t('dash.status_error') }}</span>
             {% else %}<span class="badge bg-secondary">{{ t('dash.status_pending') }}</span>{% endif %}
           </td>
-          <td class="text-muted small">{{ u.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td class="text-muted small">{{ u.created_at | fmt_dt }}</td>
         </tr>
         {% endfor %}
       </tbody>

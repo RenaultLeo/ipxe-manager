@@ -11,9 +11,11 @@ from app.auth import get_session_user, is_admin
 from app.services.ownership import can_modify_iso_version
 from app.i18n import translate, SUPPORTED_LOCALES
 from app.config import settings
+from app.datetime_display import format_local_dt
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.filters["fmt_dt"] = format_local_dt
 
 
 def template_context(request: Request, **extra):

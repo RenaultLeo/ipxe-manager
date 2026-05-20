@@ -52,7 +52,7 @@
             {% endif %}</td>
           <td>{{ config_menu_labels[c.id] }}</td>
           <td class="font-monospace small text-muted">{{ c.file_path or '—' }}</td>
-          <td class="text-muted small">{{ c.updated_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td class="text-muted small">{{ c.updated_at | fmt_dt }}</td>
           <td class="text-end text-nowrap">
             {% if can_modify_iso(c.iso_version) %}
             <a href="/ipxe-configs/{{ c.id }}/edit" class="btn btn-sm btn-outline-warning me-1">

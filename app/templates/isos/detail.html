@@ -60,7 +60,7 @@
           <dt class="col-5 text-muted">{{ t('iso.detail_iso_fs_path') }}</dt>
           <dd class="col-7 font-monospace small text-break">{{ version.iso_path or '—' }}</dd>
           <dt class="col-5 text-muted">Ajouté le</dt>
-          <dd class="col-7">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+          <dd class="col-7">{{ version.created_at | fmt_dt }}</dd>
           {% if version.notes %}
           <dt class="col-5 text-muted">Notes</dt><dd class="col-7">{{ version.notes }}</dd>
           {% endif %}
@@ -385,7 +385,7 @@
             {% if version.winpe_startnet_patched_at %}
             <p class="small text-success mb-2">
               <i class="bi bi-check-circle me-1"></i>{{ t('iso.winpe_install_current') }} —
-              {{ version.winpe_startnet_patched_at.strftime('%d/%m/%Y %H:%M') }} UTC
+              {{ version.winpe_startnet_patched_at | fmt_dt }}
             </p>
             {% endif %}
             {% else %}

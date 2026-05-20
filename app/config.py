@@ -144,6 +144,8 @@ class Settings(BaseSettings):
     # WinPE : partage Samba (nom du share, chemin = http/boot) et index image dans boot.wim
     winpe_smb_share: str = "boot"
     winpe_boot_wim_index: int = 1
+    # Fuseau pour l’affichage des dates dans l’UI (BDD = UTC)
+    display_timezone: str = "Europe/Paris"
 
     @property
     def ipxe_src_dir(self) -> Path:
