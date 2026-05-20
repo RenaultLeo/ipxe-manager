@@ -15,7 +15,7 @@ from app.database import get_db
 from app.auth import auth_redirect_login, get_session_user
 from app.services.ownership import can_modify_iso_version, get_iso_version, get_iso_version_view
 from app.i18n import translate
-from app.models.models import OsType, IsoVersion, Upload, BootEntry
+from app.models.models import OsType, IsoVersion, Upload, BootEntry, AutoConfig
 from app.services.disk_info import fmt_size
 from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC, regenerate_all
 from app.services.os_type_order import sort_os_types_for_ui
@@ -102,6 +102,7 @@ def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> 
             joinedload(IsoVersion.os_type),
             joinedload(IsoVersion.boot_entry),
             joinedload(IsoVersion.autoconfigs),
+            joinedload(IsoVersion.active_autoconfig),
         )
         .filter(IsoVersion.id == version_id)
         .first()
@@ -669,6 +670,15 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
         db.add(version)
         db.commit()
 
+    published_boot_path = ""
+    if getattr(version, "active_autoconfig_id", None) and version.active_autoconfig:
+        try:
+            from app.services.autoconfig_publish import published_seed_dir_rel_path
+
+            published_boot_path = published_seed_dir_rel_path(version)
+        except Exception:
+            published_boot_path = ""
+
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
@@ -681,8 +691,78 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             iso_file_exists=iso_file_exists,
             alpine_repo_default_public=ALPINE_REPO_DEFAULT_PUBLIC,
             can_modify=can_modify,
+            published_boot_path=published_boot_path,
         ),
     )
+
+
+@router.post("/{version_id}/activate-config")
+async def iso_activate_config(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    config_id: int = Form(...),
+):
+    """Publie une config Ubuntu vers boot/ et la définit comme config courante pour cette ISO."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_or_404(db, request, version_id)
+    if not version:
+        raise HTTPException(404)
+    user = get_session_user(request)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(403)
+    if version.os_type.slug != "ubuntu":
+        raise HTTPException(400, detail=translate(lang, "iso.active_config_not_ubuntu"))
+
+    cfg = (
+        db.query(AutoConfig)
+        .filter(
+            AutoConfig.id == config_id,
+            AutoConfig.iso_version_id == version.id,
+        )
+        .first()
+    )
+    if not cfg:
+        raise HTTPException(404, detail=translate(lang, "iso.active_config_not_found"))
+
+    try:
+        from app.services.autoconfig_publish import activate_ubuntu_config
+
+        activate_ubuntu_config(db, version, cfg)
+        regenerate_all(db)
+    except FileNotFoundError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    return RedirectResponse(f"/isos/{version_id}?msg=active_config_ok", status_code=302)
+
+
+@router.post("/{version_id}/clear-active-config")
+async def iso_clear_active_config(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    version = _get_version_or_404(db, request, version_id)
+    if not version:
+        raise HTTPException(404)
+    user = get_session_user(request)
+    if not can_modify_iso_version(user, version):
+        raise HTTPException(403)
+
+    from app.services.autoconfig_publish import clear_active_ubuntu_publish
+
+    clear_active_ubuntu_publish(db, version)
+    if version.status == "ready":
+        regenerate_all(db)
+    return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
 @router.post("/{version_id}/alpine-repo")

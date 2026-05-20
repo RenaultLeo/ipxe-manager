@@ -14,7 +14,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from app.tasks.celery_app import celery
 from app.database import SessionLocal
-from app.models.models import IsoVersion, BootEntry, Upload
+from app.models.models import IsoVersion, BootEntry, Upload, AutoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +145,19 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
             version.delete_iso_after_next_extract = False
 
         db.commit()
+
+        if getattr(version, "active_autoconfig_id", None) and version.os_type.slug == "ubuntu":
+            ac = db.query(AutoConfig).get(version.active_autoconfig_id)
+            if ac:
+                try:
+                    from app.services.autoconfig_publish import publish_ubuntu_cloud_config
+
+                    publish_ubuntu_cloud_config(version, ac)
+                except Exception:
+                    logger.exception(
+                        "Republication config courante après extraction (version %s)",
+                        version.id,
+                    )
 
         # Regenerate menus so this version appears immediately
         from app.services.menu_generator import regenerate_all

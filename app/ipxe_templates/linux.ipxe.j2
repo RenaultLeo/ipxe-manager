@@ -28,7 +28,12 @@ goto ${selected}
 
 {% for e in entries %}
 :v{{ e.id }}
-{% if e.autoconfigs %}
+{% if e.autoconfigs and e.ubuntu_direct_boot and e.autoconfigs|length == 1 %}
+  {% set ac = e.autoconfigs[0] %}
+  kernel {{ e.kernel }} {{ e.kernel_args }} {{ ac.boot_arg }}
+  {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
+  boot
+{% elif e.autoconfigs %}
   menu {{ e.label }} — Choisissez une configuration
   {% for ac in e.autoconfigs %}
   item ac{{ ac.id }} {{ ac.label }}

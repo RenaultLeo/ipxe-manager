@@ -1,6 +1,9 @@
+import logging
 import shutil
 from pathlib import Path
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -40,6 +43,20 @@ from app.services.autoconfig_label import (
 router = APIRouter(prefix="/ipxe-configs")
 
 UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
+
+
+def _maybe_republish_active_ubuntu(db: Session, version: IsoVersion, cfg: AutoConfig) -> None:
+    """Si cette config est la config courante, recopie vers boot/ et régénère les menus."""
+    if getattr(version, "active_autoconfig_id", None) != cfg.id:
+        return
+    try:
+        from app.services.autoconfig_publish import publish_ubuntu_cloud_config
+        from app.services.menu_generator import regenerate_all
+
+        publish_ubuntu_cloud_config(version, cfg)
+        regenerate_all(db)
+    except Exception:
+        logger.exception("Republication config courante Ubuntu (version %s)", version.id)
 
 
 def _auth(request: Request):
@@ -236,6 +253,7 @@ async def config_create(
         fp = _write_ubuntu_cloud_bundle(version, slug, content, content_meta or "")
         cfg.file_path = fp
         db.commit()
+        _maybe_republish_active_ubuntu(db, version, cfg)
         return RedirectResponse("/ipxe-configs", status_code=302)
 
     db.add(cfg)
@@ -320,6 +338,7 @@ async def config_update(
         )
         cfg.file_path = fp
         db.commit()
+        _maybe_republish_active_ubuntu(db, ver, cfg)
         return RedirectResponse("/ipxe-configs", status_code=302)
 
     fp = _write_config_file(cfg, ver, content)
@@ -338,13 +357,25 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
     if not cfg:
         raise HTTPException(404)
 
+    ver = cfg.iso_version
+    was_active = ver and getattr(ver, "active_autoconfig_id", None) == cfg.id
+
     if cfg.ubuntu_cloud_slug and cfg.file_path:
         _delete_ubuntu_bundle_disk(cfg)
     elif cfg.file_path:
         Path(settings.http_root).joinpath(cfg.file_path).unlink(missing_ok=True)
 
+    if was_active and ver:
+        ver.active_autoconfig_id = None
+        db.add(ver)
     db.delete(cfg)
     db.commit()
+    if was_active and ver:
+        from app.services.autoconfig_publish import boot_version_dir, clear_ubuntu_seed_from_boot
+        from app.services.menu_generator import regenerate_all
+
+        clear_ubuntu_seed_from_boot(boot_version_dir(ver))
+        regenerate_all(db)
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 

@@ -14,6 +14,7 @@ from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
 from app.services.autoconfig_label import resolve_autoconfig_menu_label
+from app.services.autoconfig_publish import published_seed_dir_rel_path
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,49 @@ def _esxi_module_urls_from_json(
     return urls
 
 
+def _ubuntu_nocloud_boot_arg(seed_dir_url: str) -> str:
+    """Args autoinstall : seed à la racine boot/ubuntu/<release>/ (ds=nocloud;s=…/)."""
+    base = (seed_dir_url or "").rstrip("/") + "/"
+    if base == "/":
+        return ""
+    return f"autoinstall ds=nocloud;s={base} cloud-config-url=/dev/null"
+
+
+def _menu_autoconfig_entries(
+    v: IsoVersion,
+    os_type: OsType,
+    h,
+) -> list[dict]:
+    """Entrées menu autoconfig : config courante → seed publié à la racine boot/ubuntu/<release>/."""
+    active_id = getattr(v, "active_autoconfig_id", None)
+    configs = list(v.autoconfigs or [])
+    if os_type.slug.lower() == "ubuntu" and active_id:
+        configs = [ac for ac in configs if ac.id == active_id]
+    entries: list[dict] = []
+    for ac in configs:
+        rel = ac.file_path or ""
+        boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
+        if (
+            os_type.slug.lower() == "ubuntu"
+            and active_id == ac.id
+            and ac.ubuntu_cloud_slug
+        ):
+            rel = published_seed_dir_rel_path(v)
+            seed_url = h(rel)
+            boot_arg = _ubuntu_nocloud_boot_arg(seed_url)
+        url = h(rel) if rel else ""
+        entries.append(
+            {
+                "id": ac.id,
+                "label": resolve_autoconfig_menu_label(ac),
+                "url": url,
+                "type": ac.config_type,
+                "boot_arg": boot_arg,
+            }
+        )
+    return entries
+
+
 def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     """Construit le dict d'une version pour les templates Jinja2."""
     be = v.boot_entry
@@ -189,22 +233,14 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
         ),
         "boot_type":   os_type.boot_type or "linux",
-        "autoconfigs": [
-            {
-                "id":       ac.id,
-                "label":    resolve_autoconfig_menu_label(ac),
-                "url":      h(ac.file_path) if ac.file_path else "",
-                "type":     ac.config_type,
-                "boot_arg": config_boot_arg(
-                    ac.config_type,
-                    os_type.slug,
-                    h(ac.file_path) if ac.file_path else "",
-                ),
-            }
-            for ac in v.autoconfigs
-        ],
+        "autoconfigs": _menu_autoconfig_entries(v, os_type, h),
         "ipxe_item_tag": f"v{v.id}",
         "ubuntu_nfs_boot": use_ubuntu_nfs,
+        "ubuntu_direct_boot": (
+            os_type.slug.lower() == "ubuntu"
+            and bool(getattr(v, "active_autoconfig_id", None))
+            and not use_ubuntu_nfs
+        ),
     }
 
 

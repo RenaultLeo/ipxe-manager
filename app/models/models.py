@@ -57,11 +57,22 @@ class IsoVersion(Base):
     delete_iso_after_next_extract = Column(Boolean, default=False)  # purge disque après prochain extract OK
     ubuntu_nfs_boot = Column(Boolean, default=False)  # menu iPXE : netboot=nfs au lieu de HTTP autoinstall
     extract_basename_report_json = Column(Text, default="")  # dernier rapport recherche par nom { "init": ["a/b",…] }
+    active_autoconfig_id = Column(Integer, ForeignKey("autoconfigs.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     os_type = relationship("OsType", back_populates="versions")
     boot_entry = relationship("BootEntry", back_populates="iso_version", uselist=False, cascade="all, delete")
-    autoconfigs = relationship("AutoConfig", back_populates="iso_version", cascade="all, delete")
+    autoconfigs = relationship(
+        "AutoConfig",
+        back_populates="iso_version",
+        cascade="all, delete",
+        foreign_keys="AutoConfig.iso_version_id",
+    )
+    active_autoconfig = relationship(
+        "AutoConfig",
+        foreign_keys=[active_autoconfig_id],
+        post_update=True,
+    )
 
 
 class BootEntry(Base):
