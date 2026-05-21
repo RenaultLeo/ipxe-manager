@@ -33,7 +33,7 @@ apt-get install -y -qq \
     p7zip-full wimtools genisoimage xorriso libarchive-tools \
     samba samba-common-bin nfs-kernel-server \
     build-essential gcc binutils make liblzma-dev mtools \
-    isolinux || true   # isolinux peut manquer sur certaines archi
+    isolinux syslinux-common || true   # memdisk : /usr/lib/syslinux/memdisk
 
 # Désactiver le service AD DC de Samba (non utilisé — on veut juste smbd/nmbd)
 systemctl disable --now samba-ad-dc 2>/dev/null || true
@@ -175,6 +175,41 @@ if [ ! -f "$DATA_DIR/http/wimboot" ]; then
         || echo "  ! wimboot : échec réseau."
 fi
 
+# memdisk (Syslinux) — racine HTTP, à côté de wimboot (boot ISO en RAM via iPXE)
+MEMDISK_SRC=""
+for _memdisk_cand in \
+    /usr/lib/syslinux/memdisk \
+    /usr/lib/syslinux/modules/bios/memdisk \
+    /usr/lib/ISOLINUX/memdisk; do
+    if [ -f "$_memdisk_cand" ]; then
+        MEMDISK_SRC="$_memdisk_cand"
+        break
+    fi
+done
+if [ -z "$MEMDISK_SRC" ]; then
+    apt-get install -y -qq syslinux-common 2>/dev/null || apt-get install -y -qq syslinux 2>/dev/null || true
+    for _memdisk_cand in \
+        /usr/lib/syslinux/memdisk \
+        /usr/lib/syslinux/modules/bios/memdisk \
+        /usr/lib/ISOLINUX/memdisk; do
+        if [ -f "$_memdisk_cand" ]; then
+            MEMDISK_SRC="$_memdisk_cand"
+            break
+        fi
+    done
+fi
+if [ -n "$MEMDISK_SRC" ]; then
+    if [ ! -f "$DATA_DIR/http/memdisk" ] || ! cmp -s "$MEMDISK_SRC" "$DATA_DIR/http/memdisk" 2>/dev/null; then
+        cp -f "$MEMDISK_SRC" "$DATA_DIR/http/memdisk"
+        chmod 644 "$DATA_DIR/http/memdisk"
+        echo "  memdisk copié : $MEMDISK_SRC → $DATA_DIR/http/memdisk"
+    else
+        echo "  memdisk déjà présent dans http/."
+    fi
+else
+    echo "  ! memdisk introuvable (installer syslinux-common)."
+fi
+
 # ── 9. TFTP — tftpd-hpa ───────────────────────────────────────────────────────
 echo "[9/15] Configuration de tftpd-hpa…"
 cat > /etc/default/tftpd-hpa <<EOF
@@ -301,6 +336,7 @@ echo "[14/15] Application des permissions…"
 chown -R "$APP_USER:$APP_USER" "$DATA_DIR" "$LOG_DIR"
 chmod 640 "$APP_DIR/.env"
 # http/boot doit être lisible par Nginx (www-data) ET par Samba
+chmod o+rX "$DATA_DIR/http/wimboot" "$DATA_DIR/http/memdisk" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/http/boot" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/http/menus" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/http/configs" 2>/dev/null || true
