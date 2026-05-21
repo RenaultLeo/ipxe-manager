@@ -1388,6 +1388,9 @@ async def regenerate_winpe_scripts_route(
     try:
         from app.tasks.jobs import regenerate_winpe_scripts_task
 
+        version.winpe_startnet_patched_at = None
+        db.add(version)
+        db.commit()
         regenerate_winpe_scripts_task.delay(version.id)
     except Exception as exc:
         raise HTTPException(500, detail=str(exc)) from exc
@@ -1395,6 +1398,48 @@ async def regenerate_winpe_scripts_route(
     return RedirectResponse(
         f"/isos/{version_id}?msg=winpe_scripts_queued",
         status_code=302,
+    )
+
+
+@router.get("/{version_id}/winpe-scripts/status")
+async def winpe_scripts_status_route(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """État génération scripts WinPE (polling UI après Celery)."""
+    if _auth(request):
+        raise HTTPException(401)
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_view_or_404(db, request, version_id)
+    _winpe_windows_version(version, lang)
+
+    from app.datetime_display import format_local_dt
+    from app.services.winpe_scripts import (
+        DEPLOY_PS1,
+        INJECT_DRIVERS_PS1,
+        MASTERS_JSON,
+        build_masters_catalog,
+        scripts_dir,
+    )
+
+    patched = version.winpe_startnet_patched_at
+    sdir = scripts_dir(version)
+    scripts_ok = all((sdir / name).is_file() for name in (MASTERS_JSON, DEPLOY_PS1, INJECT_DRIVERS_PS1))
+    installs = list(version.winpe_installs or [])
+    masters = build_masters_catalog(version, installs)
+    ready = bool(patched and scripts_ok and len(masters) > 0)
+
+    return JSONResponse(
+        {
+            "ready": ready,
+            "pending": not ready and bool(installs),
+            "patched_at": patched.isoformat() if patched else None,
+            "patched_at_display": format_local_dt(patched) if patched else "",
+            "masters_count": len(masters),
+            "scripts_ok": scripts_ok,
+            "scripts_dir": str(sdir),
+        }
     )
 
 

@@ -290,9 +290,13 @@
         <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
         {% endif %}
         <div id="winpe-upload-status-alert" class="alert alert-info py-2 small mb-3 d-none" role="status"></div>
-        {% if request.query_params.get('msg') == 'winpe_scripts_queued' %}
-        <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_scripts_queued') }}</div>
+        {% if request.query_params.get('msg') == 'winpe_scripts_done' %}
+        <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_scripts_done') }}</div>
         {% endif %}
+        <div id="winpe-scripts-poll-alert" class="alert alert-info py-2 small mb-3 d-none" role="status">
+          <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+          <span id="winpe-scripts-poll-text">{{ t('iso.winpe_scripts_polling') }}</span>
+        </div>
         {% if version.winpe_installs and not version.winpe_startnet_patched_at %}
         <div class="alert alert-warning py-2 small mb-3">
           <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.winpe_scripts_stale') }}
@@ -362,17 +366,17 @@
             <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_scripts_title') }}</h6>
             {% if version.boot_entry and version.boot_entry.boot_wim_path and version.winpe_installs %}
             <p class="small text-muted mb-2">{{ t('iso.winpe_scripts_help') }}</p>
-            <form method="post" action="/isos/{{ version.id }}/regenerate-winpe-scripts" class="mb-2">
-              <button type="submit" class="btn btn-success btn-sm w-100">
+            <form method="post" action="/isos/{{ version.id }}/regenerate-winpe-scripts" class="mb-2"
+                  id="winpe-scripts-regenerate-form">
+              <button type="submit" class="btn btn-success btn-sm w-100" id="winpe-scripts-regenerate-btn">
                 <i class="bi bi-arrow-repeat me-1"></i>{{ t('iso.winpe_scripts_regenerate') }}
               </button>
             </form>
-            {% if version.winpe_startnet_patched_at %}
-            <p class="small text-success mb-2">
-              <i class="bi bi-check-circle me-1"></i>{{ t('iso.winpe_scripts_last') }} —
-              {{ version.winpe_startnet_patched_at | fmt_dt }}
+            <p id="winpe-scripts-success-line" class="small mb-2 {% if not version.winpe_startnet_patched_at %}d-none text-muted{% else %}text-success{% endif %}">
+              <i class="bi bi-check-circle me-1"></i>
+              <span>{{ t('iso.winpe_scripts_last') }} —</span>
+              <span id="winpe-scripts-patched-display">{% if version.winpe_startnet_patched_at %}{{ version.winpe_startnet_patched_at | fmt_dt }}{% else %}—{% endif %}</span>
             </p>
-            {% endif %}
             {% if winpe_scripts_dir %}
             <p class="small text-muted font-monospace mb-0">{{ winpe_scripts_dir }}</p>
             {% endif %}
@@ -1120,6 +1124,69 @@
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.send(data);
   });
+})();
+
+(function () {
+  var versionId = '{{ version.id }}';
+  var pollAlert = document.getElementById('winpe-scripts-poll-alert');
+  var pollText = document.getElementById('winpe-scripts-poll-text');
+  var successLine = document.getElementById('winpe-scripts-success-line');
+  var patchedDisplay = document.getElementById('winpe-scripts-patched-display');
+  var regenBtn = document.getElementById('winpe-scripts-regenerate-btn');
+  var msgFailed = {{ t('iso.winpe_scripts_failed')|tojson }};
+
+  if (!pollAlert || !versionId) return;
+
+  function showPolling(on) {
+    pollAlert.classList.toggle('d-none', !on);
+    pollAlert.classList.remove('alert-danger');
+    pollAlert.classList.add('alert-info');
+    if (regenBtn) regenBtn.disabled = !!on;
+    if (on && successLine) successLine.classList.add('d-none');
+  }
+
+  function showSuccess(display) {
+    showPolling(false);
+    if (!successLine || !patchedDisplay) return;
+    patchedDisplay.textContent = display || '—';
+    successLine.classList.remove('d-none', 'text-muted');
+    successLine.classList.add('text-success');
+  }
+
+  async function pollWinpeScripts() {
+    showPolling(true);
+    for (var attempt = 0; attempt < 90; attempt++) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+      try {
+        var r = await fetch('/isos/' + versionId + '/winpe-scripts/status', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (r.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (!r.ok) continue;
+        var j = await r.json();
+        if (j.ready) {
+          showSuccess(j.patched_at_display || '');
+          if (window.location.search.indexOf('msg=winpe_scripts_queued') >= 0) {
+            window.location.replace('/isos/' + versionId + '?msg=winpe_scripts_done');
+          }
+          return;
+        }
+      } catch (e) { /* retry */ }
+    }
+    showPolling(false);
+    if (pollText) pollText.textContent = msgFailed;
+    pollAlert.classList.remove('alert-info');
+    pollAlert.classList.add('alert-danger');
+    pollAlert.classList.remove('d-none');
+  }
+
+  if (new URLSearchParams(window.location.search).get('msg') === 'winpe_scripts_queued') {
+    pollWinpeScripts();
+  }
 })();
 </script>
 {% endblock %}
