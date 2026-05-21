@@ -364,13 +364,23 @@ if not "%_DPE%"=="0" (
   pause
   goto :eof
 )
+echo Fin diskpart — attente 2 s avant montage reseau...
+timeout /t 2 /nobreak >nul
+net use Z: /delete /y >nul 2>&1
 echo Montage du partage boot...
-net use Z: \\\\{host}\\{share} /user:guest ""
-if errorlevel 1 (
-  echo Echec montage SMB \\\\{host}\\{share}
-  pause
-  goto :eof
+set "_SMB_TRY=0"
+:mount_boot_retry
+set /a _SMB_TRY+=1
+net use Z: \\\\{host}\\{share} /user:guest
+if not errorlevel 1 goto mount_boot_ok
+if %_SMB_TRY% lss 5 (
+  timeout /t 2 /nobreak >nul
+  goto mount_boot_retry
 )
+echo Echec montage SMB \\\\{host}\\{share}
+pause
+goto :eof
+:mount_boot_ok
 if not exist "{deploy_ps1}" (
   echo Script deploy.ps1 introuvable : {deploy_ps1}
   echo Regenerer les scripts WinPE depuis iPXE Manager.
