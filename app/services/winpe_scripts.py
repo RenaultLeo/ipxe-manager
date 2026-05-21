@@ -393,43 +393,48 @@ if not "%_DPE%"=="0" (
   pause
   goto :eof
 )
-echo Fin diskpart — attente reseau (wpeutil WaitForNetwork)...
-net start workstation >nul 2>&1
+echo Fin diskpart — reinitialisation reseau...
+wpeutil InitializeNetwork >nul 2>&1
 wpeutil WaitForNetwork
-echo Attente reachabilite du serveur {host} (ping)...
-set "_PING_TRY=0"
-:wait_host_ping
-set /a _PING_TRY+=1
-ping -n 1 -w 2000 {host} >nul
-if not errorlevel 1 goto host_ping_ok
-echo Ping {host} echoue (essai !_PING_TRY!/30)...
-if !_PING_TRY! lss 30 (
-  call :ipxe_ping_host 4
-  goto wait_host_ping
-)
-echo Attention : {host} ne repond toujours pas au ping.
-:host_ping_ok
-echo Serveur {host} joignable.
+net start rdr >nul 2>&1
+net start mrxsmb20 >nul 2>&1
+net start mrxsmb10 >nul 2>&1
+net start workstation >nul 2>&1
+echo Attente serveur {host} (3 pings OK + pause)...
+call :wait_host_ready
 net use Z: /delete /y >nul 2>&1
+net use \\\\{host}\\IPC$ /user:guest >nul 2>&1
 echo Montage du partage boot...
 echo Commande : net use Z: {unc} /user:guest
-REM WaitForNetwork + ping OK ; SMB (erreur 53) peut encore demander quelques essais
 set "_SMB_TRY=0"
 :mount_boot_retry
 set /a _SMB_TRY+=1
+call :wait_host_ready
 net use Z: {unc} /user:guest
 if not errorlevel 1 goto mount_boot_ok
-echo Tentative !_SMB_TRY!/10 echouee (erreur %errorlevel%).
-if !_SMB_TRY! lss 10 (
-  call :ipxe_ping_host 6
-  goto mount_boot_retry
-)
+echo Tentative !_SMB_TRY!/20 echouee (erreur %errorlevel%, 53 = SMB pas pret).
+if !_SMB_TRY! lss 20 goto mount_boot_retry
 echo Echec montage SMB {unc}
 echo Test manuel : net use Z: {unc} /user:guest
 pause
 goto :eof
 
-REM Envoie N pings vers le serveur (~1 s entre chaque, WinPE sans timeout.exe)
+REM 3 pings reussis vers le serveur puis pause (~8 s) avant net use
+:wait_host_ready
+set "_PING_OK=0"
+:wait_host_ping_one
+ping -n 1 -w 2000 {host} >nul
+if errorlevel 1 (
+  set "_PING_OK=0"
+  call :ipxe_ping_host 3
+  goto wait_host_ping_one
+)
+set /a _PING_OK+=1
+if !_PING_OK! lss 3 goto wait_host_ping_one
+call :ipxe_ping_host 8
+exit /b 0
+
+REM N pings vers le serveur (~1 s entre chaque)
 :ipxe_ping_host
 ping -n %1 -w 1000 {host} >nul 2>&1
 exit /b 0

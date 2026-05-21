@@ -293,8 +293,10 @@ cat > /etc/samba/smb.conf <<EOF
    map to guest = bad user
    log file = /var/log/samba/log.%m
    max log size = 1000
-   # Désactiver les fonctionnalités AD DC
    server role = standalone server
+   server min protocol = SMB2
+   server max protocol = SMB3
+   ntlm auth = yes
 
 [boot]
    comment = iPXE boot tree (WinPE: \\host\\boot\\winpe\\<ver>\\installs\\<slug>\\install.wim)
