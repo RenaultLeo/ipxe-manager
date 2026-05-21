@@ -66,10 +66,11 @@ def display_key_from_name(name: str, slug: str) -> str:
 
 
 def count_driver_files(folder: Path) -> int:
+    """Nombre de fichiers .inf (paquets DISM), pas tous les fichiers."""
     if not folder.is_dir():
         return 0
     n = 0
-    for f in folder.rglob("*"):
+    for f in folder.rglob("*.inf"):
         if f.is_file() and not f.name.startswith("."):
             n += 1
     return n

@@ -233,8 +233,11 @@ function Get-DriverFolderForKey {{
     param($Catalog, [string]$Key)
     $meta = $Catalog.$Key
     if (-not $meta) {{ return $null }}
+    if ($meta.slug) {{
+        return Join-Path $DriversRoot $meta.slug
+    }}
     $rel = ($meta.path -replace '/', '\\').Trim('\\')
-    if ($rel -match '^drivers\\\\(.+)$') {{ $rel = $Matches[1] }}
+    if ($rel -match '^drivers[\\/](.+)$') {{ return Join-Path $DriversRoot $Matches[1] }}
     return Join-Path $DriversRoot $rel
 }}
 
@@ -297,12 +300,21 @@ while (-not $profileKey) {{
 $driverDir = Get-DriverFolderForKey $catalog $profileKey
 if (-not $driverDir -or -not (Test-Path -LiteralPath $driverDir)) {{
     Write-Host "Dossier pilotes introuvable pour $profileKey" -ForegroundColor Red
+    Write-Host "Verifiez Z:\\drivers\\ et drivers.json sur le serveur." -ForegroundColor Yellow
+    exit 1
+}}
+
+$infFiles = @(Get-ChildItem -LiteralPath $driverDir -Recurse -Filter '*.inf' -File -ErrorAction SilentlyContinue)
+if ($infFiles.Count -eq 0) {{
+    Write-Host "Aucun fichier .inf dans : $driverDir" -ForegroundColor Red
+    Write-Host "DISM /Add-Driver exige des paquets pilotes (.inf + .sys/.cat)." -ForegroundColor Yellow
+    Write-Host "Uploadez les pilotes extraits (dossier avec des .inf) via iPXE Manager." -ForegroundColor Yellow
     exit 1
 }}
 
 Write-Host "Installation pilotes : $profileKey" -ForegroundColor Cyan
-Write-Host "Source : $driverDir" -ForegroundColor Cyan
-Write-Host "Cible  : $TargetWin" -ForegroundColor Cyan
+Write-Host "Source : $driverDir ($($infFiles.Count) fichier(s) .inf)" -ForegroundColor Cyan
+Write-Host "Cible image offline : $TargetOS" -ForegroundColor Cyan
 
 $imageRoot = $TargetOS.TrimEnd('\\')
 $dismArgs = @(
