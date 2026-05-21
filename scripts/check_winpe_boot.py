@@ -42,11 +42,8 @@ def main() -> int:
             smb_share_name,
             smb_unc_install_wim,
         )
-        from app.services.winpe_scripts import (
-            boot_wim_filesystem_path,
-            generate_startnet_cmd,
-            scripts_dir,
-        )
+        from app.services.winpe_scripts import generate_startnet_cmd, scripts_dir
+        from app.services.winpe_wim import boot_wim_filesystem_path
         from app.tasks.celery_app import celery
         import app.tasks.jobs  # noqa: F401 — enregistre upload_winpe_install + patch_winpe_startnet
 

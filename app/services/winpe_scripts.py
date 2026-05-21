@@ -18,10 +18,10 @@ from app.services.winpe_installs import (
     smb_share_name,
     version_segment,
 )
-from app.services.winpe_startnet import (
+from app.services.winpe_wim import (
     STARTNET_WIM_PATH,
-    _run_wimupdate_add,
     boot_wim_filesystem_path,
+    run_wimupdate_add,
 )
 
 logger = logging.getLogger(__name__)
@@ -412,7 +412,7 @@ def inject_startnet_into_boot_wim(version: IsoVersion) -> Path:
     try:
         src = str(cmd_path.resolve())
         dest_in_wim = "/" + STARTNET_WIM_PATH.replace("\\", "/").lstrip("/")
-        proc = _run_wimupdate_add(boot_wim, boot_image_index, src, dest_in_wim)
+        proc = run_wimupdate_add(boot_wim, boot_image_index, src, dest_in_wim)
     finally:
         cmd_path.unlink(missing_ok=True)
 
