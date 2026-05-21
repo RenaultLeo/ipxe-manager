@@ -316,17 +316,43 @@ Write-Host "Installation pilotes : $profileKey" -ForegroundColor Cyan
 Write-Host "Source : $driverDir ($($infFiles.Count) fichier(s) .inf)" -ForegroundColor Cyan
 Write-Host "Cible image offline : $TargetOS" -ForegroundColor Cyan
 
+# Paquets souvent inutiles en VM classique ou qui echouent hors ligne (ex. viosock = vsock)
+$optionalSkip = @('viosock.inf', 'viosock_amd64.inf')
+
 $imageRoot = $TargetOS.TrimEnd('\\')
-$dismArgs = @(
-    '/Image:' + $imageRoot,
-    '/Add-Driver',
-    '/Driver:' + $driverDir,
-    '/Recurse'
-)
-$p = Start-Process -FilePath 'dism.exe' -ArgumentList $dismArgs -Wait -PassThru -NoNewWindow
-if ($p.ExitCode -ne 0) {{
-    Write-Host "DISM Add-Driver a echoue (code $($p.ExitCode))." -ForegroundColor Red
+$ok = 0
+$fail = 0
+$skip = 0
+foreach ($inf in $infFiles) {{
+    $name = $inf.Name
+    if ($optionalSkip -contains $name.ToLower()) {{
+        Write-Host "  [ignore] $name (pilote optionnel, non requis pour le boot)" -ForegroundColor DarkGray
+        $skip++
+        continue
+    }}
+    Write-Host "  -> $name" -ForegroundColor Gray
+    $dismArgs = @(
+        '/Image:' + $imageRoot,
+        '/Add-Driver',
+        '/Driver:' + $inf.FullName
+    )
+    $p = Start-Process -FilePath 'dism.exe' -ArgumentList $dismArgs -Wait -PassThru -NoNewWindow
+    if ($p.ExitCode -eq 0) {{
+        $ok++
+    }} else {{
+        Write-Host "     echec DISM code $($p.ExitCode) pour $name (souvent non applicable a cette VM)" -ForegroundColor Yellow
+        $fail++
+    }}
+}}
+
+Write-Host "Bilan pilotes : $ok OK, $fail echec(s), $skip ignore(s)." -ForegroundColor Cyan
+if ($ok -eq 0) {{
+    Write-Host 'Aucun pilote installe — verifiez le dossier et drivers.json.' -ForegroundColor Red
     exit 1
+}}
+if ($fail -gt 0) {{
+    Write-Host 'Certains pilotes ont echoue ; le deploiement peut continuer (bcdboot, reboot).' -ForegroundColor Yellow
+    exit 0
 }}
 Write-Host 'Pilotes injectes avec succes.' -ForegroundColor Green
 exit 0
