@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import socket
 from pathlib import Path
 
 from app.config import settings
@@ -68,6 +69,29 @@ def smb_host_from_settings() -> str:
             return host
     from app.config import detect_primary_ipv4
 
+    return detect_primary_ipv4()
+
+
+def smb_connect_host_for_winpe() -> str:
+    """
+    Hôte à mettre dans startnet.cmd : de préférence une IPv4.
+    WinPE n'a souvent pas de DNS ; un nom dans SERVER_BASE_URL échoue alors qu'une IP manuelle fonctionne.
+    """
+    from app.config import detect_primary_ipv4
+
+    host = smb_host_from_settings().strip()
+    if not host:
+        return detect_primary_ipv4()
+    try:
+        socket.inet_pton(socket.AF_INET, host)
+        return host
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(host, 445, socket.AF_INET, socket.SOCK_STREAM):
+            return info[4][0]
+    except OSError:
+        pass
     return detect_primary_ipv4()
 
 
