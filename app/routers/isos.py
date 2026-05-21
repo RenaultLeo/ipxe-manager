@@ -725,6 +725,20 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
         except Exception:
             pass
 
+    winpe_drivers_catalog: list = []
+    winpe_drivers_root = ""
+    if version.os_type.boot_type == "windows":
+        try:
+            from app.services.winpe_drivers import (
+                catalog_for_template,
+                drivers_root,
+            )
+
+            winpe_drivers_catalog = catalog_for_template()
+            winpe_drivers_root = str(drivers_root())
+        except Exception:
+            pass
+
     return templates.TemplateResponse(
         "isos/detail.html",
         template_context(
@@ -734,6 +748,8 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             winpe_smb_host=winpe_smb_host,
             winpe_smb_share=winpe_smb_share,
             winpe_installs_root=winpe_installs_root,
+            winpe_drivers_catalog=winpe_drivers_catalog,
+            winpe_drivers_root=winpe_drivers_root,
             extract_error_msg=extract_error_msg,
             fmt_size=fmt_size,
             basename_report=basename_report,
@@ -1063,6 +1079,99 @@ async def upload_job_status(
             "size": row.size or 0,
         }
     )
+
+
+@router.get("/{version_id}/winpe-drivers/catalog")
+async def winpe_drivers_catalog_route(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Catalogue drivers.json (types de machine, chemins, nombre de fichiers)."""
+    if _auth(request):
+        raise HTTPException(401)
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_view_or_404(db, request, version_id)
+    _winpe_windows_version(version, lang)
+    from app.services.winpe_drivers import catalog_for_template
+
+    return JSONResponse({"machines": catalog_for_template()})
+
+
+@router.post("/{version_id}/winpe-drivers/upload")
+async def upload_winpe_drivers(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    machine_kind: str = Form(...),
+    machine_key: str = Form(""),
+    new_machine_name: str = Form(""),
+    driver_files: list[UploadFile] = File(...),
+):
+    """Upload multiple pilotes dans boot/drivers/<type>/ (catalogue drivers.json)."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_modify_with_os(db, request, version_id)
+    _winpe_windows_version(version, lang)
+
+    files = [f for f in (driver_files or []) if f and (f.filename or "").strip()]
+    if not files:
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_no_files"))
+
+    mf0 = _minimum_free_near_upload_roots()
+    total_decl = 0
+    for f in files:
+        decl = _multipart_part_declared_bytes(f)
+        if isinstance(decl, int) and decl > 0:
+            total_decl += decl
+    blocked = _multipart_upload_blocked(lang, mf=mf0, expected_file_bytes=total_decl)
+    if blocked:
+        raise HTTPException(status_code=blocked[0], detail=blocked[1])
+
+    from app.services.winpe_drivers import (
+        rebuild_catalog,
+        resolve_machine_upload,
+        save_uploaded_driver_files,
+    )
+
+    try:
+        label, slug, folder = resolve_machine_upload(
+            machine_kind=machine_kind,
+            machine_key=machine_key,
+            new_machine_name=new_machine_name,
+        )
+        n_saved, names = await save_uploaded_driver_files(folder, files)
+        if n_saved == 0:
+            raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_no_files"))
+        cat = rebuild_catalog()
+        meta = cat.get(label) or {}
+        payload = {
+            "ok": True,
+            "label": label,
+            "slug": slug,
+            "path": meta.get("path") or f"drivers/{slug}",
+            "count": int(meta.get("count") or 0),
+            "saved": names,
+            "redirect": f"/isos/{version_id}?msg=winpe_drivers_uploaded",
+        }
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    except OSError as exc:
+        if exc.errno in (errno.ENOSPC, errno.EDQUOT):
+            raise HTTPException(
+                507, detail=translate(lang, "iso.upload.disk_full")
+            ) from exc
+        logger.warning("Erreur I/O upload drivers WinPE : %s", exc)
+        raise HTTPException(
+            500, detail=translate(lang, "iso.upload.io_error")
+        ) from exc
+
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JSONResponse(payload)
+    return RedirectResponse(payload["redirect"], status_code=302)
 
 
 @router.get("/{version_id}/winpe-installs/precheck")
