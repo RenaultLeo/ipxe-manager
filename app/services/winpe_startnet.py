@@ -180,7 +180,6 @@ if errorlevel 1 (
 )
 echo Image appliquee. Redemarrage dans 10 secondes...
 timeout /t 10 /nobreak >nul
-wpeutil reboot
 """
 
 
