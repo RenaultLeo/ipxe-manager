@@ -42,9 +42,10 @@ def main() -> int:
             smb_share_name,
             smb_unc_install_wim,
         )
-        from app.services.winpe_startnet import (
+        from app.services.winpe_scripts import (
             boot_wim_filesystem_path,
             generate_startnet_cmd,
+            scripts_dir,
         )
         from app.tasks.celery_app import celery
         import app.tasks.jobs  # noqa: F401 — enregistre upload_winpe_install + patch_winpe_startnet
@@ -69,7 +70,11 @@ def main() -> int:
                 print(f"Partage SMB [{smb_share_name()}] → {boot_share.resolve()}")
 
             task_names = {t.name for t in celery.tasks.values() if t.name}
-            for required in ("upload_winpe_install", "patch_winpe_startnet"):
+            for required in (
+                "upload_winpe_install",
+                "regenerate_winpe_scripts",
+                "patch_winpe_startnet",
+            ):
                 if required not in task_names:
                     errors.append(f"Tâche Celery « {required} » non enregistrée")
                 else:
@@ -150,26 +155,15 @@ def main() -> int:
                             f"(attendu sous {boot_share}: {under_share})"
                         )
 
-                    script = generate_startnet_cmd(v, wi)
-                    for needle in (
-                        "wpeinit",
-                        "diskpart",
-                        "convert gpt",
-                        "assign letter=W",
-                        "net use Z:",
-                        "set WIM=",
-                        "ApplyDir:W:\\",
-                        "Dism /Apply-Image",
-                        "bcdboot W:\\Windows",
-                    ):
+                    sdir = scripts_dir(v)
+                    if not (sdir / "deploy.ps1").is_file():
+                        warnings.append(f"v{v.id}: deploy.ps1 absent ({sdir})")
+                    script = generate_startnet_cmd(v)
+                    for needle in ("wpeinit", "diskpart", "net use Z:", "powershell", "deploy.ps1"):
                         if needle not in script:
                             errors.append(
-                                f"v{v.id} install « {wi.slug} » : startnet.cmd sans « {needle} »"
+                                f"v{v.id}: startnet.cmd sans « {needle} »"
                             )
-                    if z not in script:
-                        errors.append(
-                            f"v{v.id} install « {wi.slug} » : WIM Z: absent du script ({z})"
-                        )
 
                     print(
                         f"  v{v.id} [{wi.slug}] OK — disque={disk.stat().st_size // (1024**2)} MiB"
@@ -178,11 +172,10 @@ def main() -> int:
                     print(f"    WinPE {z}")
                     print(f"    injecté dans boot.wim → Windows/System32/startnet.cmd (via wimupdate)")
 
-                if v.active_winpe_install_id and not v.winpe_startnet_patched_at:
-                    aid = v.active_winpe_install_id
+                if v.winpe_installs and not v.winpe_startnet_patched_at:
                     warnings.append(
-                        f"v{v.id}: active_winpe_install_id={aid} mais winpe_startnet_patched_at vide "
-                        "(injection Celery non confirmée — ancienne BDD ou tâche échouée)"
+                        f"v{v.id}: masters présents mais scripts WinPE non générés "
+                        "(regenerate-winpe-scripts)"
                     )
                     try:
                         boot_p = boot_wim_filesystem_path(v)

@@ -284,17 +284,18 @@
       </div>
       <div class="card-body">
         <p class="small text-muted mb-3">{{ t('iso.winpe_install_intro') }}</p>
+        <p class="small text-muted mb-3">{{ t('iso.winpe_scripts_intro') }}</p>
 
         {% if request.query_params.get('msg') == 'winpe_install_added' %}
         <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
         {% endif %}
         <div id="winpe-upload-status-alert" class="alert alert-info py-2 small mb-3 d-none" role="status"></div>
-        {% if request.query_params.get('msg') == 'winpe_patch_queued' %}
-        <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_patch_queued') }}</div>
+        {% if request.query_params.get('msg') == 'winpe_scripts_queued' %}
+        <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_scripts_queued') }}</div>
         {% endif %}
-        {% if version.active_winpe_install_id and not version.winpe_startnet_patched_at %}
+        {% if version.winpe_installs and not version.winpe_startnet_patched_at %}
         <div class="alert alert-warning py-2 small mb-3">
-          <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.winpe_patch_stale') }}
+          <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.winpe_scripts_stale') }}
         </div>
         {% endif %}
 
@@ -358,38 +359,27 @@
             </form>
           </div>
           <div class="col-lg-7">
-            <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_select') }}</h6>
-            {% if version.winpe_installs %}
-            <form method="post" action="/isos/{{ version.id }}/activate-winpe-install" class="row g-2 align-items-end mb-2">
-              <div class="col-12">
-                <select name="install_id" class="form-select form-select-sm" required>
-                  <option value="">{{ t('common.choose') }}</option>
-                  {% for wi in version.winpe_installs %}
-                  <option value="{{ wi.id }}" {% if version.active_winpe_install_id == wi.id %}selected{% endif %}>
-                    {{ wi.label or wi.slug }} — installs/{{ wi.slug }}/install.wim (index {{ wi.wim_index }})
-                  </option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="col-12">
-                <button type="submit" class="btn btn-success btn-sm w-100">
-                  <i class="bi bi-pencil-square me-1"></i>{{ t('iso.winpe_install_apply') }}
-                </button>
-              </div>
+            <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_scripts_title') }}</h6>
+            {% if version.boot_entry and version.boot_entry.boot_wim_path and version.winpe_installs %}
+            <p class="small text-muted mb-2">{{ t('iso.winpe_scripts_help') }}</p>
+            <form method="post" action="/isos/{{ version.id }}/regenerate-winpe-scripts" class="mb-2">
+              <button type="submit" class="btn btn-success btn-sm w-100">
+                <i class="bi bi-arrow-repeat me-1"></i>{{ t('iso.winpe_scripts_regenerate') }}
+              </button>
             </form>
-            {% if version.active_winpe_install_id %}
-            <form method="post" action="/isos/{{ version.id }}/clear-winpe-install" class="mb-3">
-              <button type="submit" class="btn btn-outline-secondary btn-sm">{{ t('iso.winpe_install_clear') }}</button>
-            </form>
-            {% endif %}
             {% if version.winpe_startnet_patched_at %}
             <p class="small text-success mb-2">
-              <i class="bi bi-check-circle me-1"></i>{{ t('iso.winpe_install_current') }} —
+              <i class="bi bi-check-circle me-1"></i>{{ t('iso.winpe_scripts_last') }} —
               {{ version.winpe_startnet_patched_at | fmt_dt }}
             </p>
             {% endif %}
+            {% if winpe_scripts_dir %}
+            <p class="small text-muted font-monospace mb-0">{{ winpe_scripts_dir }}</p>
+            {% endif %}
+            {% elif not version.winpe_installs %}
+            <p class="small text-muted mb-0">{{ t('iso.winpe_scripts_no_masters') }}</p>
             {% else %}
-            <p class="small text-muted mb-0">{{ t('iso.winpe_install_list') }} : —</p>
+            <p class="small text-warning mb-0">{{ t('iso.winpe_need_boot_wim') }}</p>
             {% endif %}
           </div>
         </div>
@@ -410,8 +400,7 @@
               {% for wi in version.winpe_installs %}
               <tr>
                 <td class="font-monospace">installs/{{ wi.slug }}/</td>
-                <td>{{ wi.label or wi.slug }}{% if version.active_winpe_install_id == wi.id %}
-                  <span class="badge bg-success ms-1">{{ t('iso.winpe_install_current') }}</span>{% endif %}</td>
+                <td>{{ wi.label or wi.slug }}</td>
                 <td>{{ wi.wim_index }}</td>
                 <td class="text-end">
                   {% if can_modify %}

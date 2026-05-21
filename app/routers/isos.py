@@ -727,6 +727,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
 
     winpe_drivers_catalog: list = []
     winpe_drivers_root = ""
+    winpe_scripts_dir = ""
     if version.os_type.boot_type == "windows":
         try:
             from app.services.winpe_drivers import (
@@ -736,6 +737,9 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
 
             winpe_drivers_catalog = catalog_for_template()
             winpe_drivers_root = str(drivers_root())
+            from app.services.winpe_scripts import scripts_dir
+
+            winpe_scripts_dir = str(scripts_dir(version))
         except Exception:
             pass
 
@@ -750,6 +754,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             winpe_installs_root=winpe_installs_root,
             winpe_drivers_catalog=winpe_drivers_catalog,
             winpe_drivers_root=winpe_drivers_root,
+            winpe_scripts_dir=winpe_scripts_dir,
             extract_error_msg=extract_error_msg,
             fmt_size=fmt_size,
             basename_report=basename_report,
@@ -1360,14 +1365,13 @@ async def upload_winpe_install(
     return RedirectResponse(redirect_url, status_code=302)
 
 
-@router.post("/{version_id}/activate-winpe-install")
-async def activate_winpe_install_route(
+@router.post("/{version_id}/regenerate-winpe-scripts")
+async def regenerate_winpe_scripts_route(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    install_id: int = Form(...),
 ):
-    """Injecte startnet.cmd dans boot.wim pour l'install.wim choisie (SMB + DISM)."""
+    """Régénère masters.json, deploy.ps1, inject-drivers.ps1 et startnet.cmd dans boot.wim."""
     redir = _auth(request)
     if redir:
         return redir
@@ -1375,52 +1379,23 @@ async def activate_winpe_install_route(
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_windows_version(version, lang)
 
-    install = (
-        db.query(WinpeInstall)
-        .filter(
-            WinpeInstall.id == install_id,
-            WinpeInstall.iso_version_id == version.id,
-        )
-        .first()
-    )
-    if not install:
-        raise HTTPException(404, detail=translate(lang, "iso.winpe_install_not_found"))
+    if not version.winpe_installs:
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_scripts_no_masters"))
+
+    if not version.boot_entry or not (version.boot_entry.boot_wim_path or "").strip():
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_need_boot_wim"))
 
     try:
-        from app.tasks.jobs import patch_winpe_startnet_task
+        from app.tasks.jobs import regenerate_winpe_scripts_task
 
-        # active_winpe_install_id + winpe_startnet_patched_at : mis à jour par Celery après wimupdate OK
-        patch_winpe_startnet_task.delay(version.id, install.id)
+        regenerate_winpe_scripts_task.delay(version.id)
     except Exception as exc:
         raise HTTPException(500, detail=str(exc)) from exc
 
     return RedirectResponse(
-        f"/isos/{version_id}?msg=winpe_patch_queued",
+        f"/isos/{version_id}?msg=winpe_scripts_queued",
         status_code=302,
     )
-
-
-@router.post("/{version_id}/clear-winpe-install")
-async def clear_winpe_install_route(
-    version_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    redir = _auth(request)
-    if redir:
-        return redir
-    version = _get_version_or_404(db, request, version_id)
-    if not version:
-        raise HTTPException(404)
-    user = get_session_user(request)
-    if not can_modify_iso_version(user, version):
-        raise HTTPException(403)
-
-    version.active_winpe_install_id = None
-    version.winpe_startnet_patched_at = None
-    db.add(version)
-    db.commit()
-    return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
 @router.post("/{version_id}/winpe-installs/{install_id}/delete")
@@ -1460,6 +1435,16 @@ async def delete_winpe_install_route(
     db.delete(install)
     db.commit()
     delete_install_folder(version, slug)
+    remaining = (
+        db.query(WinpeInstall).filter(WinpeInstall.iso_version_id == version.id).count()
+    )
+    if remaining > 0 and version.boot_entry and version.boot_entry.boot_wim_path:
+        try:
+            from app.tasks.jobs import regenerate_winpe_scripts_task
+
+            regenerate_winpe_scripts_task.delay(version.id)
+        except Exception:
+            pass
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 

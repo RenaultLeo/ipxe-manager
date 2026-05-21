@@ -274,6 +274,13 @@ def upload_winpe_install_task(
         upload.size = dest.stat().st_size
         upload.filename = f"{slug}/{INSTALL_WIM_FILENAME}"
         db.commit()
+        try:
+            regenerate_winpe_scripts_task.delay(iso_version_id)
+        except Exception:
+            logger.warning(
+                "Impossible de lancer regenerate_winpe_scripts après upload install.wim",
+                exc_info=True,
+            )
         logger.info(
             "install.wim WinPE OK — version %s slug %s (%s octets)",
             iso_version_id,
@@ -302,13 +309,12 @@ def upload_winpe_install_task(
         db.close()
 
 
-@celery.task(bind=True, name="patch_winpe_startnet", soft_time_limit=900, time_limit=1200)
-def patch_winpe_startnet_task(self, iso_version_id: int, winpe_install_id: int):
-    """Injecte startnet.cmd dans boot.wim pour l'image install.wim active."""
+def _regenerate_winpe_scripts_impl(iso_version_id: int) -> dict:
+    """Génère deploy.ps1 / inject-drivers.ps1 / masters.json et injecte startnet.cmd minimal."""
     db = SessionLocal()
     try:
         from app.models.models import IsoVersion, WinpeInstall
-        from app.services.winpe_startnet import patch_boot_wim_startnet
+        from app.services.winpe_scripts import regenerate_winpe_deployment
         from sqlalchemy.orm import joinedload
 
         version = (
@@ -316,35 +322,56 @@ def patch_winpe_startnet_task(self, iso_version_id: int, winpe_install_id: int):
             .options(
                 joinedload(IsoVersion.os_type),
                 joinedload(IsoVersion.boot_entry),
+                joinedload(IsoVersion.winpe_installs),
             )
             .filter(IsoVersion.id == iso_version_id)
             .first()
         )
-        install = db.query(WinpeInstall).get(winpe_install_id)
-        if not version or not install:
-            raise ValueError("Version ou install WinPE introuvable")
+        if not version:
+            raise ValueError(f"IsoVersion {iso_version_id} introuvable")
 
-        patch_boot_wim_startnet(version, install)
-        version.active_winpe_install_id = install.id
+        installs = list(version.winpe_installs or [])
+        if not installs:
+            installs = (
+                db.query(WinpeInstall)
+                .filter(WinpeInstall.iso_version_id == version.id)
+                .all()
+            )
+        result = regenerate_winpe_deployment(version, installs, patch_wim=True)
         version.winpe_startnet_patched_at = datetime.utcnow()
         db.commit()
         logger.info(
-            "patch_winpe_startnet OK — version %s install %s (SMB Z: + DISM dans startnet.cmd)",
+            "regenerate_winpe_scripts OK — version %s (%s master(s))",
             iso_version_id,
-            install.slug,
+            result.get("masters", 0),
         )
-        return {"status": "ok", "install": install.slug}
-    except Exception as exc:
-        logger.exception(
-            "patch_winpe_startnet_task failed (version %s install %s) : %s",
-            iso_version_id,
-            winpe_install_id,
-            exc,
-        )
+        return {"status": "ok", **result}
+    except Exception:
         db.rollback()
         raise
     finally:
         db.close()
+
+
+@celery.task(bind=True, name="regenerate_winpe_scripts", soft_time_limit=900, time_limit=1200)
+def regenerate_winpe_scripts_task(self, iso_version_id: int):
+    try:
+        return _regenerate_winpe_scripts_impl(iso_version_id)
+    except Exception as exc:
+        logger.exception(
+            "regenerate_winpe_scripts_task failed (version %s) : %s",
+            iso_version_id,
+            exc,
+        )
+        raise
+
+
+@celery.task(bind=True, name="patch_winpe_startnet", soft_time_limit=900, time_limit=1200)
+def patch_winpe_startnet_task(
+    self, iso_version_id: int, winpe_install_id: int | None = None
+):
+    """Alias historique (winpe_install_id ignoré)."""
+    return _regenerate_winpe_scripts_impl(iso_version_id)
 
 
 @celery.task(name="regenerate_menus")
