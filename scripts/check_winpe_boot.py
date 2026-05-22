@@ -168,7 +168,15 @@ def main() -> int:
                     if not (sdir / "deploy.ps1").is_file():
                         warnings.append(f"v{v.id}: deploy.ps1 absent ({sdir})")
                     script = generate_startnet_cmd(v)
-                    for needle in ("wpeinit", "diskpart", "net use Z:", "powershell", "deploy.ps1"):
+                    for needle in (
+                        "wpeinit",
+                        "powercfg",
+                        "advfirewall",
+                        "diskpart",
+                        "net use Z:",
+                        "powershell",
+                        "deploy.ps1",
+                    ):
                         if needle not in script:
                             errors.append(
                                 f"v{v.id}: startnet.cmd sans « {needle} »"
