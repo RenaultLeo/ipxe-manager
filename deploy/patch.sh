@@ -28,8 +28,11 @@ cat > /etc/samba/smb.conf <<'EOF'
    server string = iPXE Boot Server
    security = user
    map to guest = bad user
-   server min protocol = SMB2
+   server min protocol = SMB2_02
    server max protocol = SMB3
+   client min protocol = SMB2_02
+   client max protocol = SMB3
+   lanman auth = no
    ntlm auth = yes
 
 [boot]

@@ -294,8 +294,12 @@ cat > /etc/samba/smb.conf <<EOF
    log file = /var/log/samba/log.%m
    max log size = 1000
    server role = standalone server
-   server min protocol = SMB2
+   # SMB1 (NT1) desactive — failles connues ; WinPE moderne = SMB2/3 uniquement
+   server min protocol = SMB2_02
    server max protocol = SMB3
+   client min protocol = SMB2_02
+   client max protocol = SMB3
+   lanman auth = no
    ntlm auth = yes
 
 [boot]
