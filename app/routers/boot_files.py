@@ -195,16 +195,16 @@ async def replace_boot_wim(
         raise HTTPException(404, "Aucun BootEntry pour cette version")
 
     from app.services.slugify import slugify
+    from app.services.windows_boot_paths import (
+        boot_wim_path_on_disk,
+        rel_under_version,
+    )
+
     version_slug = slugify(version.version_label)
     os_slug = version.os_type.slug
+    ver_dir = settings.boot_dir / os_slug / version_slug
 
-    # Trouver le boot.wim existant ou définir un emplacement par défaut
-    if be.boot_wim_path:
-        dest = Path(settings.http_root) / be.boot_wim_path
-    else:
-        # Emplacement par défaut : sources/boot.wim (standard Windows)
-        dest = settings.boot_dir / os_slug / version_slug / "sources" / "boot.wim"
-
+    dest = boot_wim_path_on_disk(ver_dir, be.boot_wim_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     # Sauvegarder l'ancien avant d'écraser
@@ -216,9 +216,7 @@ async def replace_boot_wim(
     content = await file_boot_wim.read()
     dest.write_bytes(content)
 
-    # Mettre à jour le chemin en base
-    rel = f"boot/{os_slug}/{version_slug}/sources/boot.wim"
-    be.boot_wim_path = rel
+    be.boot_wim_path = rel_under_version(dest, os_slug, version_slug)
     if (version.os_type.boot_type or "").lower() == "windows":
         try:
             from app.tasks.jobs import regenerate_winpe_scripts_task

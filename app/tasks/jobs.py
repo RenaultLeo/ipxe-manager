@@ -102,6 +102,16 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.bcd_path      = paths.get("bcd_path")
         be.boot_sdi_path = paths.get("boot_sdi_path")
         be.bootmgr_path  = paths.get("bootmgr_path")
+
+        if (version.os_type.boot_type or "").lower() == "windows":
+            from app.services.slugify import slugify
+            from app.services.windows_boot_paths import sync_windows_boot_entry_from_disk
+
+            sync_windows_boot_entry_from_disk(
+                be,
+                version.os_type.slug,
+                slugify(version.version_label),
+            )
         be.modloop_path  = paths.get("modloop_path")
         be.esxi_boot_cfg_path = paths.get("esxi_boot_cfg_path")
         be.esxi_boot_cfg_legacy_path = None

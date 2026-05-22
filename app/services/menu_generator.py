@@ -192,6 +192,13 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     def h(rel: str | None) -> str:
         return _http(rel, cfg)
 
+    def h_win(rel: str | None) -> str:
+        if not rel:
+            return ""
+        from app.services.windows_boot_paths import canonicalize_rel
+
+        return _http(canonicalize_rel(rel), cfg)
+
     esxi_boot_http = ""
     esxi_module_urls: list[str] = []
     # iPXE : le 1er token de imgargs = basename de l’URL « kernel » (même casse que les fichiers ISO extraits).
@@ -232,11 +239,11 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "winpe_active_label": winpe_active_label,
         "kernel":       h(be.kernel_path) if be and be.kernel_path else "",
         "initrd":       h(be.initrd_path) if be and be.initrd_path else "",
-        "boot_wim":     h(be.boot_wim_path) if be and be.boot_wim_path else "",
-        "bcd":          h(be.bcd_path) if be and be.bcd_path else "",
-        "boot_sdi":     h(be.boot_sdi_path) if be and be.boot_sdi_path else "",
+        "boot_wim":     h_win(be.boot_wim_path) if be and be.boot_wim_path else "",
+        "bcd":          h_win(be.bcd_path) if be and be.bcd_path else "",
+        "boot_sdi":     h_win(be.boot_sdi_path) if be and be.boot_sdi_path else "",
         "unattend_url": _find_unattend_url(v, os_type, cfg),
-        "bootmgr":      h(be.bootmgr_path) if be and be.bootmgr_path else "",
+        "bootmgr":      h_win(be.bootmgr_path) if be and be.bootmgr_path else "",
         "custom_ipxe":  h(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      h(be.modloop_path) if be and be.modloop_path else "",
         "esxi_boot_cfg": esxi_boot_http,

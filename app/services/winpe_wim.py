@@ -11,6 +11,7 @@ from pathlib import Path
 from app.config import settings
 from app.models.models import IsoVersion
 from app.services.iso_extractor import ExtractionError
+from app.services.windows_boot_paths import resolve_http_rel
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,12 @@ def boot_wim_filesystem_path(version: IsoVersion) -> Path:
         raise FileNotFoundError(
             "boot.wim absent — extrayez l'ISO WinPE ou uploadez boot.wim avant de générer les scripts."
         )
-    rel = be.boot_wim_path.replace("\\", "/").lstrip("/")
-    path = Path(settings.http_root) / rel
-    if not path.is_file():
-        raise FileNotFoundError(f"boot.wim introuvable sur le disque : {path}")
-    return path
+    try:
+        return resolve_http_rel(be.boot_wim_path)
+    except FileNotFoundError:
+        rel = be.boot_wim_path.replace("\\", "/").lstrip("/")
+        path = Path(settings.http_root) / rel
+        raise FileNotFoundError(f"boot.wim introuvable sur le disque : {path}") from None
 
 
 def _wimupdate_argv(wim_file: str, image_index: int) -> list[str]:

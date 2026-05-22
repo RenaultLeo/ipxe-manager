@@ -75,6 +75,11 @@ def scan_and_register(db: Session) -> dict:
             changed = False
             base = f"boot/{os_slug}/{version_key}"
 
+            if is_windows:
+                from app.services.windows_boot_paths import sync_windows_boot_entry_from_disk
+
+                if sync_windows_boot_entry_from_disk(be, os_slug, version_key):
+                    changed = True
             for f in sorted(ver_dir.iterdir()):
                 if not f.is_file():
                     continue
@@ -82,11 +87,7 @@ def scan_and_register(db: Session) -> dict:
                 rel = f"{base}/{f.name}"
 
                 if is_windows:
-                    field = WIN_FILES.get(fname_lower)
-                    if field and not getattr(be, field):
-                        setattr(be, field, rel)
-                        changed = True
-                        logger.info("Registré %s → %s.%s", rel, "BootEntry", field)
+                    continue
                 else:
                     # modloop (Alpine)
                     if fname_lower in LINUX_MODLOOP_NAMES:

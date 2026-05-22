@@ -1061,7 +1061,8 @@ def _find_windows_in_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
 
             chosen = min(candidates, key=_win_rank)
             rel = chosen.relative_to(dest)
-            result[field] = f"{base}/{rel.as_posix()}"
+            # Casse disque réelle (ex. SOURCES/BOOT.WIM) — requis pour Nginx/Linux
+            result[field] = f"{base}/{'/'.join(rel.parts)}"
             logger.info("%s détecté : %s", label, rel)
         else:
             logger.warning("%s non trouvé après extraction", label)
@@ -1080,7 +1081,7 @@ def _find_windows_in_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
             ),
         )
         rel_mgr = chosen_mgr.relative_to(dest)
-        result["bootmgr_path"] = f"{base}/{rel_mgr.as_posix()}"
+        result["bootmgr_path"] = f"{base}/{'/'.join(rel_mgr.parts)}"
         logger.info("bootmgr détecté : %s", rel_mgr)
 
     if not result.get("boot_wim_path"):
