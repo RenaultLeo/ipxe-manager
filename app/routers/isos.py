@@ -1386,6 +1386,13 @@ async def regenerate_winpe_scripts_route(
         raise HTTPException(400, detail=translate(lang, "iso.winpe_need_boot_wim"))
 
     try:
+        from app.services.winpe_wim import boot_wim_filesystem_path
+
+        boot_wim_filesystem_path(version)
+    except FileNotFoundError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    try:
         from app.tasks.jobs import regenerate_winpe_scripts_task
 
         version.winpe_startnet_patched_at = None
@@ -1428,7 +1435,18 @@ async def winpe_scripts_status_route(
     scripts_ok = all((sdir / name).is_file() for name in (MASTERS_JSON, DEPLOY_PS1, INJECT_DRIVERS_PS1))
     installs = list(version.winpe_installs or [])
     masters = build_masters_catalog(version, installs)
-    ready = bool(patched and scripts_ok and len(masters) > 0)
+    boot_wim_ok = True
+    boot_wim_error = ""
+    try:
+        from app.services.winpe_wim import boot_wim_filesystem_path
+
+        boot_wim_filesystem_path(version)
+    except FileNotFoundError as exc:
+        boot_wim_ok = False
+        boot_wim_error = str(exc)
+    ready = bool(
+        patched and scripts_ok and len(masters) > 0 and boot_wim_ok
+    )
 
     return JSONResponse(
         {
@@ -1439,6 +1457,8 @@ async def winpe_scripts_status_route(
             "masters_count": len(masters),
             "scripts_ok": scripts_ok,
             "scripts_dir": str(sdir),
+            "boot_wim_ok": boot_wim_ok,
+            "error": boot_wim_error,
         }
     )
 

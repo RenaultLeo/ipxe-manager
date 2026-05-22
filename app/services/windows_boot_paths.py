@@ -14,8 +14,12 @@ from app.config import settings
 DEFAULT_BOOT_WIM_REL_SUFFIX = "SOURCES/BOOT.WIM"
 
 
+def _http_root_path() -> Path:
+    return Path(settings.http_root).expanduser().resolve()
+
+
 def http_rel_path(file_path: Path) -> str:
-    root = settings.http_root.resolve()
+    root = _http_root_path()
     return file_path.resolve().relative_to(root).as_posix()
 
 
@@ -24,7 +28,7 @@ def resolve_http_rel(rel: str) -> Path:
     clean = rel.replace("\\", "/").strip("/")
     if not clean:
         raise FileNotFoundError(rel)
-    root = settings.http_root.resolve()
+    root = _http_root_path()
     cur = root
     for part in clean.split("/"):
         if not cur.is_dir():
@@ -43,7 +47,7 @@ def resolve_http_rel(rel: str) -> Path:
 
 
 def version_dir(os_slug: str, version_slug: str) -> Path:
-    return settings.boot_dir / os_slug / version_slug
+    return settings.boot_dir / os_slug / version_slug  # boot_dir = Path(http_root)/boot
 
 
 def rel_under_version(file_path: Path, os_slug: str, version_slug: str) -> str:
@@ -113,6 +117,17 @@ def canonicalize_rel(stored_rel: str | None) -> str:
         return http_rel_path(resolve_http_rel(stored_rel))
     except FileNotFoundError:
         return stored_rel.replace("\\", "/").lstrip("/")
+
+
+def version_slug_for_disk(be, version_label: str, version_id: int) -> str:
+    """Dossier sous boot/<os>/ — aligné sur boot_wim_path si présent."""
+    from app.services.slugify import slugify
+
+    if be and getattr(be, "boot_wim_path", None):
+        parts = str(be.boot_wim_path).replace("\\", "/").strip("/").split("/")
+        if len(parts) >= 3 and parts[0] == "boot":
+            return parts[2]
+    return slugify(version_label) if version_label else str(version_id)
 
 
 def sync_windows_boot_entry_from_disk(

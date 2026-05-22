@@ -488,6 +488,20 @@ def inject_startnet_into_boot_wim(version: IsoVersion) -> Path:
     return boot_wim
 
 
+def _sync_windows_boot_paths(version: IsoVersion) -> None:
+    """Aligne BDD (casse SOURCES/BOOT.WIM) sur les fichiers réels avant wimupdate."""
+    be = version.boot_entry
+    if not be or (version.os_type.boot_type or "").lower() != "windows":
+        return
+    from app.services.windows_boot_paths import (
+        sync_windows_boot_entry_from_disk,
+        version_slug_for_disk,
+    )
+
+    seg = version_slug_for_disk(be, version.version_label, version.id)
+    sync_windows_boot_entry_from_disk(be, version.os_type.slug, seg)
+
+
 def regenerate_winpe_deployment(
     version: IsoVersion, installs: list[WinpeInstall], *, patch_wim: bool = True
 ) -> dict:
@@ -496,6 +510,7 @@ def regenerate_winpe_deployment(
     """
     if not installs:
         raise ValueError("Ajoutez au moins un master (install.wim) avant de générer les scripts.")
+    _sync_windows_boot_paths(version)
     if patch_wim:
         boot_wim_filesystem_path(version)
     sdir = write_all_scripts(version, installs)

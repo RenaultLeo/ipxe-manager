@@ -104,13 +104,15 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.bootmgr_path  = paths.get("bootmgr_path")
 
         if (version.os_type.boot_type or "").lower() == "windows":
-            from app.services.slugify import slugify
-            from app.services.windows_boot_paths import sync_windows_boot_entry_from_disk
+            from app.services.windows_boot_paths import (
+                sync_windows_boot_entry_from_disk,
+                version_slug_for_disk,
+            )
 
             sync_windows_boot_entry_from_disk(
                 be,
                 version.os_type.slug,
-                slugify(version.version_label),
+                version_slug_for_disk(be, version.version_label, version.id),
             )
         be.modloop_path  = paths.get("modloop_path")
         be.esxi_boot_cfg_path = paths.get("esxi_boot_cfg_path")
@@ -339,6 +341,17 @@ def _regenerate_winpe_scripts_impl(iso_version_id: int) -> dict:
         )
         if not version:
             raise ValueError(f"IsoVersion {iso_version_id} introuvable")
+
+        if version.boot_entry and (version.os_type.boot_type or "").lower() == "windows":
+            from app.services.windows_boot_paths import (
+                sync_windows_boot_entry_from_disk,
+                version_slug_for_disk,
+            )
+
+            be = version.boot_entry
+            seg = version_slug_for_disk(be, version.version_label, version.id)
+            sync_windows_boot_entry_from_disk(be, version.os_type.slug, seg)
+            db.flush()
 
         installs = list(version.winpe_installs or [])
         if not installs:

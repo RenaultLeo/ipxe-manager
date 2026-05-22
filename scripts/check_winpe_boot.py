@@ -44,6 +44,10 @@ def main() -> int:
         )
         from app.services.winpe_scripts import generate_startnet_cmd, scripts_dir
         from app.services.winpe_wim import boot_wim_filesystem_path
+        from app.services.windows_boot_paths import (
+            canonicalize_rel,
+            resolve_http_rel,
+        )
         from app.tasks.celery_app import celery
         import app.tasks.jobs  # noqa: F401 — enregistre upload_winpe_install + patch_winpe_startnet
 
@@ -118,8 +122,16 @@ def main() -> int:
                     if not rel:
                         errors.append(f"v{v.id}: {field} manquant")
                         continue
-                    if not (Path(settings.http_root) / rel.replace("\\", "/")).is_file():
+                    try:
+                        resolve_http_rel(rel)
+                    except FileNotFoundError:
                         errors.append(f"v{v.id}: fichier absent pour {field} ({rel})")
+                    canon = canonicalize_rel(rel)
+                    if canon != rel.replace("\\", "/").lstrip("/"):
+                        warnings.append(
+                            f"v{v.id}: {field} casse BDD ({rel}) != disque ({canon}) — "
+                            "lancer scan boot ou régénérer scripts"
+                        )
 
                 try:
                     boot_wim_filesystem_path(v)

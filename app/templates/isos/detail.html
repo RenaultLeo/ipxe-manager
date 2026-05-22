@@ -1168,6 +1168,14 @@
         }
         if (!r.ok) continue;
         var j = await r.json();
+        if (j.error && pollText) {
+          showPolling(false);
+          pollText.textContent = j.error;
+          pollAlert.classList.remove('alert-info');
+          pollAlert.classList.add('alert-danger');
+          pollAlert.classList.remove('d-none');
+          return;
+        }
         if (j.ready) {
           showSuccess(j.patched_at_display || '');
           if (window.location.search.indexOf('msg=winpe_scripts_queued') >= 0) {
