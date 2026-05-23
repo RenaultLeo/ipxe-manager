@@ -119,6 +119,17 @@ function New-UnattendElement {{
     return $Doc.CreateElement($LocalName)
 }}
 
+function Get-UnattendDirectChild {{
+    param($Parent, [string]$LocalName)
+    if (-not $Parent) {{ return $null }}
+    foreach ($c in @($Parent.ChildNodes)) {{
+        if ($c.NodeType -eq [System.Xml.XmlNodeType]::Element -and $c.LocalName -eq $LocalName) {{
+            return $c
+        }}
+    }}
+    return $null
+}}
+
 function Get-ShellSetupComponentsForPass {{
     param([xml]$Doc, [string]$Pass, $NsMgr)
     $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
@@ -166,8 +177,8 @@ function Ensure-ShellSetupForPass {{
 }}
 
 function Set-UnattendXmlText {{
-    param($Parent, [xml]$Doc, $NsMgr, [string]$NsUri, [string]$LocalName, [string]$Value)
-    $node = $Parent.SelectSingleNode("u:$LocalName", $NsMgr)
+    param($Parent, [xml]$Doc, [string]$NsUri, [string]$LocalName, [string]$Value)
+    $node = Get-UnattendDirectChild -Parent $Parent -LocalName $LocalName
     if (-not $node) {{
         $node = New-UnattendElement -Doc $Doc -LocalName $LocalName -NsUri $NsUri
         $null = $Parent.AppendChild($node)
@@ -177,19 +188,52 @@ function Set-UnattendXmlText {{
 }}
 
 function Set-UnattendPasswordNode {{
-    param($Parent, [xml]$Doc, $NsMgr, [string]$NsUri, [string]$Password, [switch]$AsPlainText)
-    $pwEl = $Parent.SelectSingleNode('u:Password', $NsMgr)
+    param($Parent, [xml]$Doc, [string]$NsUri, [string]$Password, [switch]$AsPlainText, [switch]$KeepPlainTextMode)
+    $pwEl = Get-UnattendDirectChild -Parent $Parent -LocalName 'Password'
     if (-not $pwEl) {{
         $pwEl = New-UnattendElement -Doc $Doc -LocalName 'Password' -NsUri $NsUri
         $null = $Parent.AppendChild($pwEl)
     }}
-    if ($AsPlainText) {{
-        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Value' -Value $Password | Out-Null
-        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'PlainText' -Value 'true' | Out-Null
+    $usePlain = $AsPlainText
+    if ($KeepPlainTextMode) {{
+        $ptKeep = Get-UnattendDirectChild -Parent $pwEl -LocalName 'PlainText'
+        if ($ptKeep -and $ptKeep.InnerText -eq 'true') {{ $usePlain = $true }}
+    }}
+    if ($usePlain) {{
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsUri $NsUri -LocalName 'Value' -Value $Password | Out-Null
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsUri $NsUri -LocalName 'PlainText' -Value 'true' | Out-Null
     }} else {{
         $blob = ConvertTo-UnattendPasswordBlob -PlainText $Password
-        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Value' -Value $blob | Out-Null
-        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'PlainText' -Value 'false' | Out-Null
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsUri $NsUri -LocalName 'Value' -Value $blob | Out-Null
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsUri $NsUri -LocalName 'PlainText' -Value 'false' | Out-Null
+    }}
+}}
+
+function Repair-LocalAccountElementOrder {{
+    param($Account, [string]$NsUri)
+    $order = @('Password', 'Description', 'DisplayName', 'Group', 'Name')
+    $saved = @{{}}
+    foreach ($name in $order) {{
+        $node = Get-UnattendDirectChild -Parent $Account -LocalName $name
+        if ($node) {{
+            $saved[$name] = $node
+            $null = $Account.RemoveChild($node)
+        }}
+    }}
+    foreach ($name in $order) {{
+        if ($saved.ContainsKey($name)) {{
+            $null = $Account.AppendChild($saved[$name])
+        }}
+    }}
+}}
+
+function Insert-ShellSetupChildBefore {{
+    param($Shell, $NewNode, [string]$BeforeLocalName)
+    $before = Get-UnattendDirectChild -Parent $Shell -LocalName $BeforeLocalName
+    if ($before) {{
+        $Shell.InsertBefore($NewNode, $before) | Out-Null
+    }} else {{
+        $Shell.AppendChild($NewNode) | Out-Null
     }}
 }}
 
@@ -205,48 +249,57 @@ function Set-UnattendComputerName {{
     }}
     if ($updated -eq 0) {{
         $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass 'specialize' -NsMgr $NsMgr -NsUri $NsUri
-        Set-UnattendXmlText -Parent $shell -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'ComputerName' -Value $ComputerName | Out-Null
+        Set-UnattendXmlText -Parent $shell -Doc $Doc -NsUri $NsUri -LocalName 'ComputerName' -Value $ComputerName | Out-Null
         $updated = 1
     }}
     return $updated
 }}
 
-function Set-UnattendLocalAccount {{
+function Test-UnattendLocalAccountExists {{
+    param($LocalAccounts, $NsMgr, [string]$User)
+    foreach ($node in @($LocalAccounts.SelectNodes('u:LocalAccount', $NsMgr))) {{
+        $n = Get-UnattendDirectChild -Parent $node -LocalName 'Name'
+        if ($n -and $n.InnerText -ieq $User) {{ return $true }}
+    }}
+    return $false
+}}
+
+function Add-UnattendLocalAccount {{
     param([xml]$Doc, $Shell, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
-    $userAccounts = $Shell.SelectSingleNode('u:UserAccounts', $NsMgr)
+    $userAccounts = Get-UnattendDirectChild -Parent $Shell -LocalName 'UserAccounts'
     if (-not $userAccounts) {{
         $userAccounts = New-UnattendElement -Doc $Doc -LocalName 'UserAccounts' -NsUri $NsUri
-        $Shell.AppendChild($userAccounts) | Out-Null
+        Insert-ShellSetupChildBefore -Shell $Shell -NewNode $userAccounts -BeforeLocalName 'AutoLogon'
     }}
-    $localAccounts = $userAccounts.SelectSingleNode('u:LocalAccounts', $NsMgr)
+    $localAccounts = Get-UnattendDirectChild -Parent $userAccounts -LocalName 'LocalAccounts'
     if (-not $localAccounts) {{
         $localAccounts = New-UnattendElement -Doc $Doc -LocalName 'LocalAccounts' -NsUri $NsUri
         $userAccounts.AppendChild($localAccounts) | Out-Null
     }}
-    $acct = $null
-    foreach ($node in @($localAccounts.SelectNodes('u:LocalAccount', $NsMgr))) {{
-        $n = $node.SelectSingleNode('u:Name', $NsMgr)
-        if ($n -and $n.InnerText -eq $User) {{ $acct = $node; break }}
+    if (Test-UnattendLocalAccountExists -LocalAccounts $localAccounts -NsMgr $NsMgr -User $User) {{
+        return $false
     }}
-    if (-not $acct) {{
-        $existing = @($localAccounts.SelectNodes('u:LocalAccount', $NsMgr))
-        if ($existing.Count -eq 1) {{
-            $acct = $existing[0]
-            Write-Host 'Mise a jour du compte local existant du master.' -ForegroundColor Gray
-        }} else {{
-            $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
-            $localAccounts.AppendChild($acct) | Out-Null
-        }}
-    }}
-    Set-UnattendPasswordNode -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -Password $Password
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
+    $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
+    $localAccounts.AppendChild($acct) | Out-Null
+    Set-UnattendPasswordNode -Parent $acct -Doc $Doc -NsUri $NsUri -Password $Password
+    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
+    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
+    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
+    Repair-LocalAccountElementOrder -Account $acct -NsUri $NsUri
+    return $true
 }}
 
-function Set-UnattendAdministratorPassword {{
-    param([xml]$Doc, $Shell, $NsMgr, [string]$NsUri, [string]$Password)
-    Set-UnattendPasswordNode -Parent $Shell -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -Password $Password
+function Update-UnattendAutoLogon {{
+    param([xml]$Doc, $Shell, [string]$NsUri, [string]$User, [string]$Password)
+    $auto = Get-UnattendDirectChild -Parent $Shell -LocalName 'AutoLogon'
+    if (-not $auto) {{
+        $auto = New-UnattendElement -Doc $Doc -LocalName 'AutoLogon' -NsUri $NsUri
+        $Shell.AppendChild($auto) | Out-Null
+    }}
+    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Enabled' -Value 'true' | Out-Null
+    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Username' -Value $User | Out-Null
+    Set-UnattendPasswordNode -Parent $auto -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText
+    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'LogonCount' -Value '1' | Out-Null
 }}
 
 function Save-UnattendDocument {{
@@ -294,7 +347,9 @@ function Update-OfflineUnattend {{
         return $false
     }}
     Write-Host "Personnalisation : $path" -ForegroundColor Cyan
-    [xml]$doc = Get-Content -LiteralPath $path -Encoding UTF8
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.PreserveWhitespace = $true
+    $doc.Load($path)
     $nsMgr, $nsUri = Get-UnattendNsMgr -Doc $doc
     $changed = $false
 
@@ -304,7 +359,7 @@ function Update-OfflineUnattend {{
         $cn = $cn -replace '[^a-zA-Z0-9\\-]', ''
         if ($cn) {{
             $n = Set-UnattendComputerName -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -ComputerName $cn
-            Write-Host "Nom machine : $cn ($n emplacement(s) mis a jour dans le XML du master)" -ForegroundColor Green
+            Write-Host "Nom machine : $cn" -ForegroundColor Green
             $changed = $true
         }}
     }}
@@ -318,18 +373,14 @@ function Update-OfflineUnattend {{
         }} else {{
             $shellOobe = (Get-ShellSetupComponentsForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr | Select-Object -First 1)
             if ($shellOobe) {{
-                $hasLocal = $shellOobe.SelectSingleNode('.//u:LocalAccounts/u:LocalAccount', $nsMgr)
-                if ($hasLocal) {{
-                    Set-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
-                    Write-Host "Compte local (oobeSystem, XML master) : $user" -ForegroundColor Green
-                }} elseif ($shellOobe.SelectSingleNode('u:AdministratorPassword', $nsMgr)) {{
-                    Set-UnattendAdministratorPassword -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -Password $LocalPassword
-                    Write-Host 'Mot de passe administrateur (AdministratorPassword) mis a jour.' -ForegroundColor Green
+                $added = Add-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
+                if ($added) {{
+                    Update-UnattendAutoLogon -Doc $doc -Shell $shellOobe -NsUri $nsUri -User $user -Password $LocalPassword
+                    Write-Host "Compte ajoute : $user — AutoLogon aligne sur ce compte." -ForegroundColor Green
+                    $changed = $true
                 }} else {{
-                    Set-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
-                    Write-Host "Compte local ajoute dans oobeSystem existant : $user" -ForegroundColor Green
+                    Write-Host "Compte « $user » deja dans le XML — aucune modification." -ForegroundColor Yellow
                 }}
-                $changed = $true
             }} else {{
                 Write-Host 'Pas de bloc oobeSystem / Shell-Setup dans le master — compte non ajoute (evite de casser le XML).' -ForegroundColor Yellow
                 Write-Host 'Astuce : definissez le compte dans le unattend.xml du master, ou cochez seulement le nom machine.' -ForegroundColor Gray
@@ -495,7 +546,7 @@ function Show-WinpeDeployWizard {{
     $form.Controls.Add($txtCn)
 
     $chkU = New-Object System.Windows.Forms.CheckBox
-    $chkU.Text = 'Ajouter un utilisateur local (en plus du master)'
+    $chkU.Text = 'Ajouter un compte local (les comptes du master ne sont pas modifies)'
     $chkU.Location = New-Object System.Drawing.Point(12, 278)
     $chkU.Size = New-Object System.Drawing.Size(480, 24)
     $form.Controls.Add($chkU)
