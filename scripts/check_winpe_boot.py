@@ -167,6 +167,19 @@ def main() -> int:
                     sdir = scripts_dir(v)
                     if not (sdir / "deploy.ps1").is_file():
                         warnings.append(f"v{v.id}: deploy.ps1 absent ({sdir})")
+                    deploy_ps1 = sdir / "deploy.ps1"
+                    if deploy_ps1.is_file():
+                        dtxt = deploy_ps1.read_text(encoding="utf-8-sig", errors="replace")
+                        for needle in (
+                            "Show-WinpeDeployWizard",
+                            "Invoke-WinpeDeployment",
+                            "Update-OfflineUnattend",
+                            "Install-WinpeDrivers",
+                        ):
+                            if needle not in dtxt:
+                                errors.append(
+                                    f"v{v.id}: deploy.ps1 sans « {needle} »"
+                                )
                     script = generate_startnet_cmd(v)
                     for needle in (
                         "wpeinit",
