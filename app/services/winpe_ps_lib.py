@@ -209,24 +209,6 @@ function Set-UnattendPasswordNode {{
     }}
 }}
 
-function Repair-LocalAccountElementOrder {{
-    param($Account, [string]$NsUri)
-    $order = @('Password', 'Description', 'DisplayName', 'Group', 'Name')
-    $saved = @{{}}
-    foreach ($name in $order) {{
-        $node = Get-UnattendDirectChild -Parent $Account -LocalName $name
-        if ($node) {{
-            $saved[$name] = $node
-            $null = $Account.RemoveChild($node)
-        }}
-    }}
-    foreach ($name in $order) {{
-        if ($saved.ContainsKey($name)) {{
-            $null = $Account.AppendChild($saved[$name])
-        }}
-    }}
-}}
-
 function Insert-ShellSetupChildBefore {{
     param($Shell, $NewNode, [string]$BeforeLocalName)
     $before = Get-UnattendDirectChild -Parent $Shell -LocalName $BeforeLocalName
@@ -255,51 +237,107 @@ function Set-UnattendComputerName {{
     return $updated
 }}
 
-function Test-UnattendLocalAccountExists {{
-    param($LocalAccounts, $NsMgr, [string]$User)
-    foreach ($node in @($LocalAccounts.SelectNodes('u:LocalAccount', $NsMgr))) {{
-        $n = Get-UnattendDirectChild -Parent $node -LocalName 'Name'
-        if ($n -and $n.InnerText -ieq $User) {{ return $true }}
+function Test-UnattendLocalAccountExistsInDoc {{
+    param([xml]$Doc, $NsMgr, [string]$User)
+    foreach ($pass in @('specialize', 'oobeSystem')) {{
+        $shells = Get-ShellSetupComponentsForPass -Doc $Doc -Pass $pass -NsMgr $NsMgr
+        foreach ($shell in $shells) {{
+            $ua = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
+            if (-not $ua) {{ continue }}
+            $la = Get-UnattendDirectChild -Parent $ua -LocalName 'LocalAccounts'
+            if (-not $la) {{ continue }}
+            foreach ($node in @($la.SelectNodes('u:LocalAccount', $NsMgr))) {{
+                $n = Get-UnattendDirectChild -Parent $node -LocalName 'Name'
+                if ($n -and $n.InnerText -ieq $User) {{ return $true }}
+            }}
+        }}
     }}
     return $false
 }}
 
-function Add-UnattendLocalAccount {{
-    param([xml]$Doc, $Shell, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
-    $userAccounts = Get-UnattendDirectChild -Parent $Shell -LocalName 'UserAccounts'
+function Get-UnattendLocalAccountTemplateNode {{
+    param([xml]$Doc, $NsMgr)
+    foreach ($pass in @('oobeSystem', 'specialize')) {{
+        $shells = Get-ShellSetupComponentsForPass -Doc $Doc -Pass $pass -NsMgr $NsMgr
+        foreach ($shell in $shells) {{
+            $ua = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
+            if (-not $ua) {{ continue }}
+            $la = Get-UnattendDirectChild -Parent $ua -LocalName 'LocalAccounts'
+            if (-not $la) {{ continue }}
+            $first = $la.SelectSingleNode('u:LocalAccount', $NsMgr)
+            if ($first) {{ return $first }}
+        }}
+    }}
+    return $null
+}}
+
+function Set-UnattendPasswordLikeTemplate {{
+    param($AccountNode, [xml]$Doc, [string]$NsUri, [string]$Password, $TemplateAccount)
+    $usePlain = $false
+    if ($TemplateAccount) {{
+        $tplPw = Get-UnattendDirectChild -Parent $TemplateAccount -LocalName 'Password'
+        if ($tplPw) {{
+            $pt = Get-UnattendDirectChild -Parent $tplPw -LocalName 'PlainText'
+            if ($pt -and $pt.InnerText -eq 'true') {{ $usePlain = $true }}
+        }}
+    }}
+    Set-UnattendPasswordNode -Parent $AccountNode -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText:$usePlain
+}}
+
+function Add-UnattendLocalAccountInPass {{
+    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
+    if (Test-UnattendLocalAccountExistsInDoc -Doc $Doc -NsMgr $NsMgr -User $User) {{
+        return $false
+    }}
+    $shell = (Get-ShellSetupComponentsForPass -Doc $Doc -Pass $Pass -NsMgr $NsMgr | Select-Object -First 1)
+    if (-not $shell) {{
+        $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass $Pass -NsMgr $NsMgr -NsUri $NsUri
+    }}
+    $userAccounts = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
     if (-not $userAccounts) {{
         $userAccounts = New-UnattendElement -Doc $Doc -LocalName 'UserAccounts' -NsUri $NsUri
-        Insert-ShellSetupChildBefore -Shell $Shell -NewNode $userAccounts -BeforeLocalName 'AutoLogon'
+        $shell.AppendChild($userAccounts) | Out-Null
     }}
     $localAccounts = Get-UnattendDirectChild -Parent $userAccounts -LocalName 'LocalAccounts'
     if (-not $localAccounts) {{
         $localAccounts = New-UnattendElement -Doc $Doc -LocalName 'LocalAccounts' -NsUri $NsUri
         $userAccounts.AppendChild($localAccounts) | Out-Null
     }}
-    if (Test-UnattendLocalAccountExists -LocalAccounts $localAccounts -NsMgr $NsMgr -User $User) {{
-        return $false
+    $template = Get-UnattendLocalAccountTemplateNode -Doc $Doc -NsMgr $NsMgr
+    if ($template) {{
+        $acct = $Doc.ImportNode($template, $true)
+        $localAccounts.AppendChild($acct) | Out-Null
+    }} else {{
+        $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
+        $localAccounts.AppendChild($acct) | Out-Null
+        Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
     }}
-    $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
-    $localAccounts.AppendChild($acct) | Out-Null
-    Set-UnattendPasswordNode -Parent $acct -Doc $Doc -NsUri $NsUri -Password $Password
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
-    Repair-LocalAccountElementOrder -Account $acct -NsUri $NsUri
+    $nameEl = Get-UnattendDirectChild -Parent $acct -LocalName 'Name'
+    if ($nameEl) {{ $nameEl.InnerText = $User }} else {{
+        Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
+    }}
+    $dispEl = Get-UnattendDirectChild -Parent $acct -LocalName 'DisplayName'
+    if ($dispEl) {{ $dispEl.InnerText = $User }} else {{
+        Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
+    }}
+    Set-UnattendPasswordLikeTemplate -AccountNode $acct -Doc $Doc -NsUri $NsUri -Password $Password -TemplateAccount $template
     return $true
 }}
 
 function Update-UnattendAutoLogon {{
     param([xml]$Doc, $Shell, [string]$NsUri, [string]$User, [string]$Password)
     $auto = Get-UnattendDirectChild -Parent $Shell -LocalName 'AutoLogon'
-    if (-not $auto) {{
-        $auto = New-UnattendElement -Doc $Doc -LocalName 'AutoLogon' -NsUri $NsUri
-        $Shell.AppendChild($auto) | Out-Null
+    if (-not $auto) {{ return $false }}
+    $tplAuto = $auto
+    if (Get-UnattendDirectChild -Parent $auto -LocalName 'Enabled') {{
+        Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Enabled' -Value 'true' | Out-Null
     }}
-    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Enabled' -Value 'true' | Out-Null
     Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Username' -Value $User | Out-Null
-    Set-UnattendPasswordNode -Parent $auto -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText
-    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'LogonCount' -Value '1' | Out-Null
+    Set-UnattendPasswordLikeTemplate -AccountNode $auto -Doc $Doc -NsUri $NsUri -Password $Password -TemplateAccount $tplAuto
+    if (Get-UnattendDirectChild -Parent $auto -LocalName 'LogonCount') {{
+        Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'LogonCount' -Value '1' | Out-Null
+    }}
+    return $true
 }}
 
 function Save-UnattendDocument {{
@@ -371,19 +409,22 @@ function Update-OfflineUnattend {{
         }} elseif (-not $LocalPassword) {{
             Write-Host 'Mot de passe requis pour un compte local — compte ignore (cochez et saisissez un mot de passe).' -ForegroundColor Yellow
         }} else {{
-            $shellOobe = (Get-ShellSetupComponentsForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr | Select-Object -First 1)
-            if ($shellOobe) {{
-                $added = Add-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
-                if ($added) {{
-                    Update-UnattendAutoLogon -Doc $doc -Shell $shellOobe -NsUri $nsUri -User $user -Password $LocalPassword
-                    Write-Host "Compte ajoute : $user — AutoLogon aligne sur ce compte." -ForegroundColor Green
-                    $changed = $true
-                }} else {{
-                    Write-Host "Compte « $user » deja dans le XML — aucune modification." -ForegroundColor Yellow
-                }}
+            if (Test-UnattendLocalAccountExistsInDoc -Doc $doc -NsMgr $nsMgr -User $user) {{
+                Write-Host "Compte « $user » deja dans le XML — aucune modification." -ForegroundColor Yellow
             }} else {{
-                Write-Host 'Pas de bloc oobeSystem / Shell-Setup dans le master — compte non ajoute (evite de casser le XML).' -ForegroundColor Yellow
-                Write-Host 'Astuce : definissez le compte dans le unattend.xml du master, ou cochez seulement le nom machine.' -ForegroundColor Gray
+                $added = Add-UnattendLocalAccountInPass -Doc $doc -Pass 'specialize' -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
+                if (-not $added) {{
+                    Write-Host "Impossible d ajouter le compte $user dans specialize." -ForegroundColor Red
+                }} else {{
+                    Write-Host "Compte ajoute (pass specialize) : $user — comptes oobeSystem du master intacts." -ForegroundColor Green
+                    $shellOobe = (Get-ShellSetupComponentsForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr | Select-Object -First 1)
+                    if ($shellOobe -and (Update-UnattendAutoLogon -Doc $doc -Shell $shellOobe -NsUri $nsUri -User $user -Password $LocalPassword)) {{
+                        Write-Host "AutoLogon aligne sur $user (mot de passe comme dans le master)." -ForegroundColor Green
+                    }} elseif ($shellOobe) {{
+                        Write-Host 'AutoLogon introuvable — compte cree, connexion auto non modifiee.' -ForegroundColor Yellow
+                    }}
+                    $changed = $true
+                }}
             }}
         }}
     }}
