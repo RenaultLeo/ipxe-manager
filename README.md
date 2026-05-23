@@ -1,5 +1,17 @@
 # iPXE Manager
 
+# ⚠️ Avertissement : Version Beta & Sécurité
+
+Ce projet est actuellement en phase de développement (**Beta**) et est partagé exclusivement à des fins de test, de démonstration et d'apprentissage.
+
+**Veuillez prendre note des points suivants :**
+* 🛑 **Non destiné à la production :** Ce logiciel n'est pas conçu pour être déployé dans un environnement de production ou critique.
+* 🔒 **Sécurité incomplète :** Les standards et organes de sécurité essentiels (tels que le chiffrement HTTPS, la gestion sécurisée et chiffrée des secrets/mots de passe, ou le durcissement des accès) ne sont pas encore implémentés.
+* 🌐 **Risques réseau :** L'utilisation ou l'exposition de ce code sur un réseau public ou non sécurisé se fait à vos risques et périls uniques.
+* 🛠️ **Évolution constante :** L'architecture et le code peuvent subir des modifications majeures sans préavis.
+
+Conformément à la **Licence MIT**, ce logiciel est fourni "tel quel", sans aucune garantie d'aucune sorte.
+
 **iPXE Manager** est une interface web (FastAPI) pour administrer un petit **datacenter PXE** depuis une machine Debian : tu centralises les ISOs, les noyaux/initrd, les menus iPXE et les fichiers d’installation automatique (preseed, kickstart, cloud-init, etc.), sans retoucher à la main tous les scripts à chaque nouvelle version.
 
 En pratique, la machine joue le rôle de **serveur TFTP** pour le premier chargement (iPXE BIOS/UEFI), puis sert le reste en **HTTP** (menus, fichiers de boot, configs). Les opérations longues (extraction d’ISO, compilation du firmware iPXE) passent par **Celery**, pour que l’interface reste réactive.
