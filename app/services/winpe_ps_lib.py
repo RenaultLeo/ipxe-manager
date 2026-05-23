@@ -119,26 +119,96 @@ function New-UnattendElement {{
     return $Doc.CreateElement($LocalName)
 }}
 
-function Get-ShellSetupForPass {{
-    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri, [switch]$CreateIfMissing)
+function Get-ShellSetupComponentsForPass {{
+    param([xml]$Doc, [string]$Pass, $NsMgr)
+    $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
+    if (-not $settings) {{ return @() }}
+    return @($settings.SelectNodes('u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr))
+}}
+
+function Get-ShellSetupTemplateAttrs {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    $ref = $Doc.SelectSingleNode('//u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr)
+    if ($ref) {{
+        return @{{
+            processorArchitecture = $ref.GetAttribute('processorArchitecture')
+            publicKeyToken = $ref.GetAttribute('publicKeyToken')
+            language = $ref.GetAttribute('language')
+            versionScope = $ref.GetAttribute('versionScope')
+        }}
+    }}
+    return @{{
+        processorArchitecture = 'amd64'
+        publicKeyToken = '31bf3856ad364e35'
+        language = 'neutral'
+        versionScope = 'nonSxS'
+    }}
+}}
+
+function Ensure-ShellSetupForPass {{
+    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri)
+    $shells = Get-ShellSetupComponentsForPass -Doc $Doc -Pass $Pass -NsMgr $NsMgr
+    if ($shells.Count -gt 0) {{ return $shells[0] }}
     $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
     if (-not $settings) {{
-        if (-not $CreateIfMissing) {{ return $null }}
         $settings = New-UnattendElement -Doc $Doc -LocalName 'settings' -NsUri $NsUri
         $null = $settings.SetAttribute('pass', $Pass)
         $Doc.DocumentElement.AppendChild($settings) | Out-Null
     }}
-    $shell = $settings.SelectSingleNode('u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr)
-    if (-not $shell -and $CreateIfMissing) {{
-        $shell = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
-        $null = $shell.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
-        $null = $shell.SetAttribute('processorArchitecture', 'amd64')
-        $null = $shell.SetAttribute('publicKeyToken', '31bf3856ad364e35')
-        $null = $shell.SetAttribute('language', 'neutral')
-        $null = $shell.SetAttribute('versionScope', 'nonSxS')
-        $settings.AppendChild($shell) | Out-Null
+    $attrs = Get-ShellSetupTemplateAttrs -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+    $shell = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
+    $null = $shell.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
+    foreach ($k in $attrs.Keys) {{
+        if ($attrs[$k]) {{ $null = $shell.SetAttribute($k, $attrs[$k]) }}
     }}
+    $settings.AppendChild($shell) | Out-Null
     return $shell
+}}
+
+function Set-UnattendXmlText {{
+    param($Parent, [xml]$Doc, $NsMgr, [string]$NsUri, [string]$LocalName, [string]$Value)
+    $node = $Parent.SelectSingleNode("u:$LocalName", $NsMgr)
+    if (-not $node) {{
+        $node = New-UnattendElement -Doc $Doc -LocalName $LocalName -NsUri $NsUri
+        $null = $Parent.AppendChild($node)
+    }}
+    $node.InnerText = $Value
+    return $node
+}}
+
+function Set-UnattendPasswordNode {{
+    param($Parent, [xml]$Doc, $NsMgr, [string]$NsUri, [string]$Password, [switch]$AsPlainText)
+    $pwEl = $Parent.SelectSingleNode('u:Password', $NsMgr)
+    if (-not $pwEl) {{
+        $pwEl = New-UnattendElement -Doc $Doc -LocalName 'Password' -NsUri $NsUri
+        $null = $Parent.AppendChild($pwEl)
+    }}
+    if ($AsPlainText) {{
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Value' -Value $Password | Out-Null
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'PlainText' -Value 'true' | Out-Null
+    }} else {{
+        $blob = ConvertTo-UnattendPasswordBlob -PlainText $Password
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Value' -Value $blob | Out-Null
+        Set-UnattendXmlText -Parent $pwEl -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'PlainText' -Value 'false' | Out-Null
+    }}
+}}
+
+function Set-UnattendComputerName {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri, [string]$ComputerName)
+    $updated = 0
+    foreach ($pass in @('specialize', 'generalize')) {{
+        $nodes = $Doc.SelectNodes("//u:settings[@pass='$pass']//u:ComputerName", $NsMgr)
+        foreach ($n in @($nodes)) {{
+            $n.InnerText = $ComputerName
+            $updated++
+        }}
+    }}
+    if ($updated -eq 0) {{
+        $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass 'specialize' -NsMgr $NsMgr -NsUri $NsUri
+        Set-UnattendXmlText -Parent $shell -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'ComputerName' -Value $ComputerName | Out-Null
+        $updated = 1
+    }}
+    return $updated
 }}
 
 function Set-UnattendLocalAccount {{
@@ -159,29 +229,34 @@ function Set-UnattendLocalAccount {{
         if ($n -and $n.InnerText -eq $User) {{ $acct = $node; break }}
     }}
     if (-not $acct) {{
-        $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
-        $localAccounts.AppendChild($acct) | Out-Null
-    }} else {{
-        @($acct.ChildNodes) | ForEach-Object {{ [void]$acct.RemoveChild($_) }}
+        $existing = @($localAccounts.SelectNodes('u:LocalAccount', $NsMgr))
+        if ($existing.Count -eq 1) {{
+            $acct = $existing[0]
+            Write-Host 'Mise a jour du compte local existant du master.' -ForegroundColor Gray
+        }} else {{
+            $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
+            $localAccounts.AppendChild($acct) | Out-Null
+        }}
     }}
-    $passBlob = ConvertTo-UnattendPasswordBlob -PlainText $Password
-    $pwEl = New-UnattendElement -Doc $Doc -LocalName 'Password' -NsUri $NsUri
-    $valEl = New-UnattendElement -Doc $Doc -LocalName 'Value' -NsUri $NsUri
-    $valEl.InnerText = $passBlob
-    $ptEl = New-UnattendElement -Doc $Doc -LocalName 'PlainText' -NsUri $NsUri
-    $ptEl.InnerText = 'false'
-    $pwEl.AppendChild($valEl) | Out-Null
-    $pwEl.AppendChild($ptEl) | Out-Null
-    $dispEl = New-UnattendElement -Doc $Doc -LocalName 'DisplayName' -NsUri $NsUri
-    $dispEl.InnerText = $User
-    $grpEl = New-UnattendElement -Doc $Doc -LocalName 'Group' -NsUri $NsUri
-    $grpEl.InnerText = 'Administrators'
-    $nameEl = New-UnattendElement -Doc $Doc -LocalName 'Name' -NsUri $NsUri
-    $nameEl.InnerText = $User
-    $acct.AppendChild($pwEl) | Out-Null
-    $acct.AppendChild($dispEl) | Out-Null
-    $acct.AppendChild($grpEl) | Out-Null
-    $acct.AppendChild($nameEl) | Out-Null
+    Set-UnattendPasswordNode -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -Password $Password
+    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
+    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
+    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
+}}
+
+function Set-UnattendAdministratorPassword {{
+    param([xml]$Doc, $Shell, $NsMgr, [string]$NsUri, [string]$Password)
+    Set-UnattendPasswordNode -Parent $Shell -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -Password $Password
+}}
+
+function Save-UnattendDocument {{
+    param([xml]$Doc, [string]$Path)
+    $settings = New-Object System.Xml.XmlWriterSettings
+    $settings.Encoding = New-Object System.Text.UTF8Encoding $true
+    $settings.Indent = $true
+    $settings.OmitXmlDeclaration = $false
+    $writer = [System.Xml.XmlWriter]::Create($Path, $settings)
+    try {{ $Doc.Save($writer) }} finally {{ $writer.Close() }}
 }}
 
 function ConvertTo-UnattendPasswordBlob {{
@@ -228,16 +303,8 @@ function Update-OfflineUnattend {{
         if ($cn.Length -gt 15) {{ $cn = $cn.Substring(0, 15) }}
         $cn = $cn -replace '[^a-zA-Z0-9\\-]', ''
         if ($cn) {{
-            $shellSp = Get-ShellSetupForPass -Doc $doc -Pass 'specialize' -NsMgr $nsMgr -NsUri $nsUri -CreateIfMissing
-            if ($shellSp) {{
-                $cnNode = $shellSp.SelectSingleNode('u:ComputerName', $nsMgr)
-                if (-not $cnNode) {{
-                    $cnNode = New-UnattendElement -Doc $doc -LocalName 'ComputerName' -NsUri $nsUri
-                    $shellSp.AppendChild($cnNode) | Out-Null
-                }}
-                $cnNode.InnerText = $cn
-            }}
-            Write-Host "Nom machine : $cn" -ForegroundColor Green
+            $n = Set-UnattendComputerName -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -ComputerName $cn
+            Write-Host "Nom machine : $cn ($n emplacement(s) mis a jour dans le XML du master)" -ForegroundColor Green
             $changed = $true
         }}
     }}
@@ -249,17 +316,29 @@ function Update-OfflineUnattend {{
         }} elseif (-not $LocalPassword) {{
             Write-Host 'Mot de passe requis pour un compte local — compte ignore (cochez et saisissez un mot de passe).' -ForegroundColor Yellow
         }} else {{
-            $shellOobe = Get-ShellSetupForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr -NsUri $nsUri -CreateIfMissing
+            $shellOobe = (Get-ShellSetupComponentsForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr | Select-Object -First 1)
             if ($shellOobe) {{
-                Set-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
-                Write-Host "Compte local (oobeSystem) : $user" -ForegroundColor Green
+                $hasLocal = $shellOobe.SelectSingleNode('.//u:LocalAccounts/u:LocalAccount', $nsMgr)
+                if ($hasLocal) {{
+                    Set-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
+                    Write-Host "Compte local (oobeSystem, XML master) : $user" -ForegroundColor Green
+                }} elseif ($shellOobe.SelectSingleNode('u:AdministratorPassword', $nsMgr)) {{
+                    Set-UnattendAdministratorPassword -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -Password $LocalPassword
+                    Write-Host 'Mot de passe administrateur (AdministratorPassword) mis a jour.' -ForegroundColor Green
+                }} else {{
+                    Set-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
+                    Write-Host "Compte local ajoute dans oobeSystem existant : $user" -ForegroundColor Green
+                }}
                 $changed = $true
+            }} else {{
+                Write-Host 'Pas de bloc oobeSystem / Shell-Setup dans le master — compte non ajoute (evite de casser le XML).' -ForegroundColor Yellow
+                Write-Host 'Astuce : definissez le compte dans le unattend.xml du master, ou cochez seulement le nom machine.' -ForegroundColor Gray
             }}
         }}
     }}
 
     if ($changed) {{
-        $doc.Save($path)
+        Save-UnattendDocument -Doc $doc -Path $path
     }} else {{
         Write-Host 'Aucune modification unattend (valeurs par defaut du master).' -ForegroundColor Gray
     }}
