@@ -97,6 +97,93 @@ function Install-WinpeDrivers {{
     return $true
 }}
 
+function Get-UnattendNsUri {{
+    param([xml]$Doc)
+    if ($Doc.DocumentElement -and $Doc.DocumentElement.NamespaceURI) {{
+        return $Doc.DocumentElement.NamespaceURI
+    }}
+    return 'urn:schemas-microsoft-com:unattend'
+}}
+
+function Get-UnattendNsMgr {{
+    param([xml]$Doc)
+    $uri = Get-UnattendNsUri -Doc $Doc
+    $mgr = New-Object System.Xml.XmlNamespaceManager($Doc.NameTable)
+    $mgr.AddNamespace('u', $uri)
+    return $mgr, $uri
+}}
+
+function New-UnattendElement {{
+    param([xml]$Doc, [string]$LocalName, [string]$NsUri)
+    if ($NsUri) {{ return $Doc.CreateElement($LocalName, $NsUri) }}
+    return $Doc.CreateElement($LocalName)
+}}
+
+function Get-ShellSetupForPass {{
+    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri, [switch]$CreateIfMissing)
+    $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
+    if (-not $settings) {{
+        if (-not $CreateIfMissing) {{ return $null }}
+        $settings = New-UnattendElement -Doc $Doc -LocalName 'settings' -NsUri $NsUri
+        $null = $settings.SetAttribute('pass', $Pass)
+        $Doc.DocumentElement.AppendChild($settings) | Out-Null
+    }}
+    $shell = $settings.SelectSingleNode('u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr)
+    if (-not $shell -and $CreateIfMissing) {{
+        $shell = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
+        $null = $shell.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
+        $null = $shell.SetAttribute('processorArchitecture', 'amd64')
+        $null = $shell.SetAttribute('publicKeyToken', '31bf3856ad364e35')
+        $null = $shell.SetAttribute('language', 'neutral')
+        $null = $shell.SetAttribute('versionScope', 'nonSxS')
+        $settings.AppendChild($shell) | Out-Null
+    }}
+    return $shell
+}}
+
+function Set-UnattendLocalAccount {{
+    param([xml]$Doc, $Shell, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
+    $userAccounts = $Shell.SelectSingleNode('u:UserAccounts', $NsMgr)
+    if (-not $userAccounts) {{
+        $userAccounts = New-UnattendElement -Doc $Doc -LocalName 'UserAccounts' -NsUri $NsUri
+        $Shell.AppendChild($userAccounts) | Out-Null
+    }}
+    $localAccounts = $userAccounts.SelectSingleNode('u:LocalAccounts', $NsMgr)
+    if (-not $localAccounts) {{
+        $localAccounts = New-UnattendElement -Doc $Doc -LocalName 'LocalAccounts' -NsUri $NsUri
+        $userAccounts.AppendChild($localAccounts) | Out-Null
+    }}
+    $acct = $null
+    foreach ($node in @($localAccounts.SelectNodes('u:LocalAccount', $NsMgr))) {{
+        $n = $node.SelectSingleNode('u:Name', $NsMgr)
+        if ($n -and $n.InnerText -eq $User) {{ $acct = $node; break }}
+    }}
+    if (-not $acct) {{
+        $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
+        $localAccounts.AppendChild($acct) | Out-Null
+    }} else {{
+        @($acct.ChildNodes) | ForEach-Object {{ [void]$acct.RemoveChild($_) }}
+    }}
+    $passBlob = ConvertTo-UnattendPasswordBlob -PlainText $Password
+    $pwEl = New-UnattendElement -Doc $Doc -LocalName 'Password' -NsUri $NsUri
+    $valEl = New-UnattendElement -Doc $Doc -LocalName 'Value' -NsUri $NsUri
+    $valEl.InnerText = $passBlob
+    $ptEl = New-UnattendElement -Doc $Doc -LocalName 'PlainText' -NsUri $NsUri
+    $ptEl.InnerText = 'false'
+    $pwEl.AppendChild($valEl) | Out-Null
+    $pwEl.AppendChild($ptEl) | Out-Null
+    $dispEl = New-UnattendElement -Doc $Doc -LocalName 'DisplayName' -NsUri $NsUri
+    $dispEl.InnerText = $User
+    $grpEl = New-UnattendElement -Doc $Doc -LocalName 'Group' -NsUri $NsUri
+    $grpEl.InnerText = 'Administrators'
+    $nameEl = New-UnattendElement -Doc $Doc -LocalName 'Name' -NsUri $NsUri
+    $nameEl.InnerText = $User
+    $acct.AppendChild($pwEl) | Out-Null
+    $acct.AppendChild($dispEl) | Out-Null
+    $acct.AppendChild($grpEl) | Out-Null
+    $acct.AppendChild($nameEl) | Out-Null
+}}
+
 function ConvertTo-UnattendPasswordBlob {{
     param([string]$PlainText)
     if (-not $PlainText) {{ return '' }}
@@ -133,6 +220,7 @@ function Update-OfflineUnattend {{
     }}
     Write-Host "Personnalisation : $path" -ForegroundColor Cyan
     [xml]$doc = Get-Content -LiteralPath $path -Encoding UTF8
+    $nsMgr, $nsUri = Get-UnattendNsMgr -Doc $doc
     $changed = $false
 
     if ($ComputerName -and $ComputerName.Trim()) {{
@@ -140,26 +228,14 @@ function Update-OfflineUnattend {{
         if ($cn.Length -gt 15) {{ $cn = $cn.Substring(0, 15) }}
         $cn = $cn -replace '[^a-zA-Z0-9\\-]', ''
         if ($cn) {{
-            $nodes = $doc.SelectNodes('//*[local-name()="ComputerName"]')
-            if ($nodes -and $nodes.Count -gt 0) {{
-                foreach ($n in $nodes) {{ $n.InnerText = $cn }}
-            }} else {{
-                $settings = $doc.SelectSingleNode('//*[local-name()="settings"][@*[local-name()="pass"]="specialize"]')
-                if (-not $settings) {{
-                    $settings = $doc.CreateElement('settings')
-                    $null = $settings.SetAttribute('pass', 'specialize')
-                    $doc.DocumentElement.AppendChild($settings) | Out-Null
+            $shellSp = Get-ShellSetupForPass -Doc $doc -Pass 'specialize' -NsMgr $nsMgr -NsUri $nsUri -CreateIfMissing
+            if ($shellSp) {{
+                $cnNode = $shellSp.SelectSingleNode('u:ComputerName', $nsMgr)
+                if (-not $cnNode) {{
+                    $cnNode = New-UnattendElement -Doc $doc -LocalName 'ComputerName' -NsUri $nsUri
+                    $shellSp.AppendChild($cnNode) | Out-Null
                 }}
-                $comp = $doc.CreateElement('component')
-                $null = $comp.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
-                $null = $comp.SetAttribute('processorArchitecture', 'amd64')
-                $null = $comp.SetAttribute('publicKeyToken', '31bf3856ad364e35')
-                $null = $comp.SetAttribute('language', 'neutral')
-                $null = $comp.SetAttribute('versionScope', 'nonSxS')
-                $cnNode = $doc.CreateElement('ComputerName')
                 $cnNode.InnerText = $cn
-                $comp.AppendChild($cnNode) | Out-Null
-                $settings.AppendChild($comp) | Out-Null
             }}
             Write-Host "Nom machine : $cn" -ForegroundColor Green
             $changed = $true
@@ -167,56 +243,18 @@ function Update-OfflineUnattend {{
     }}
 
     if ($LocalUser -and $LocalUser.Trim()) {{
-        $user = $LocalUser.Trim()
-        $passBlob = ConvertTo-UnattendPasswordBlob -PlainText $LocalPassword
-        $shellNodes = $doc.SelectNodes('//*[local-name()="component"][@*[local-name()="name"]="Microsoft-Windows-Shell-Setup"]')
-        $shell = $null
-        if ($shellNodes -and $shellNodes.Count -gt 0) {{
-            $shell = $shellNodes[$shellNodes.Count - 1]
+        $user = $LocalUser.Trim() -replace '[^a-zA-Z0-9._-]', ''
+        if (-not $user) {{
+            Write-Host 'Nom utilisateur invalide — compte local ignore.' -ForegroundColor Yellow
+        }} elseif (-not $LocalPassword) {{
+            Write-Host 'Mot de passe requis pour un compte local — compte ignore (cochez et saisissez un mot de passe).' -ForegroundColor Yellow
         }} else {{
-            $settings = $doc.SelectSingleNode('//*[local-name()="settings"][@*[local-name()="pass"]="oobeSystem"]')
-            if (-not $settings) {{
-                $settings = $doc.SelectSingleNode('//*[local-name()="settings"][@*[local-name()="pass"]="specialize"]')
+            $shellOobe = Get-ShellSetupForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr -NsUri $nsUri -CreateIfMissing
+            if ($shellOobe) {{
+                Set-UnattendLocalAccount -Doc $doc -Shell $shellOobe -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
+                Write-Host "Compte local (oobeSystem) : $user" -ForegroundColor Green
+                $changed = $true
             }}
-            if ($settings) {{
-                $shell = $doc.CreateElement('component')
-                $null = $shell.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
-                $null = $shell.SetAttribute('processorArchitecture', 'amd64')
-                $null = $shell.SetAttribute('publicKeyToken', '31bf3856ad364e35')
-                $null = $shell.SetAttribute('language', 'neutral')
-                $null = $shell.SetAttribute('versionScope', 'nonSxS')
-                $settings.AppendChild($shell) | Out-Null
-            }}
-        }}
-        if ($shell) {{
-            $userAccounts = $shell.SelectSingleNode('*[local-name()="UserAccounts"]')
-            if (-not $userAccounts) {{
-                $userAccounts = $doc.CreateElement('UserAccounts')
-                $shell.AppendChild($userAccounts) | Out-Null
-            }}
-            $localAccounts = $userAccounts.SelectSingleNode('*[local-name()="LocalAccounts"]')
-            if (-not $localAccounts) {{
-                $localAccounts = $doc.CreateElement('LocalAccounts')
-                $userAccounts.AppendChild($localAccounts) | Out-Null
-            }}
-            $acct = $doc.CreateElement('LocalAccount')
-            $nameEl = $doc.CreateElement('Name')
-            $nameEl.InnerText = $user
-            $grpEl = $doc.CreateElement('Group')
-            $grpEl.InnerText = 'Administrators'
-            $pwEl = $doc.CreateElement('Password')
-            $valEl = $doc.CreateElement('Value')
-            $valEl.InnerText = $passBlob
-            $ptEl = $doc.CreateElement('PlainText')
-            $ptEl.InnerText = 'false'
-            $pwEl.AppendChild($valEl) | Out-Null
-            $pwEl.AppendChild($ptEl) | Out-Null
-            $acct.AppendChild($pwEl) | Out-Null
-            $acct.AppendChild($nameEl) | Out-Null
-            $acct.AppendChild($grpEl) | Out-Null
-            $localAccounts.AppendChild($acct) | Out-Null
-            Write-Host "Compte local ajoute : $user (Administrators)" -ForegroundColor Green
-            $changed = $true
         }}
     }}
 
@@ -295,7 +333,10 @@ function Show-ConsoleDeployWizard {{
     $lu = ''; $lp = ''
     if ($addUser -match '^[oOyY]') {{
         $lu = Read-Host 'Nom utilisateur'
-        $lp = Read-Host 'Mot de passe'
+        while (-not $lp) {{
+            $lp = Read-Host 'Mot de passe (obligatoire)'
+            if (-not $lp) {{ Write-Host 'Mot de passe requis.' -ForegroundColor Red }}
+        }}
     }}
     return [pscustomobject]@{{
         Master = $master
@@ -429,6 +470,16 @@ function Show-WinpeDeployWizard {{
 
     $result = $form.ShowDialog()
     if ($result -ne [System.Windows.Forms.DialogResult]::OK) {{ return $null }}
+    if ($chkU.Checked) {{
+        if (-not $txtU.Text.Trim()) {{
+            [System.Windows.Forms.MessageBox]::Show('Indiquez un nom d utilisateur.', 'Deploiement', 'OK', 'Warning') | Out-Null
+            return $null
+        }}
+        if (-not $txtP.Text) {{
+            [System.Windows.Forms.MessageBox]::Show('Un mot de passe est obligatoire pour creer un compte local.', 'Deploiement', 'OK', 'Warning') | Out-Null
+            return $null
+        }}
+    }}
     if ($lstM.SelectedIndex -lt 0) {{ return $null }}
     $master = $Masters[$lstM.SelectedIndex]
     $driverKey = $null
