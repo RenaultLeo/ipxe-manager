@@ -2,8 +2,7 @@
 
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
-# low_ram : initrd-netboot.img + isourl= (ISO wget en initramfs, ~4 GiB)
-# dual_initrd : initrd.img + 2e initrd ISO HTTP (alias proxmox.iso, ~6+ GiB)
+# dual_initrd : initrd.img (gzip) + 2e initrd ISO HTTP (alias proxmox.iso)
 ########################################
 
 :start
@@ -23,9 +22,7 @@ goto ${selected}
 
 {% for e in entries %}
 :v{{ e.id }}
-{% if e.proxmox_boot_incomplete %}
-goto pve_setup_{{ e.id }}
-{% elif e.autoconfigs %}
+{% if e.autoconfigs %}
   menu {{ e.label }} — Choisissez une configuration
   {% for ac in e.autoconfigs %}
   item ac{{ ac.id }} {{ ac.label }}
@@ -69,18 +66,8 @@ goto pve_setup_{{ e.id }}
 :pve_fail_{{ e.id }}
 echo
 echo Echec boot Proxmox {{ e.label }}
-echo Verifier : initrd-netboot.img (low_ram) ou proxmox.iso (dual_initrd), re-extraire l ISO
+echo Verifier : initrd gzip (re-extraire si zstd), ISO proxmox.iso HTTP, PROXMOX_BOOT_DELIVERY=auto
 sleep 8
-goto start
-
-:pve_setup_{{ e.id }}
-echo
-echo Proxmox {{ e.label }} : mode low_ram incomplet
-echo initrd-netboot.img absent sous boot/proxmox/
-echo Serveur : apt install squashfs-tools zstd bsdtar
-echo Puis re-extraire l ISO et regenerer les menus
-echo .env : PROXMOX_BOOT_DELIVERY=low_ram
-sleep 12
 goto start
 
 {% endfor %}

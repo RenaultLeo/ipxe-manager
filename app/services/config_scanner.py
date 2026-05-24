@@ -189,14 +189,6 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         return f"url={url}"
 
 
-def proxmox_low_ram_boot_arg(url: str) -> str:
-    """Args noyau pour initrd patché (answer.toml via HTTP en initramfs)."""
-    u = (url or "").strip()
-    if not u:
-        return ""
-    return f"answerurl={u} proxmox-start-auto-installer"
-
-
 def scan_and_import(db: Session) -> dict:
     """
     Parcourt settings.configs_dir à la recherche de fichiers config.

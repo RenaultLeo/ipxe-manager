@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import Settings, resolve_server_base_url
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
-from app.services.config_scanner import config_boot_arg, proxmox_low_ram_boot_arg
+from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
 from app.services.autoconfig_label import resolve_autoconfig_menu_label
@@ -187,7 +187,6 @@ def _menu_autoconfig_entries(
     h,
     *,
     ubuntu_variant: str = "desktop",
-    proxmox_boot_mode: str = "",
 ) -> list[dict]:
     """Entrées autoconfig pour les sous-menus iPXE."""
     slug_l = os_type.slug.lower()
@@ -236,20 +235,13 @@ def _menu_autoconfig_entries(
 
     for ac in configs:
         rel = ac.file_path or ""
-        file_url = h(rel) if rel else ""
-        if slug_l == "proxmox" and proxmox_boot_mode == "low_ram":
-            boot_arg = (
-                proxmox_low_ram_boot_arg(file_url)
-                if ac.config_type == "proxmox-answer"
-                else config_boot_arg(ac.config_type, os_type.slug, file_url)
-            )
-        else:
-            boot_arg = config_boot_arg(ac.config_type, os_type.slug, file_url)
+        boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
+        url = h(rel) if rel else ""
         entries.append(
             {
                 "id": ac.id,
                 "label": resolve_autoconfig_menu_label(ac),
-                "url": file_url,
+                "url": url,
                 "type": ac.config_type,
                 "boot_arg": boot_arg,
             }
@@ -334,36 +326,12 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             if awi:
                 winpe_active_label = (awi.label or awi.slug or "").strip()
 
-    proxmox_fields: dict[str, str] = {}
-    if slug_l == "proxmox":
-        proxmox_fields = _proxmox_menu_fields(v, be, cfg)
-    proxmox_boot_mode = proxmox_fields.get("proxmox_boot_mode") or ""
-
-    initrd_url = h(be.initrd_path) if be and be.initrd_path else ""
-    if proxmox_boot_mode == "low_ram":
-        rel_net = (proxmox_fields.get("proxmox_initrd_http_rel") or "").strip()
-        if rel_net:
-            initrd_url = h(rel_net)
-
-    kernel_args = _build_kernel_args(
-        be,
-        os_type.slug,
-        cfg,
-        nfsroot_pair=nfs_pair,
-        iso_version=v,
-        proxmox_boot_mode=proxmox_boot_mode,
-    )
-    if proxmox_boot_mode == "low_ram":
-        iso_u = (proxmox_fields.get("proxmox_iso_url") or "").strip()
-        if iso_u and not re.search(r"(?:^|\s)isourl=", kernel_args):
-            kernel_args = f"{kernel_args} isourl={iso_u}".strip()
-
     return {
         "id":           v.id,
         "label":        f"{os_type.label} {v.version_label}",
         "winpe_active_label": winpe_active_label,
         "kernel":       h(be.kernel_path) if be and be.kernel_path else "",
-        "initrd":       initrd_url,
+        "initrd":       h(be.initrd_path) if be and be.initrd_path else "",
         "boot_wim":     h_win(be.boot_wim_path) if be and be.boot_wim_path else "",
         "bcd":          h_win(be.bcd_path) if be and be.bcd_path else "",
         "boot_sdi":     h_win(be.boot_sdi_path) if be and be.boot_sdi_path else "",
@@ -374,15 +342,14 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "esxi_boot_cfg": esxi_boot_http,
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
-        "kernel_args": kernel_args,
+        # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
+        "kernel_args": _build_kernel_args(
+            be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
+        ),
         "boot_type":   os_type.boot_type or "linux",
         "ubuntu_variant": ubuntu_variant,
         "autoconfigs": _menu_autoconfig_entries(
-            v,
-            os_type,
-            h,
-            ubuntu_variant=ubuntu_variant or "desktop",
-            proxmox_boot_mode=proxmox_boot_mode,
+            v, os_type, h, ubuntu_variant=ubuntu_variant or "desktop"
         ),
         "ipxe_item_tag": f"v{v.id}",
         "ubuntu_nfs_boot": use_ubuntu_nfs,
@@ -392,7 +359,11 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             and bool(getattr(v, "active_autoconfig_id", None))
             and not use_ubuntu_nfs
         ),
-        **proxmox_fields,
+        **(
+            _proxmox_menu_fields(v, be, cfg)
+            if slug_l == "proxmox"
+            else {}
+        ),
     }
 
 
@@ -819,58 +790,35 @@ def _proxmox_iso_http_url_for_menu(
     return ""
 
 
-def _proxmox_delivery_pref(cfg: Settings) -> str:
-    """``auto`` = ``low_ram`` (4+ GiB) ; ``iso_http`` / ``dual_initrd`` = 2e initrd iPXE (~6+ GiB)."""
-    pref = (getattr(cfg, "proxmox_boot_delivery", None) or "auto").strip().lower()
-    if pref == "auto":
-        return "low_ram"
-    if pref in ("iso_http", "dual_initrd"):
-        return "dual_initrd"
-    return pref
-
-
 def _resolve_proxmox_boot(
     iso_version: IsoVersion | None,
     be: BootEntry | None,
     cfg: Settings,
-    *,
-    low_ram_initrd_ready: bool = False,
 ) -> dict[str, str]:
     """
-    ``dual_initrd`` : ISO en 2e initrd iPXE (~6+ GiB RAM recommandés).
-    ``low_ram`` : initrd-netboot.img + ``isourl=`` (wget en initramfs, adapté 4 GiB).
+    Stratégie Proxmox : ``dual_initrd`` (initrd.img gzip + ISO en proxmox.iso) ou ``single`` si aucune ISO HTTP.
+    Le paramètre noyau ``url=`` vers boot/ ne fonctionne pas — ne plus l’utiliser.
     """
-    mode_pref = _proxmox_delivery_pref(cfg)
+    mode_pref = (getattr(cfg, "proxmox_boot_delivery", None) or "auto").strip().lower()
     iso_url = _proxmox_iso_http_url_for_menu(iso_version, be, cfg)
 
     if mode_pref == "single":
         mode = "single"
-    elif mode_pref == "low_ram":
-        if iso_url and low_ram_initrd_ready:
-            mode = "low_ram"
-        elif iso_url and not low_ram_initrd_ready:
-            mode = "single"
-            logger.warning(
-                'Proxmox "%s" : initrd-netboot.img absent — ré-extraire l’ISO '
-                "(unsquashfs, bash, zstd) ou PROXMOX_BOOT_DELIVERY=dual_initrd.",
-                getattr(iso_version, "version_label", "?"),
-            )
-        else:
-            mode = "single"
-    elif mode_pref == "dual_initrd" and iso_url:
+    elif iso_url:
         mode = "dual_initrd"
     else:
         mode = "single"
 
-    if mode == "single" and iso_version is not None and mode_pref != "single":
+    if mode == "single" and iso_version is not None:
         logger.warning(
-            'Proxmox "%s" : boot incomplet — ré-extraire (proxmox-netboot.iso + initrd-netboot.img).',
+            'Proxmox "%s" : aucune ISO HTTP pour proxmox.iso — ré-extraire l’ISO '
+            "(crée boot/…/proxmox-netboot.iso) ou laisser l’ISO dans isos-ipxe.",
             getattr(iso_version, "version_label", "?"),
         )
 
     return {
         "proxmox_boot_mode": mode,
-        "proxmox_iso_url": iso_url if mode in ("dual_initrd", "low_ram") else "",
+        "proxmox_iso_url": iso_url if mode == "dual_initrd" else "",
     }
 
 
@@ -884,39 +832,6 @@ def _proxmox_initrd_on_disk(be: BootEntry | None, cfg: Settings) -> Path | None:
     return p if p.is_file() else None
 
 
-def _proxmox_iso_path_for_build(
-    iso_version: IsoVersion | None,
-    be: BootEntry | None,
-    cfg: Settings,
-) -> Path | None:
-    from app.services.iso_extractor import PROXMOX_NETBOOT_ISO_BASENAME
-
-    seg = _boot_os_version_segment(be, "proxmox") if be else None
-    if seg:
-        boot_ver = cfg.boot_dir / "proxmox" / seg
-        netboot = boot_ver / PROXMOX_NETBOOT_ISO_BASENAME
-        if netboot.is_file():
-            return netboot
-        for p in sorted(boot_ver.glob("*.iso")):
-            if p.is_file():
-                return p
-    if iso_version:
-        raw = (iso_version.iso_path or "").strip()
-        if raw:
-            try:
-                p = Path(raw)
-                if p.is_file():
-                    return p
-            except OSError:
-                pass
-        pack = Path(cfg.iso_root) / "proxmox" / str(iso_version.id)
-        if pack.is_dir():
-            for p in sorted(pack.glob("*.iso")):
-                if p.is_file():
-                    return p
-    return None
-
-
 def _proxmox_menu_fields(
     iso_version: IsoVersion | None,
     be: BootEntry | None,
@@ -926,8 +841,6 @@ def _proxmox_menu_fields(
         return {
             "proxmox_boot_mode": "single",
             "proxmox_iso_url": "",
-            "proxmox_initrd_http_rel": "",
-            "proxmox_boot_incomplete": False,
         }
     initrd_p = _proxmox_initrd_on_disk(be, cfg)
     if initrd_p:
@@ -935,44 +848,7 @@ def _proxmox_menu_fields(
 
         _ensure_proxmox_initrd_gzip_for_ipxe(initrd_p)
     _ensure_proxmox_netboot_iso_published(iso_version, be, cfg)
-
-    low_ram_initrd_ready = False
-    initrd_http_rel = ""
-    delivery = _proxmox_delivery_pref(cfg)
-    if delivery == "low_ram" and initrd_p:
-        from app.services.iso_extractor import (
-            PROXMOX_LOW_RAM_INITRD_BASENAME,
-            ensure_proxmox_low_ram_initrd,
-        )
-
-        iso_p = _proxmox_iso_path_for_build(iso_version, be, cfg)
-        if iso_p:
-            netboot_initrd = ensure_proxmox_low_ram_initrd(initrd_p, iso_p)
-            if netboot_initrd and netboot_initrd.is_file():
-                low_ram_initrd_ready = True
-                try:
-                    rel = netboot_initrd.relative_to(cfg.boot_dir)
-                    initrd_http_rel = f"boot/{rel.as_posix()}"
-                except ValueError:
-                    initrd_http_rel = ""
-
-    fields = _resolve_proxmox_boot(
-        iso_version,
-        be,
-        cfg,
-        low_ram_initrd_ready=low_ram_initrd_ready,
-    )
-    fields["proxmox_initrd_http_rel"] = (
-        initrd_http_rel if fields.get("proxmox_boot_mode") == "low_ram" else ""
-    )
-    mode_pref = _proxmox_delivery_pref(cfg)
-    iso_url = fields.get("proxmox_iso_url") or ""
-    fields["proxmox_boot_incomplete"] = (
-        mode_pref == "low_ram"
-        and fields.get("proxmox_boot_mode") == "single"
-        and bool(iso_url or initrd_p)
-    )
-    return fields
+    return _resolve_proxmox_boot(iso_version, be, cfg)
 
 
 def _ensure_proxmox_netboot_iso_published(
@@ -1033,8 +909,6 @@ def _build_kernel_args(
     cfg: Settings,
     nfsroot_pair: str | None = None,
     iso_version: IsoVersion | None = None,
-    *,
-    proxmox_boot_mode: str = "",
 ) -> str:
     """
     Concatène les args DB et ajoute modloop (Alpine).
@@ -1118,9 +992,7 @@ def _build_kernel_args(
 
     # Proxmox VE : linux26 + initrd (PXE communautaire + assistant --pxe-loader ipxe)
     if os_slug == "proxmox" and be:
-        args = _strip_kernel_arg_tokens(
-            args, (r"\burl=\S+", r"\bisourl=\S+")
-        )
+        args = _strip_kernel_arg_tokens(args, (r"\burl=\S+",))
         if getattr(cfg, "proxmox_vga_params", True):
             if not re.search(r"(?:^|\s)vga=", args):
                 args = (
@@ -1129,12 +1001,7 @@ def _build_kernel_args(
         if not _has_ip_kernel_arg(args):
             args = f"ip=dhcp {args}".strip()
         if not re.search(r"(?:^|\s)ramdisk_size=", args):
-            ram_kib = (
-                getattr(cfg, "proxmox_low_ram_ramdisk_size", 3_145_728)
-                if proxmox_boot_mode == "low_ram"
-                else cfg.proxmox_ramdisk_size
-            )
-            args = f"{args} ramdisk_size={ram_kib}".strip()
+            args = f"{args} ramdisk_size={cfg.proxmox_ramdisk_size}".strip()
         if not re.search(r"(?:^|\s)rw(?:\s|$)", args):
             args = f"{args} rw".strip()
         if not re.search(r"(?:^|\s)quiet(?:\s|$)", args):
@@ -1142,12 +1009,7 @@ def _build_kernel_args(
         if not re.search(r"(?:^|\s)splash=", args):
             args = f"{args} splash=silent".strip()
         if be.initrd_path and not re.search(r"(?:^|\s)initrd=", args):
-            if proxmox_boot_mode == "low_ram":
-                from app.services.iso_extractor import PROXMOX_LOW_RAM_INITRD_BASENAME
-
-                init_bn = PROXMOX_LOW_RAM_INITRD_BASENAME
-            else:
-                init_bn = be.initrd_path.replace("\\", "/").rstrip("/").split("/")[-1]
+            init_bn = be.initrd_path.replace("\\", "/").rstrip("/").split("/")[-1]
             if init_bn:
                 args = f"{args} initrd={init_bn}".strip()
         return args.strip()

@@ -1194,11 +1194,6 @@ _PROXMOX_INITRD_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 _GZIP_MAGIC = b"\x1f\x8b"
 # Copie/lien de l’ISO sous boot/proxmox/<version>/ pour iPXE (2e initrd proxmox.iso) après purge isos-ipxe
 PROXMOX_NETBOOT_ISO_BASENAME = "proxmox-netboot.iso"
-# Initrd patché (wget ISO via isourl=) — évite le 2e initrd iPXE (~1,6 Go en RAM)
-PROXMOX_LOW_RAM_INITRD_BASENAME = "initrd-netboot.img"
-_BUILD_LOWRAM_SCRIPT = (
-    Path(__file__).resolve().parent.parent.parent / "scripts" / "build-proxmox-lowram-initrd.sh"
-)
 
 
 def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
@@ -1292,68 +1287,6 @@ def _ensure_proxmox_initrd_gzip_for_ipxe(initrd_path: Path) -> None:
     logger.info("Proxmox initrd recompressé zstd→gzip pour iPXE : %s", initrd_path)
 
 
-def build_proxmox_low_ram_initrd(
-    initrd_path: Path,
-    iso_path: Path,
-    output_path: Path | None = None,
-) -> bool:
-    """
-    Construit ``initrd-netboot.img`` (scripts réseau + modules NIC) pour le mode
-    ``low_ram`` : l’ISO n’est plus chargée par iPXE en 2e initrd.
-    """
-    if not initrd_path.is_file():
-        logger.warning("Proxmox low_ram : initrd absent %s", initrd_path)
-        return False
-    if not iso_path.is_file():
-        logger.warning("Proxmox low_ram : ISO absent %s", iso_path)
-        return False
-    out = output_path or (initrd_path.parent / PROXMOX_LOW_RAM_INITRD_BASENAME)
-    script = _BUILD_LOWRAM_SCRIPT
-    if not script.is_file():
-        logger.error("Proxmox low_ram : script introuvable %s", script)
-        return False
-    try:
-        if out.is_file() and out.stat().st_mtime >= initrd_path.stat().st_mtime:
-            if out.stat().st_size > 0:
-                return True
-    except OSError:
-        pass
-    try:
-        proc = subprocess.run(
-            ["bash", str(script), str(initrd_path), str(iso_path), str(out)],
-            capture_output=True,
-            text=True,
-            timeout=1800,
-        )
-    except FileNotFoundError:
-        logger.error("Proxmox low_ram : bash introuvable sur le serveur")
-        return False
-    except subprocess.TimeoutExpired:
-        logger.error("Proxmox low_ram : timeout build initrd %s", out)
-        return False
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip()
-        logger.error(
-            "Proxmox low_ram : échec build initrd (%s) : %s",
-            out.name,
-            err[:2000],
-        )
-        return False
-    if out.is_file():
-        logger.info("Proxmox low_ram initrd : %s", out)
-        return True
-    logger.error("Proxmox low_ram : sortie absente %s", out)
-    return False
-
-
-def ensure_proxmox_low_ram_initrd(initrd_path: Path, iso_path: Path) -> Path | None:
-    """Retourne le chemin de ``initrd-netboot.img`` si build OK."""
-    out = initrd_path.parent / PROXMOX_LOW_RAM_INITRD_BASENAME
-    if build_proxmox_low_ram_initrd(initrd_path, iso_path, out):
-        return out
-    return None
-
-
 def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
     """
     Après extraction complète de l'ISO Proxmox VE : noyau + initrd sous ``boot/``
@@ -1397,9 +1330,6 @@ def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dic
         rel = initrd.relative_to(dest)
         result["initrd_path"] = f"{base}/{rel.as_posix()}"
         logger.info("Proxmox initrd : %s", rel)
-        netboot_iso = dest / PROXMOX_NETBOOT_ISO_BASENAME
-        if netboot_iso.is_file():
-            ensure_proxmox_low_ram_initrd(initrd, netboot_iso)
     else:
         logger.warning("Proxmox : initrd non trouvé")
 
