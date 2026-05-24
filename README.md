@@ -163,7 +163,15 @@ Tu crées une **version** pour un type d’OS (label lisible : « 22.04 LTS », 
 
 Pour **Windows** et **WinPE**, l’extraction est **complète** : détection de **BCD**, **boot.sdi** et **boot.wim** (priorité `sources/` / `boot/`), menus **wimboot** (`http://…/wimboot` installé par `setup.sh`). Tu peux **remplacer uniquement `boot.wim`** depuis la fiche version. Config auto : **`autounattend.xml`** / **`unattend.xml`**.
 
-Pour **Proxmox VE**, l’ISO est extraite **en entier** ; noyau **`boot/linux26`** + **`initrd.img`**. Les menus iPXE chargent l’ISO HTTP en **second initrd** nommé **`proxmox.iso`** (méthode officielle `proxmox-auto-install-assistant --pxe`), avec **`ramdisk_size=`**, **`rw quiet splash=silent`**, **`initrd=initrd.img`** sur la ligne kernel. L’ISO doit rester accessible en HTTP (`isos-ipxe/…`) tant que vous n’avez pas d’autre stratégie (squashfs). Config auto : **`answer.toml`** → **`proxmox-installer.answer-file=`** + **`proxmox-start-auto-installer`** (voir [installation automatisée Proxmox](https://pve.proxmox.com/wiki/Automated_Installation)).
+Pour **Proxmox VE**, l’ISO est extraite **en entier** sous `boot/proxmox/<version>/` ; noyau **`linux26`** + **`initrd.img`**. Trois modes (`.env` **`PROXMOX_BOOT_DELIVERY`** , défaut **`auto`**) :
+
+| Mode | Quand | iPXE généré |
+|------|--------|-------------|
+| **`auto` / `iso_http`** | Fichier ISO encore sur le serveur (`isos-ipxe/…`) | `linux26` + `initrd.img` + **2e initrd** `proxmox.iso` (ISO HTTP) — méthode officielle `proxmox-auto-install-assistant --pxe` |
+| **`extracted_http`** | ISO purgée mais extraction OK | `linux26` + `initrd.img` + **`url=http://…/boot/proxmox/<version>/`** (expérimental : l’installateur peut charger les squashfs via HTTP) |
+| **`single`** | Initrd reconstruit avec ISO dedans (ex. [pve-iso-2-pxe](https://github.com/morph027/pve-iso-2-pxe)) | Comme votre exemple : un seul `initrd`, sans 2e initrd |
+
+Paramètres noyau ajoutés : **`vga=791 video=vesafb:ywrap,mtrr`** (désactiver : `PROXMOX_VGA_PARAMS=false`), **`ramdisk_size=16777216`**, **`rw quiet splash=silent`**, **`initrd=<nom fichier>`**. Config auto : **`answer.toml`** → **`proxmox-installer.answer-file=`** + **`proxmox-start-auto-installer`**. NFS n’est pas supporté nativement par l’installateur Proxmox (contrairement à Ubuntu casper).
 
 Pour **Ubuntu**, l’ISO est aussi extraite **en entier** ; noyau et initrd dans **`casper/`**. Par défaut les menus utilisent le mode **HTTP autoinstall** (`root=/dev/ram0`, `url=` vers l’ISO si elle est encore sur le serveur, `autoinstall ds=nocloud-net` + `cloud-config-url=/dev/null` sur les configs auto). Option **`UBUNTU_NFS_ENABLED=true`** pour l’ancien mode NFS.
 

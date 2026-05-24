@@ -2,7 +2,7 @@
 
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
-# Proxmox VE : initrd.img + ISO HTTP en second initrd (alias proxmox.iso)
+# dual_initrd : ISO HTTP → initrd proxmox.iso | extracted_http : url= racine boot/ | single : initrd seul
 ########################################
 
 :start
@@ -37,14 +37,18 @@ goto ${selected}
   :ac{{ ac.id }}
     kernel {{ e.kernel }} {{ e.kernel_args }} {{ ac.boot_arg }}
     {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
-    {% if e.proxmox_iso_url %}initrd {{ e.proxmox_iso_url }} proxmox.iso{% endif %}
+    {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
+    initrd {{ e.proxmox_iso_url }} proxmox.iso
+    {% endif %}
     boot
   {% endfor %}
 
   :manual_{{ e.id }}
   kernel {{ e.kernel }} {{ e.kernel_args }}
   {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
-  {% if e.proxmox_iso_url %}initrd {{ e.proxmox_iso_url }} proxmox.iso{% endif %}
+  {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
+  initrd {{ e.proxmox_iso_url }} proxmox.iso
+  {% endif %}
   boot
 
   :back_v{{ e.id }}
@@ -53,7 +57,9 @@ goto ${selected}
 {% else %}
   kernel {{ e.kernel }} {{ e.kernel_args }}
   {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
-  {% if e.proxmox_iso_url %}initrd {{ e.proxmox_iso_url }} proxmox.iso{% endif %}
+  {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
+  initrd {{ e.proxmox_iso_url }} proxmox.iso
+  {% endif %}
   boot
 {% endif %}
 

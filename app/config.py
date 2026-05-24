@@ -140,6 +140,10 @@ class Settings(BaseSettings):
     ubuntu_ramdisk_size: int = 1_500_000  # Paramètre noyau ramdisk_size= (autoinstall HTTP)
     # Proxmox VE installateur réseau (doc / iPXE : souvent 16777216 = 16 Go en KiB)
     proxmox_ramdisk_size: int = 16_777_216
+    # vga=791 video=vesafb (communauté PXE / pve-auto-install-pxe) ; désactiver si headless pur
+    proxmox_vga_params: bool = True
+    # auto | iso_http | extracted_http — voir README Proxmox
+    proxmox_boot_delivery: str = "auto"
 
     # WinPE : partage Samba (nom du share, chemin = http/boot) et index image dans boot.wim
     winpe_smb_share: str = "boot"
