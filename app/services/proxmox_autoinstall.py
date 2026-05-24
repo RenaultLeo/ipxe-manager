@@ -62,8 +62,10 @@ def _require_assistant() -> str:
     exe = shutil.which(_ASSISTANT)
     if not exe:
         raise RuntimeError(
-            f"{_ASSISTANT} introuvable sur le serveur — "
-            "installez-le (dépôt Proxmox / paquet proxmox-auto-install-assistant)."
+            f"{_ASSISTANT} introuvable (paquet absent des dépôts Debian par défaut). "
+            "Sur le serveur iPXE : "
+            "sudo bash /srv/ipxe/app/deploy/install-proxmox-autoinstall-assistant.sh "
+            "puis systemctl restart ipxe-celery ipxe-manager"
         )
     return exe
 

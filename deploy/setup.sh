@@ -87,6 +87,13 @@ else
     echo "  ! deploy/install-service-sudo.sh absent — relance services UI indisponible jusqu'à install manuel."
 fi
 
+# Proxmox autoinstall (injection answer.toml dans proxmox-netboot-autoinstall.iso)
+if [ -f "$APP_DIR/deploy/install-proxmox-autoinstall-assistant.sh" ]; then
+    echo "  Installation proxmox-auto-install-assistant (dépôt Proxmox)…"
+    bash "$APP_DIR/deploy/install-proxmox-autoinstall-assistant.sh" \
+        || echo "  ! proxmox-auto-install-assistant non installé — injection Proxmox indisponible jusqu'à install manuel."
+fi
+
 # ── 5. Environnement Python ───────────────────────────────────────────────────
 echo "[5/15] Création du virtualenv Python…"
 python3 -m venv "$VENV"
