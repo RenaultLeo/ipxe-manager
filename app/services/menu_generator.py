@@ -359,6 +359,9 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             and bool(getattr(v, "active_autoconfig_id", None))
             and not use_ubuntu_nfs
         ),
+        "proxmox_iso_url": (
+            _proxmox_iso_http_url(v, cfg) if slug_l == "proxmox" else ""
+        ),
     }
 
 
@@ -647,6 +650,8 @@ def regenerate_all(db: Session) -> list[str]:
                         tmpl_name = "esxi.ipxe.j2"
                     elif bt_l == "windows":
                         tmpl_name = "windows.ipxe.j2"
+                    elif slug_l == "proxmox":
+                        tmpl_name = "proxmox.ipxe.j2"
                     else:
                         tmpl_name = "linux.ipxe.j2"
                     if not (TMPL_DIR / tmpl_name).exists():
@@ -740,14 +745,26 @@ def _strip_kernel_arg_tokens(args: str, patterns: tuple[str, ...]) -> str:
     return re.sub(r"\s+", " ", out).strip()
 
 
-def _ubuntu_iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
-    """URL HTTP de l’ISO Ubuntu si ``iso_path`` est sous ``iso_root``."""
+def _iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
+    """URL HTTP d’une ISO si ``iso_path`` est sous ``iso_root`` (Ubuntu, Proxmox, …)."""
     if iso_version is None:
         return ""
     raw = (iso_version.iso_path or "").strip()
     if not raw:
         return ""
     return cfg.iso_public_http_url(raw) or ""
+
+
+def _proxmox_iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
+    """URL HTTP de l’ISO Proxmox pour le 2e initrd ``proxmox.iso``."""
+    url = _iso_http_url(iso_version, cfg)
+    if not url and iso_version is not None:
+        logger.warning(
+            'Proxmox "%s" : pas d’URL ISO HTTP — l’installateur cherchera /dev/sr0. '
+            "Conservez l’ISO sur le serveur (isos-ipxe) ou régénérez après upload.",
+            getattr(iso_version, "version_label", "?"),
+        )
+    return url
 
 
 def _append_ubuntu_http_casper_args(
@@ -855,15 +872,23 @@ def _build_kernel_args(
             if init_bn:
                 args = f"{args} initrd={init_bn}".strip()
 
-    # Proxmox VE : installateur réseau (answer.toml via proxmox-installer.answer-file=)
+    # Proxmox VE : params noyau officiels PXE (initrd= sur la ligne kernel ; ISO via 2e initrd proxmox.iso)
     if os_slug == "proxmox" and be:
+        args = _strip_kernel_arg_tokens(args, (r"\burl=\S+",))
         if not _has_ip_kernel_arg(args):
             args = f"ip=dhcp {args}".strip()
         if not re.search(r"(?:^|\s)ramdisk_size=", args):
             args = f"{args} ramdisk_size={cfg.proxmox_ramdisk_size}".strip()
-        iso_url = _ubuntu_iso_http_url(iso_version, cfg)
-        if iso_url and not re.search(r"(?:^|\s)url=", args):
-            args = f"{args} url={iso_url}".strip()
+        if not re.search(r"(?:^|\s)rw(?:\s|$)", args):
+            args = f"{args} rw".strip()
+        if not re.search(r"(?:^|\s)quiet(?:\s|$)", args):
+            args = f"{args} quiet".strip()
+        if not re.search(r"(?:^|\s)splash=", args):
+            args = f"{args} splash=silent".strip()
+        if be.initrd_path and not re.search(r"(?:^|\s)initrd=", args):
+            init_bn = be.initrd_path.replace("\\", "/").rstrip("/").split("/")[-1]
+            if init_bn:
+                args = f"{args} initrd={init_bn}".strip()
         return args.strip()
 
     # Ubuntu : NFS optionnel (UBUNTU_NFS_ENABLED), sinon HTTP autoinstall (défaut).
@@ -881,7 +906,7 @@ def _build_kernel_args(
         else:
             args = _strip_kernel_arg_tokens(args, _UBUNTU_NFS_KERNEL_TOKENS)
             args = _append_ubuntu_http_casper_args(
-                args, cfg, _ubuntu_iso_http_url(iso_version, cfg) or None
+                args, cfg, _iso_http_url(iso_version, cfg) or None
             )
         return args
 
