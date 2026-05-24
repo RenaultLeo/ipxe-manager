@@ -70,6 +70,40 @@ def _require_assistant() -> str:
     return exe
 
 
+def _format_assistant_error(blob: str) -> str:
+    text = blob.strip()
+    if "unknown field 'system'" in text or "[system]" in text.split("\n")[0:3]:
+        return (
+            "answer.toml invalide : section [system] inconnue. "
+            "Remplacez par [global] (voir modèle dans Auto configs → modifier config)."
+        )
+    if "Error parsing answer file" in text:
+        for line in text.splitlines():
+            if "TOML parse error" in line or "unknown field" in line:
+                return f"answer.toml invalide : {line.strip()}"
+    return text[-2000:] if len(text) > 2000 else text
+
+
+def validate_answer_toml(answer_toml: Path) -> None:
+    """Vérifie answer.toml avant prepare-iso (validate-answer de l’assistant Proxmox)."""
+    assistant = _require_assistant()
+    proc = subprocess.run(
+        [assistant, "validate-answer", str(answer_toml)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
+        low = blob.lower()
+        if "validate-answer" in low and (
+            "unknown" in low or "unrecognized" in low or "invalid subcommand" in low
+        ):
+            logger.warning("%s validate-answer indisponible — contrôle ignoré", _ASSISTANT)
+            return
+        raise RuntimeError(_format_assistant_error(blob))
+
+
 def prepare_autoinstall_iso(
     netboot_iso: Path,
     answer_toml: Path,
@@ -82,6 +116,8 @@ def prepare_autoinstall_iso(
         raise FileNotFoundError(f"answer.toml absent : {answer_toml}")
 
     assistant = _require_assistant()
+    validate_answer_toml(answer_toml)
+
     src_size = netboot_iso.stat().st_size
     out_iso.parent.mkdir(parents=True, exist_ok=True)
     tmp_out = out_iso.with_name(f".{out_iso.name}.preparing")
@@ -108,8 +144,7 @@ def prepare_autoinstall_iso(
     if proc.returncode != 0:
         blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
         raise RuntimeError(
-            f"{_ASSISTANT} prepare-iso a échoué : "
-            f"{blob[-2500:] if blob else f'code {proc.returncode}'}"
+            f"{_ASSISTANT} prepare-iso a échoué : {_format_assistant_error(blob)}"
         )
     if not tmp_out.is_file():
         raise RuntimeError(f"{_ASSISTANT} n'a pas produit {tmp_out.name}")
