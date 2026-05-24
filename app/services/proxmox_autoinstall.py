@@ -115,7 +115,7 @@ def _xorriso_rc_ok(proc: subprocess.CompletedProcess[str]) -> bool:
 
 
 def _xorriso_ls(xorriso: str, iso: Path, iso_path: str) -> bool:
-    """Teste la présence d’un chemin dans l’ISO (xorriso -ls, gère /.disk)."""
+    """Teste la présence d’un fichier ou répertoire dans l’ISO (xorriso -ls)."""
     proc = subprocess.run(
         [xorriso, "-indev", str(iso), "-ls", iso_path],
         capture_output=True,
@@ -124,12 +124,12 @@ def _xorriso_ls(xorriso: str, iso: Path, iso_path: str) -> bool:
     )
     if not _xorriso_rc_ok(proc):
         return False
-    blob = ((proc.stdout or "") + (proc.stderr or "")).lower()
-    if not (proc.stdout or "").strip():
+    out = (proc.stdout or "").strip()
+    if not out:
         return False
-    for needle in ("no such file", "cannot", "failure", "not found", "abort"):
-        if needle in blob:
-            return False
+    low = out.lower()
+    if "no such file or directory" in low or "cannot find" in low:
+        return False
     return True
 
 
@@ -139,9 +139,16 @@ def _verify_pve_iso_structure(
     *,
     require_autoinstall: bool = False,
 ) -> tuple[bool, str]:
-    if not _xorriso_ls(xorriso, iso, "/boot"):
-        return False, "structure ISO invalide (/boot absent)"
-    if not _xorriso_ls(xorriso, iso, "/.disk"):
+    """Marqueurs d’une ISO installateur Proxmox VE (pas le dossier extrait sous boot/)."""
+    boot_ok = _xorriso_ls(xorriso, iso, "/boot/initrd.img") or _xorriso_ls(
+        xorriso, iso, "/boot/linux26"
+    )
+    if not boot_ok:
+        return False, "structure ISO invalide (/boot/initrd.img absent)"
+    disk_ok = _xorriso_ls(xorriso, iso, "/.disk/info") or _xorriso_ls(
+        xorriso, iso, "/.disk"
+    )
+    if not disk_ok:
         return False, "structure ISO invalide (/.disk absent)"
     if require_autoinstall:
         if not _xorriso_ls(xorriso, iso, "/answer.toml"):
@@ -195,18 +202,60 @@ def _inject_with_xorriso(
     )
 
 
+_MIN_PVE_ISO_BYTES = 200 * 1024 * 1024
+
+
 def _find_pristine_proxmox_iso(iso_version: IsoVersion, cfg: Settings) -> Path | None:
+    """ISO Proxmox d’origine (fichier .iso uploadé), pas le dossier extrait sous boot/."""
+    seen: set[Path] = set()
+    candidates: list[Path] = []
+
+    def _add(p: Path) -> None:
+        try:
+            key = p.resolve()
+        except OSError:
+            key = p
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(p)
+
     raw = (iso_version.iso_path or "").strip()
     if raw:
-        p = Path(raw)
-        if p.is_file():
-            return p
-    pack = Path(cfg.iso_root) / "proxmox" / str(iso_version.id)
-    if pack.is_dir():
-        for p in sorted(pack.glob("*.iso")):
-            if p.is_file():
+        _add(Path(raw))
+
+    for root in (
+        Path(cfg.iso_root),
+        Path(cfg.http_root).parent / "isos",
+    ):
+        pack = root / "proxmox" / str(iso_version.id)
+        if pack.is_dir():
+            for p in sorted(pack.glob("*.iso")):
+                _add(p)
+
+    for p in candidates:
+        try:
+            if p.is_file() and p.stat().st_size >= _MIN_PVE_ISO_BYTES:
                 return p
+        except OSError:
+            continue
     return None
+
+
+def _sync_netboot_isos_from_pristine(boot_dir: Path, pristine: Path) -> Path:
+    """Recopie l’ISO source vers base + manuel (écrase une base corrompue)."""
+    boot_dir.mkdir(parents=True, exist_ok=True)
+    base = netboot_base_iso_path(boot_dir)
+    manual = boot_dir / PROXMOX_NETBOOT_ISO_BASENAME
+    shutil.copy2(pristine, base)
+    shutil.copy2(pristine, manual)
+    logger.info(
+        "Proxmox : netboot synchronisé depuis %s → %s + %s",
+        pristine.name,
+        base.name,
+        manual.name,
+    )
+    return base
 
 
 def _ensure_base_iso(
@@ -214,30 +263,28 @@ def _ensure_base_iso(
     iso_version: IsoVersion | None,
     cfg: Settings,
 ) -> Path:
-    base = netboot_base_iso_path(boot_dir)
-    manual = boot_dir / PROXMOX_NETBOOT_ISO_BASENAME
-    if base.is_file():
-        return base
-    pristine = _find_pristine_proxmox_iso(iso_version, cfg) if iso_version else None
-    if pristine:
-        boot_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(pristine, base)
-        shutil.copy2(pristine, manual)
-        logger.info("Proxmox : base ISO recréée depuis %s", pristine)
-        return base
-    if manual.is_file():
-        shutil.copy2(manual, base)
-        logger.info("Proxmox : base ISO créée depuis %s", manual.name)
-        return base
-    raise FileNotFoundError(
-        "proxmox-netboot-base.iso absente — ré-extraire l’ISO Proxmox sur cette version."
-    )
-
-
-def _sync_manual_netboot_from_base(boot_dir: Path, base_iso: Path) -> None:
-    """Garantit proxmox-netboot.iso = copie d’origine (jamais injectée)."""
-    manual = boot_dir / PROXMOX_NETBOOT_ISO_BASENAME
-    shutil.copy2(base_iso, manual)
+    """
+    Recopie toujours depuis l’ISO Proxmox uploadée avant injection.
+    Évite d’utiliser une proxmox-netboot-base.iso corrompue par un ancien xorriso.
+    """
+    if not iso_version:
+        raise FileNotFoundError("Version ISO Proxmox requise pour l’injection.")
+    pristine = _find_pristine_proxmox_iso(iso_version, cfg)
+    if not pristine:
+        raise FileNotFoundError(
+            "ISO Proxmox source introuvable (iso_path ou isos/proxmox/<id>/*.iso) — "
+            "vérifiez que l’ISO est encore sur le disque."
+        )
+    xorriso = shutil.which("xorriso")
+    if xorriso:
+        ok, reason = _verify_pve_iso_structure(
+            xorriso, pristine, require_autoinstall=False
+        )
+        if not ok:
+            raise RuntimeError(
+                f"ISO source invalide ({pristine.name}) : {reason}"
+            )
+    return _sync_netboot_isos_from_pristine(boot_dir, pristine)
 
 
 def inject_proxmox_autoinstall_into_netboot_iso(
@@ -261,7 +308,6 @@ def inject_proxmox_autoinstall_into_netboot_iso(
     bdir = boot_dir or autoinstall_iso.parent
     bdir.mkdir(parents=True, exist_ok=True)
     base_iso = _ensure_base_iso(bdir, iso_version, cfg)
-    _sync_manual_netboot_from_base(bdir, base_iso)
 
     with tempfile.TemporaryDirectory(prefix="pve-ais-") as tmp:
         tmp_dir = Path(tmp)
