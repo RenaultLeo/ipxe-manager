@@ -491,14 +491,16 @@ def compile_ipxe_task(self, menu_url: str):
             "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)\n"
             "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
             "\n"
-            f"chain --autofree {menu_url} ||\n"
-            f"  echo iPXE : impossible de charger {menu_url} &&\n"
-            "  sleep 5 &&\n"
-            "  goto start\n"
+            ":retry\n"
+            f"chain --autofree {menu_url} || goto load_error\n"
+            "# Menu terminé sans boot (ne doit plus arriver pour « disque local »)\n"
+            "exit\n"
             "\n"
-            ":start\n"
+            ":load_error\n"
+            f"echo iPXE : impossible de charger {menu_url}\n"
+            "sleep 5\n"
             "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
-            f"chain --autofree {menu_url}\n"
+            "goto retry\n"
         )
         self.update_state(
             state="PROGRESS",

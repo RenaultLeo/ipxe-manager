@@ -44,7 +44,13 @@ chain --autofree {{ rc.url }} || goto start
 {% endif %}
 
 :local
-exit 0
+# Ne pas utiliser « exit » ici : le script embarqué (embed.ipxe) le voit comme un échec de chain.
+sanboot --no-describe --drive 0x80 ||
+sanboot --no-describe --drive 0x81 ||
+sanboot --no-describe --drive 0x82 ||
+echo Echec demarrage disque local — retour menu &&
+sleep 3 &&
+goto start
 
 :shell
 shell
