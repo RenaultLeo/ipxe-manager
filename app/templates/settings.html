@@ -19,11 +19,19 @@
 <div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.menu_logo_big') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'menu_logo_no_pillow' %}
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.menu_logo_no_pillow') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'tls_renew_ok' %}
+<div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle me-2"></i>{{ t('sett.tls_renew_ok') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'tls_renew_fail' %}
+<div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_fail') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'tls_renew_sudo' %}
+<div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.tls_renew_sudo') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'tls_renew_script' %}
+<div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_script') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
 
 <p class="section-label">{{ t('sett.section_server') }}</p>
 <div class="row g-3 mb-4">
-  <div class="col-lg-6">
+  <div class="col-lg-4">
     <div class="card panel-card h-100">
       <div class="card-header"><i class="bi bi-globe2 me-2 text-primary"></i>{{ t('sett.http_url') }}</div>
       <div class="card-body">
@@ -40,7 +48,7 @@
       </div>
     </div>
   </div>
-  <div class="col-lg-6">
+  <div class="col-lg-4">
     <div class="card panel-card h-100">
       <div class="card-header"><i class="bi bi-shield-lock me-2 text-warning"></i>{{ t('sett.admin_password') }}</div>
       <div class="card-body">
@@ -53,6 +61,38 @@
             <i class="bi bi-key me-1"></i>{{ t('sett.change_password') }}
           </button>
         </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card panel-card h-100 {% if tls.expires_soon %}border-warning{% endif %}">
+      <div class="card-header">
+        <i class="bi bi-shield-check me-2 text-info"></i>{{ t('sett.tls_title') }}
+        {% if tls.expires_soon %}
+        <span class="badge bg-warning text-dark ms-1">{{ t('sett.tls_days_left', n=tls.days_remaining) }}</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">{{ t('sett.tls_help') }}</p>
+        {% if tls.present and tls.not_after %}
+        <p class="small mb-1">
+          <span class="text-muted">{{ t('sett.tls_expires') }} :</span>
+          <strong>{{ tls.not_after | fmt_dt }}</strong>
+        </p>
+        <p class="small mb-3 text-muted">{{ t('sett.tls_days_left', n=tls.days_remaining) }}</p>
+        {% elif tls.present %}
+        <p class="small text-muted mb-3">{{ tls.cert_path }}</p>
+        {% else %}
+        <p class="small text-warning mb-3">{{ t('sett.tls_absent') }}</p>
+        {% endif %}
+        {% if tls.present %}
+        <form method="post" action="/settings/tls/renew"
+              onsubmit="return confirm({{ t('sett.tls_renew_confirm')|tojson }})">
+          <button type="submit" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-arrow-repeat me-1"></i>{{ t('sett.tls_renew') }}
+          </button>
+        </form>
+        {% endif %}
       </div>
     </div>
   </div>

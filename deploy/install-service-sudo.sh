@@ -11,6 +11,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CTL_SRC="${SCRIPT_DIR}/ipxe-service-ctl.sh"
 CTL_DST="/usr/local/sbin/ipxe-service-ctl"
+RENEW_SRC="${SCRIPT_DIR}/ipxe-renew-tls-cert.sh"
+RENEW_DST="/usr/local/sbin/ipxe-renew-tls-cert"
 
 if [[ ! -f "$CTL_SRC" ]]; then
   echo "Fichier introuvable : $CTL_SRC" >&2
@@ -20,10 +22,15 @@ fi
 install -m 755 "$CTL_SRC" "$CTL_DST"
 echo "  Installé : $CTL_DST"
 
+if [[ -f "$RENEW_SRC" ]]; then
+  install -m 755 "$RENEW_SRC" "$RENEW_DST"
+  echo "  Installé : $RENEW_DST"
+fi
+
 cat > /etc/sudoers.d/ipxe-manager <<'EOF'
-# iPXE Manager — extraction ISO (7z), montages, relance services (Supervision)
+# iPXE Manager — extraction ISO (7z), montages, relance services, renouvellement TLS
 Defaults:ipxe !requiretty
-ipxe ALL=(ALL) NOPASSWD: /usr/bin/7z, /usr/bin/7za, /bin/mount, /bin/umount, /usr/local/sbin/ipxe-service-ctl
+ipxe ALL=(ALL) NOPASSWD: /usr/bin/7z, /usr/bin/7za, /bin/mount, /bin/umount, /usr/local/sbin/ipxe-service-ctl, /usr/local/sbin/ipxe-renew-tls-cert
 EOF
 chmod 440 /etc/sudoers.d/ipxe-manager
 

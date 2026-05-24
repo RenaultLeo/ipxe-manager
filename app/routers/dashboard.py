@@ -9,6 +9,7 @@ from app.services.disk_info import get_disk_usage, fmt_size
 from app.models.models import OsType, IsoVersion, Upload
 from app.services.os_type_order import visible_on_dashboard
 from app.config import settings
+from app.services.tls_certificates import get_tls_cert_status
 from app.templating import templates, template_context
 
 router = APIRouter()
@@ -58,6 +59,8 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         stats, recent_uploads, active_jobs, active_jobs_list = [], [], 0, []
         os_type_count = 0
 
+    tls = get_tls_cert_status()
+
     return templates.TemplateResponse(
         "dashboard.html",
         template_context(
@@ -71,5 +74,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             timeout_h=round(settings.extract_timeout / 3600, 1),
             os_type_count=os_type_count,
             show_kill_all=is_admin(request),
+            tls=tls,
         ),
     )

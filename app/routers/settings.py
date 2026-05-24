@@ -15,6 +15,7 @@ from app.models.models import AppSetting, OsType
 from app.services.os_type_order import sort_os_types_for_ui
 from app.services.menu_generator import MENU_LOGO_UPLOAD_NAME
 from app.config import settings as app_settings, persist_server_base_url, resolve_server_base_url
+from app.services.tls_certificates import get_tls_cert_status, renew_tls_certificate
 from app.templating import templates, template_context
 from app.services.autoconfig_types import all_config_types_for_ui, config_type_labels as _config_type_labels
 from app.services.slugify import slugify
@@ -130,9 +131,10 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
         "menu_logo_filename": MENU_LOGO_UPLOAD_NAME,
     }
     os_types = sort_os_types_for_ui(db.query(OsType).all())
+    tls = get_tls_cert_status()
     return templates.TemplateResponse(
         "settings.html",
-        template_context(request, current=current, os_types=os_types),
+        template_context(request, current=current, os_types=os_types, tls=tls),
     )
 
 
@@ -297,6 +299,22 @@ async def update_server_url(
 
     regenerate_menus_task.delay()
     return RedirectResponse("/settings", status_code=302)
+
+
+@router.post("/tls/renew")
+async def renew_tls_cert(request: Request, db: Session = Depends(get_db)):
+    redir = _auth(request)
+    if redir:
+        return redir
+    base_url = resolve_server_base_url(db)
+    ok, detail = renew_tls_certificate(base_url)
+    if ok:
+        return RedirectResponse("/settings?msg=tls_renew_ok", status_code=302)
+    if detail == "sudo_denied":
+        return RedirectResponse("/settings?msg=tls_renew_sudo", status_code=302)
+    if detail == "script_missing":
+        return RedirectResponse("/settings?msg=tls_renew_script", status_code=302)
+    return RedirectResponse("/settings?msg=tls_renew_fail", status_code=302)
 
 
 @router.post("/password")
