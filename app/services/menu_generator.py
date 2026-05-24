@@ -920,24 +920,31 @@ def _ensure_proxmox_netboot_iso_published(
     be: BootEntry | None,
     cfg: Settings,
 ) -> None:
-    """Crée proxmox-netboot.iso sous boot/ si l’ISO est encore dans isos-ipxe mais pas encore publiée."""
+    """Crée proxmox-netboot.iso sous netboot/ si absent (ne touche pas à l’ISO autoinstall)."""
     if not iso_version or not be:
         return
-    from app.services.iso_extractor import PROXMOX_NETBOOT_ISO_BASENAME, publish_proxmox_netboot_iso
+    from app.services.iso_extractor import (
+        PROXMOX_NETBOOT_ISO_BASENAME,
+        migrate_legacy_proxmox_netboot_isos,
+        publish_proxmox_netboot_iso,
+    )
 
     seg = _boot_os_version_segment(be, "proxmox")
     if not seg:
         return
     dest = cfg.boot_dir / "proxmox" / seg
-    netboot = dest / PROXMOX_NETBOOT_ISO_BASENAME
-    if netboot.is_file():
+    netboot_dir = migrate_legacy_proxmox_netboot_isos(dest)
+    manual = netboot_dir / PROXMOX_NETBOOT_ISO_BASENAME
+    if manual.is_file():
         return
     raw = (iso_version.iso_path or "").strip()
     if raw:
         try:
             p = Path(raw)
             if p.is_file():
-                publish_proxmox_netboot_iso(p, dest)
+                publish_proxmox_netboot_iso(
+                    p, dest, invalidate_autoinstall=False
+                )
                 return
         except OSError:
             pass
@@ -945,7 +952,9 @@ def _ensure_proxmox_netboot_iso_published(
     if pack.is_dir():
         for p in sorted(pack.glob("*.iso")):
             if p.is_file():
-                publish_proxmox_netboot_iso(p, dest)
+                publish_proxmox_netboot_iso(
+                    p, dest, invalidate_autoinstall=False
+                )
                 return
 
 

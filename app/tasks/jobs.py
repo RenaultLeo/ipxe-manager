@@ -171,6 +171,21 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
                         version.id,
                     )
 
+        if getattr(version, "active_autoconfig_id", None) and version.os_type.slug == "proxmox":
+            ac = db.query(AutoConfig).get(version.active_autoconfig_id)
+            if ac and ac.config_type == "proxmox-answer":
+                try:
+                    from app.services.proxmox_autoinstall import (
+                        inject_active_proxmox_autoinstall,
+                    )
+
+                    inject_active_proxmox_autoinstall(version, ac)
+                except Exception:
+                    logger.exception(
+                        "Ré-injection autoinstall après extraction (version %s)",
+                        version.id,
+                    )
+
         # Regenerate menus so this version appears immediately
         from app.services.menu_generator import regenerate_all
         regenerate_all(db)

@@ -1232,10 +1232,15 @@ def migrate_legacy_proxmox_netboot_isos(extract_dest: Path) -> Path:
     return netboot
 
 
-def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
+def publish_proxmox_netboot_iso(
+    iso: Path,
+    dest: Path,
+    *,
+    invalidate_autoinstall: bool = True,
+) -> None:
     """
     Copie l’ISO uploadée vers ``netboot/proxmox-netboot.iso``.
-    L’ISO autoinstall est recréée à la prochaine injection.
+    ``invalidate_autoinstall`` : True à l’extraction (nouvelle ISO source), False sinon.
     """
     if not iso.is_file():
         return
@@ -1244,8 +1249,13 @@ def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
     autoinstall = netboot / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
     try:
         shutil.copy2(iso, manual)
-        if autoinstall.is_file():
+        if invalidate_autoinstall and autoinstall.is_file():
             autoinstall.unlink()
+            logger.info(
+                "Proxmox : %s supprimé (nouvelle %s)",
+                autoinstall.name,
+                manual.name,
+            )
         logger.info(
             "Proxmox : %s publié sous %s/%s",
             manual.name,
