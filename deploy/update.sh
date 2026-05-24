@@ -35,9 +35,14 @@ cd "$APP_DIR"
 echo "==> Redémarrage des services applicatifs…"
 systemctl restart ipxe-manager ipxe-celery tftpd-hpa
 
-echo "==> Nginx — alignement sur deploy/nginx.conf…"
+echo "==> Nginx — alignement config…"
 if [ -f "$APP_DIR/deploy/nginx.conf" ]; then
-  cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ipxe-manager
+  NGINX_SRC="$APP_DIR/deploy/nginx.conf"
+  if [ -f /srv/ipxe/ssl/server.crt ] && [ -f "$APP_DIR/deploy/nginx-https.conf" ]; then
+    NGINX_SRC="$APP_DIR/deploy/nginx-https.conf"
+    echo "  Certificat TLS détecté — nginx-https.conf"
+  fi
+  cp "$NGINX_SRC" /etc/nginx/sites-available/ipxe-manager
   if nginx -t 2>/dev/null; then
     systemctl reload nginx && echo "  Nginx rechargé."
   else

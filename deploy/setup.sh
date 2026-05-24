@@ -57,6 +57,7 @@ mkdir -p \
     "$DATA_DIR/http/configs" \
     "$DATA_DIR/isos" \
     "$DATA_DIR/build" \
+    "$DATA_DIR/ssl" \
     "$LOG_DIR"
 
 # Permissions publiques sur http/ pour que Nginx puisse servir les fichiers
@@ -233,7 +234,12 @@ if [ ! -f "$APP_DIR/deploy/nginx.conf" ]; then
     echo "ERREUR : $APP_DIR/deploy/nginx.conf introuvable." >&2
     exit 1
 fi
-cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ipxe-manager
+NGINX_SRC="$APP_DIR/deploy/nginx.conf"
+if [ -f "$DATA_DIR/ssl/server.crt" ] && [ -f "$APP_DIR/deploy/nginx-https.conf" ]; then
+    NGINX_SRC="$APP_DIR/deploy/nginx-https.conf"
+    echo "  Certificat TLS détecté — déploiement nginx-https.conf"
+fi
+cp "$NGINX_SRC" /etc/nginx/sites-available/ipxe-manager
 
 ln -sf /etc/nginx/sites-available/ipxe-manager /etc/nginx/sites-enabled/ipxe-manager
 rm -f /etc/nginx/sites-enabled/default
@@ -389,19 +395,42 @@ echo "======================================================"
 echo "  Installation terminée !"
 echo "======================================================"
 echo ""
-echo "  Interface web  : http://$SERVER_IP/"
+WEB_SCHEME="http"
+if [ -f "$DATA_DIR/ssl/server.crt" ]; then
+    WEB_SCHEME="https"
+fi
+echo "  Interface web  : ${WEB_SCHEME}://$SERVER_IP/"
 echo "  Login          : admin  /  Mot de passe : admin"
-echo "  Menu iPXE HTTP : http://$SERVER_IP/menus/menu.ipxe"
+echo "  Menu iPXE HTTP : ${WEB_SCHEME}://$SERVER_IP/menus/menu.ipxe"
 echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
 echo "  Samba share    : \\\\$SERVER_IP\\boot"
 echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (optionnel — UBUNTU_NFS_ENABLED=true dans .env)"
 echo ""
 echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
 echo "  FIRMWARE  : Compiler un firmware custom avec embed depuis /firmware"
+echo "  HTTPS     : sudo bash $APP_DIR/deploy/enable-https.sh $SERVER_IP"
+echo "              (rollback : deploy/disable-https.sh)"
 echo ""
 echo "  Mise à jour :"
 echo "    sudo bash $APP_DIR/deploy/update.sh"
-echo "    (ou : git pull, pip install -r requirements.txt, seed_db.py, restart services)"
+echo ""
+
+# Outils critiques pour extractions / TLS / Proxmox
+for bin in xorriso 7z openssl nginx redis-cli; do
+    if command -v "$bin" >/dev/null 2>&1; then
+        echo "  [OK] $bin"
+    else
+        echo "  [!!] $bin — absent"
+    fi
+done
+if command -v proxmox-auto-install-assistant >/dev/null 2>&1; then
+    echo "  [OK] proxmox-auto-install-assistant"
+else
+    echo "  [--] proxmox-auto-install-assistant — optionnel (Proxmox autoinstall)"
+fi
+if [ -f "$DATA_DIR/ssl/ca.crt" ]; then
+    echo "  [OK] TLS CA $DATA_DIR/ssl/ca.crt"
+fi
 echo ""
 
 # Statut de chaque service
