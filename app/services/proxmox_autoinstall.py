@@ -1,9 +1,9 @@
 """
 Proxmox VE — answer.toml et injection dans proxmox-netboot.iso.
 
-- Config : ``configs/proxmox/<version>/answer.toml`` + copie à la racine de ``boot/proxmox/<version>/``.
-- Injection : xorriso ouvre ``netboot/proxmox-netboot.iso``, place ``/answer.toml`` et
-  ``/auto-installer-mode.toml``, produit ``proxmox-netboot-autoinstall.iso``.
+- Config : ``configs/proxmox/…/answer.toml`` + copie ``boot/proxmox/<version>/answer.toml``.
+- ISO autoinstall : copie de ``proxmox-netboot.iso`` + ``answer.toml`` et ``auto-installer-mode.toml``
+  à la racine (assistant Proxmox ou xorriso ; repli HTTP si xorriso n’embarque pas l’answer).
 """
 from __future__ import annotations
 
@@ -16,11 +16,12 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import resolve_server_base_url, settings
 from app.models.models import AutoConfig, IsoVersion, Upload
 from app.services.autoconfig_publish import (
     PROXMOX_ANSWER_BASENAME,
     proxmox_boot_version_dir,
+    proxmox_boot_version_segment,
     publish_proxmox_answer_from_autoconfig,
 )
 from app.services.iso_extractor import (
@@ -31,7 +32,6 @@ from app.services.iso_extractor import (
 
 logger = logging.getLogger(__name__)
 
-# Format attendu par proxmox-fetch-answer (mode « answer inclus dans l’ISO »).
 _AUTOINSTALLER_MODE_ISO = 'mode = "iso"\n'
 
 
@@ -40,7 +40,6 @@ def _netboot_dir(iso_version: IsoVersion) -> Path:
 
 
 def netboot_iso_path(iso_version: IsoVersion, be=None, cfg=None) -> Path | None:
-    """``proxmox-netboot.iso`` (installation manuelle, non modifiée à l’injection)."""
     p = _netboot_dir(iso_version) / PROXMOX_NETBOOT_ISO_BASENAME
     return p if p.is_file() else None
 
@@ -50,7 +49,6 @@ def netboot_autoinstall_iso_path(iso_version: IsoVersion, be=None, cfg=None) -> 
 
 
 def _resolve_answer_toml(iso_version: IsoVersion, cfg: AutoConfig) -> Path:
-    """Fichier answer à injecter : configs/ en priorité, sinon copie sous boot/."""
     rel = (cfg.file_path or "").strip().lstrip("/")
     if rel:
         p = Path(settings.http_root) / rel.replace("\\", "/")
@@ -59,8 +57,22 @@ def _resolve_answer_toml(iso_version: IsoVersion, cfg: AutoConfig) -> Path:
     boot_copy = proxmox_boot_version_dir(iso_version) / PROXMOX_ANSWER_BASENAME
     if boot_copy.is_file():
         return boot_copy
-    raise FileNotFoundError(
-        f"answer.toml introuvable (configs ou {boot_copy})"
+    raise FileNotFoundError(f"answer.toml introuvable (configs ou {boot_copy})")
+
+
+def _answer_http_url(iso_version: IsoVersion) -> str:
+    seg = proxmox_boot_version_segment(iso_version)
+    rel = f"boot/proxmox/{seg}/{PROXMOX_ANSWER_BASENAME}"
+    return f"{resolve_server_base_url().rstrip('/')}/{rel}"
+
+
+def _mode_http_toml(url: str) -> str:
+    return (
+        'mode = "http"\n'
+        'partition_label = "proxmox-ais"\n'
+        "\n"
+        "[http]\n"
+        f'url = "{url}"\n'
     )
 
 
@@ -68,30 +80,101 @@ def _xorriso_ok(proc: subprocess.CompletedProcess[str]) -> bool:
     return proc.returncode in (0, 1, 5, 32)
 
 
-def _xorriso_root_file_exists(xorriso: str, iso: Path, iso_path: str) -> bool:
-    proc = subprocess.run(
-        [xorriso, "-indev", str(iso), "-ls", iso_path],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if not _xorriso_ok(proc):
-        return False
-    return bool((proc.stdout or "").strip())
-
-
-def _verify_autoinstall_iso(xorriso: str, iso: Path, src_size: int) -> None:
-    out_size = iso.stat().st_size
-    if out_size < src_size * 0.9:
-        raise RuntimeError(
-            f"ISO autoinstall tronquée ({out_size} o, source {src_size} o)"
+def _iso_has_root_file(xorriso: str, iso: Path, basename: str) -> bool:
+    """Détecte un fichier à la racine ISO (-find, puis extraction osirrox)."""
+    for name in (basename, basename.upper()):
+        proc = subprocess.run(
+            [xorriso, "-indev", str(iso), "-find", "/", "-name", name],
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
-    for path in ("/answer.toml", "/auto-installer-mode.toml"):
-        if not _xorriso_root_file_exists(xorriso, iso, path):
-            raise RuntimeError(
-                f"{path.strip('/')} absent à la racine de l’ISO après injection — "
-                "installez proxmox-auto-install-assistant ou vérifiez xorriso."
+        if _xorriso_ok(proc) and name.lower() in (proc.stdout or "").lower():
+            return True
+
+    with tempfile.TemporaryDirectory(prefix="pve-ls-") as tmp:
+        dest = Path(tmp)
+        for iso_path in (f"/{basename}", f"/{basename.upper()}"):
+            subprocess.run(
+                [
+                    xorriso,
+                    "-osirrox",
+                    "on",
+                    "-indev",
+                    str(iso),
+                    "-extract",
+                    iso_path,
+                    str(dest),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
+            if (dest / basename).is_file():
+                return True
+            for hit in dest.rglob(basename):
+                if hit.is_file():
+                    return True
+            for hit in dest.iterdir():
+                if hit.is_file() and hit.name.lower() == basename.lower():
+                    return True
+    return False
+
+
+def _verify_iso_size(iso: Path, src_size: int) -> None:
+    if iso.stat().st_size < src_size * 0.9:
+        raise RuntimeError(
+            f"ISO autoinstall tronquée ({iso.stat().st_size} o, source {src_size} o)"
+        )
+
+
+def _verify_embedded_iso(xorriso: str, iso: Path, src_size: int) -> None:
+    _verify_iso_size(iso, src_size)
+    if not _iso_has_root_file(xorriso, iso, "answer.toml"):
+        raise RuntimeError("answer.toml introuvable dans l’ISO après injection")
+    if not _iso_has_root_file(xorriso, iso, "auto-installer-mode.toml"):
+        raise RuntimeError("auto-installer-mode.toml introuvable dans l’ISO")
+
+
+def _verify_http_iso(xorriso: str, iso: Path, src_size: int) -> None:
+    _verify_iso_size(iso, src_size)
+    if not _iso_has_root_file(xorriso, iso, "auto-installer-mode.toml"):
+        raise RuntimeError("auto-installer-mode.toml introuvable dans l’ISO")
+
+
+def _xorriso_map_files(
+    xorriso: str,
+    netboot_iso: Path,
+    out_iso: Path,
+    maps: list[tuple[Path, str]],
+) -> None:
+    """
+    Mode « modifying » : indev ≠ outdev, outdev = fichier neuf (pas de copie cp avant).
+    """
+    out_iso.parent.mkdir(parents=True, exist_ok=True)
+    if out_iso.exists():
+        out_iso.unlink()
+
+    cmd = [
+        xorriso,
+        "-indev",
+        str(netboot_iso),
+        "-outdev",
+        str(out_iso),
+        "-boot_image",
+        "any",
+        "replay",
+    ]
+    for local_path, iso_path in maps:
+        cmd.extend(["-map", str(local_path), iso_path])
+    cmd.append("-commit")
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    if not _xorriso_ok(proc):
+        blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
+        raise RuntimeError(
+            f"Échec xorriso : {blob[-2000:] if blob else proc.returncode}"
+        )
 
 
 def _inject_with_proxmox_assistant(
@@ -99,12 +182,13 @@ def _inject_with_proxmox_assistant(
     answer_toml: Path,
     out_iso: Path,
 ) -> bool:
-    """Outil officiel Proxmox (recommandé) : prepare-iso --fetch-from iso."""
     assistant = shutil.which("proxmox-auto-install-assistant")
     if not assistant:
         return False
     tmp_out = out_iso.with_name(f".{out_iso.name}.assistant")
     try:
+        if tmp_out.exists():
+            tmp_out.unlink()
         proc = subprocess.run(
             [
                 assistant,
@@ -124,113 +208,142 @@ def _inject_with_proxmox_assistant(
         if proc.returncode != 0 or not tmp_out.is_file():
             blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
             logger.warning(
-                "proxmox-auto-install-assistant prepare-iso échoué : %s",
+                "proxmox-auto-install-assistant : %s",
                 blob[-2000:] if blob else proc.returncode,
             )
             tmp_out.unlink(missing_ok=True)
             return False
         os.replace(tmp_out, out_iso)
-        logger.info(
-            "Proxmox : %s préparé via proxmox-auto-install-assistant",
-            out_iso.name,
-        )
+        logger.info("Proxmox : %s via proxmox-auto-install-assistant", out_iso.name)
         return True
     except Exception:
-        logger.exception("proxmox-auto-install-assistant prepare-iso")
+        logger.exception("proxmox-auto-install-assistant")
         tmp_out.unlink(missing_ok=True)
         return False
 
 
-def _inject_with_xorriso(
+def _inject_embedded_xorriso(
+    xorriso: str,
     netboot_iso: Path,
     answer_toml: Path,
     out_iso: Path,
 ) -> None:
-    """Copie l’ISO puis xorriso -map (indev=source, outdev=copie préremplie)."""
-    xorriso = shutil.which("xorriso")
-    if not xorriso:
-        raise RuntimeError(
-            "xorriso introuvable — apt install xorriso "
-            "(ou proxmox-auto-install-assistant pour l’injection officielle)."
+    with tempfile.TemporaryDirectory(prefix="pve-inject-") as tmp:
+        mode_file = Path(tmp) / "auto-installer-mode.toml"
+        mode_file.write_text(_AUTOINSTALLER_MODE_ISO, encoding="utf-8")
+        _xorriso_map_files(
+            xorriso,
+            netboot_iso,
+            out_iso,
+            [
+                (mode_file, "/auto-installer-mode.toml"),
+                (answer_toml, "/answer.toml"),
+            ],
         )
 
-    src_size = netboot_iso.stat().st_size
-    tmp_out = out_iso.with_name(f".{out_iso.name}.injecting")
-    try:
-        shutil.copy2(netboot_iso, tmp_out)
-        with tempfile.TemporaryDirectory(prefix="pve-inject-") as tmp:
-            mode_file = Path(tmp) / "auto-installer-mode.toml"
-            mode_file.write_text(_AUTOINSTALLER_MODE_ISO, encoding="utf-8")
-            proc = subprocess.run(
-                [
-                    xorriso,
-                    "-indev",
-                    str(netboot_iso),
-                    "-outdev",
-                    str(tmp_out),
-                    "-boot_image",
-                    "any",
-                    "replay",
-                    "-map",
-                    str(mode_file),
-                    "/auto-installer-mode.toml",
-                    "-map",
-                    str(answer_toml),
-                    "/answer.toml",
-                    "-commit",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-        if not _xorriso_ok(proc):
-            blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
-            raise RuntimeError(
-                f"Échec xorriso ({netboot_iso.name} → {out_iso.name}) : "
-                f"{blob[-1500:] if blob else proc.returncode}"
-            )
-        _verify_autoinstall_iso(xorriso, tmp_out, src_size)
-        os.replace(tmp_out, out_iso)
-    except Exception:
-        tmp_out.unlink(missing_ok=True)
-        raise
+
+def _inject_http_xorriso(
+    xorriso: str,
+    netboot_iso: Path,
+    answer_url: str,
+    out_iso: Path,
+) -> None:
+    """answer.toml reste sur HTTP (boot/…) ; seul auto-installer-mode.toml est dans l’ISO."""
+    with tempfile.TemporaryDirectory(prefix="pve-inject-") as tmp:
+        mode_file = Path(tmp) / "auto-installer-mode.toml"
+        mode_file.write_text(_mode_http_toml(answer_url), encoding="utf-8")
+        _xorriso_map_files(
+            xorriso,
+            netboot_iso,
+            out_iso,
+            [(mode_file, "/auto-installer-mode.toml")],
+        )
 
 
 def inject_answer_into_netboot_iso(
     netboot_iso: Path,
     answer_toml: Path,
     out_iso: Path,
+    *,
+    iso_version: IsoVersion | None = None,
 ) -> None:
-    """Copie proxmox-netboot.iso → autoinstall, puis injecte answer.toml + mode ISO."""
     if not netboot_iso.is_file():
         raise FileNotFoundError(f"proxmox-netboot.iso absent : {netboot_iso}")
     if not answer_toml.is_file():
         raise FileNotFoundError(f"answer.toml absent : {answer_toml}")
 
     out_iso.parent.mkdir(parents=True, exist_ok=True)
-    if _inject_with_proxmox_assistant(netboot_iso, answer_toml, out_iso):
-        xorriso = shutil.which("xorriso")
-        if xorriso:
-            _verify_autoinstall_iso(
-                xorriso, out_iso, netboot_iso.stat().st_size
-            )
-        return
+    src_size = netboot_iso.stat().st_size
+    xorriso = shutil.which("xorriso")
+    errors: list[str] = []
 
-    _inject_with_xorriso(netboot_iso, answer_toml, out_iso)
-    logger.info(
-        "Proxmox : %s créé (%s o) depuis %s (xorriso, answer=%s)",
-        out_iso.name,
-        out_iso.stat().st_size,
-        netboot_iso.name,
-        answer_toml.name,
-    )
+    if _inject_with_proxmox_assistant(netboot_iso, answer_toml, out_iso):
+        if xorriso:
+            try:
+                _verify_embedded_iso(xorriso, out_iso, src_size)
+                return
+            except RuntimeError as exc:
+                errors.append(f"assistant+verify: {exc}")
+                out_iso.unlink(missing_ok=True)
+        else:
+            return
+
+    if not xorriso:
+        raise RuntimeError(
+            "xorriso introuvable — apt install xorriso "
+            "(recommandé : proxmox-auto-install-assistant)"
+        )
+
+    tmp_out = out_iso.with_name(f".{out_iso.name}.injecting")
+    try:
+        if tmp_out.exists():
+            tmp_out.unlink()
+        _inject_embedded_xorriso(xorriso, netboot_iso, answer_toml, tmp_out)
+        _verify_embedded_iso(xorriso, tmp_out, src_size)
+        os.replace(tmp_out, out_iso)
+        logger.info(
+            "Proxmox : %s (answer embarqué, xorriso) — %s o",
+            out_iso.name,
+            out_iso.stat().st_size,
+        )
+        return
+    except Exception as exc:
+        errors.append(f"xorriso/iso: {exc}")
+        tmp_out.unlink(missing_ok=True)
+
+    if iso_version is None:
+        raise RuntimeError(
+            "Injection ISO impossible : " + " | ".join(errors)
+        )
+
+    answer_url = _answer_http_url(iso_version)
+    try:
+        if tmp_out.exists():
+            tmp_out.unlink()
+        _inject_http_xorriso(xorriso, netboot_iso, answer_url, tmp_out)
+        _verify_http_iso(xorriso, tmp_out, src_size)
+        os.replace(tmp_out, out_iso)
+        logger.info(
+            "Proxmox : %s (fetch HTTP %s) — %s o",
+            out_iso.name,
+            answer_url,
+            out_iso.stat().st_size,
+        )
+        return
+    except Exception as exc:
+        errors.append(f"xorriso/http: {exc}")
+        tmp_out.unlink(missing_ok=True)
+        raise RuntimeError(
+            "Injection dans proxmox-netboot-autoinstall.iso impossible. "
+            + " | ".join(errors)
+            + f" — installez proxmox-auto-install-assistant ou vérifiez que {answer_url} est joignable."
+        ) from exc
 
 
 def inject_active_proxmox_autoinstall(
     iso_version: IsoVersion,
     cfg: AutoConfig,
 ) -> None:
-    """Injecte la config active dans proxmox-netboot-autoinstall.iso."""
     netboot = netboot_iso_path(iso_version)
     if not netboot:
         raise FileNotFoundError(
@@ -238,7 +351,9 @@ def inject_active_proxmox_autoinstall(
         )
     answer = _resolve_answer_toml(iso_version, cfg)
     out = netboot_autoinstall_iso_path(iso_version)
-    inject_answer_into_netboot_iso(netboot, answer, out)
+    inject_answer_into_netboot_iso(
+        netboot, answer, out, iso_version=iso_version
+    )
 
 
 def activate_proxmox_config(db: Session, version: IsoVersion, cfg: AutoConfig) -> None:
