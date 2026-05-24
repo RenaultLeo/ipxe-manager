@@ -206,9 +206,9 @@ def _verify_pve_iso_structure(
 
 
 def _verify_autoinstall_files_in_iso(xorriso: str, iso: Path) -> tuple[bool, str]:
-    if not _xorriso_path_exists(xorriso, iso, "/answer.toml"):
+    if not _xorriso_find_name(xorriso, iso, "answer.toml"):
         return False, "answer.toml absent à la racine de l’ISO"
-    if not _xorriso_path_exists(xorriso, iso, "/auto-installer-mode.toml"):
+    if not _xorriso_find_name(xorriso, iso, "auto-installer-mode.toml"):
         return False, "auto-installer-mode.toml absent à la racine de l’ISO"
     return True, ""
 
@@ -221,6 +221,7 @@ def _inject_with_xorriso(
     answer_copy: Path,
 ) -> tuple[bool, str]:
     """``source_iso`` = ISO uploadée (indev) ; pas la copie netboot (déjà validée par recopie)."""
+    # -map (pas -update) : ajoute/remplace des fichiers à la racine de l’ISO.
     cmd = [
         xorriso,
         "-indev",
@@ -230,10 +231,10 @@ def _inject_with_xorriso(
         "-boot_image",
         "any",
         "replay",
-        "-update",
+        "-map",
         str(mode_file),
         "/auto-installer-mode.toml",
-        "-update",
+        "-map",
         str(answer_copy),
         "/answer.toml",
         "-commit",
@@ -249,7 +250,16 @@ def _inject_with_xorriso(
         return False, blob[-2000:] if blob else f"code {proc.returncode}"
     if not out_iso.is_file() or out_iso.stat().st_size < 1024:
         return False, "xorriso n’a pas produit d’ISO de sortie"
-    return _verify_autoinstall_files_in_iso(xorriso, out_iso)
+    ok, reason = _verify_autoinstall_files_in_iso(xorriso, out_iso)
+    if not ok:
+        blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
+        logger.warning(
+            "Proxmox autoinstall : vérif post-xorriso %s : %s ; xorriso: %s",
+            out_iso.name,
+            reason,
+            blob[:500],
+        )
+    return ok, reason
 
 
 _MIN_PVE_ISO_BYTES = 200 * 1024 * 1024

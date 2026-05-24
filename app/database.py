@@ -1,14 +1,33 @@
 import logging
-from sqlalchemy import create_engine, text
+import time
+
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_sqlite = "sqlite" in (settings.database_url or "")
+
 engine = create_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    connect_args=(
+        {"check_same_thread": False, "timeout": 30} if _sqlite else {}
+    ),
 )
+
+
+@event.listens_for(engine, "connect")
+def _sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    if not _sqlite:
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -23,6 +42,39 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def update_upload_status(
+    upload_id: int,
+    status: str,
+    *,
+    error_msg: str | None = None,
+    task_id: str | None = None,
+    max_attempts: int = 8,
+) -> None:
+    """Mise à jour upload avec retry (évite « database is locked » pendant tâches Celery longues)."""
+    for attempt in range(max_attempts):
+        db = SessionLocal()
+        try:
+            from app.models.models import Upload
+
+            row = db.query(Upload).filter(Upload.id == upload_id).first()
+            if not row:
+                return
+            row.status = status
+            if error_msg is not None:
+                row.error_msg = error_msg[:4000]
+            if task_id is not None:
+                row.task_id = task_id
+            db.commit()
+            return
+        except OperationalError as exc:
+            db.rollback()
+            if "locked" not in str(exc).lower() or attempt + 1 >= max_attempts:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+        finally:
+            db.close()
 
 
 def init_db():

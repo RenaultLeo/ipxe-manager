@@ -386,17 +386,16 @@ def inject_proxmox_autoinstall_task(
     """Injecte answer.toml dans proxmox-netboot-autoinstall.iso puis régénère les menus iPXE."""
     from sqlalchemy.orm import joinedload
 
+    from app.database import update_upload_status
     from app.services.menu_generator import regenerate_all
     from app.services.proxmox_autoinstall import inject_active_proxmox_autoinstall
 
+    update_upload_status(
+        upload_id, "processing", task_id=self.request.id
+    )
+
     db = SessionLocal()
     try:
-        upload: Upload | None = db.query(Upload).get(upload_id)
-        if upload:
-            upload.status = "processing"
-            upload.task_id = self.request.id
-            db.commit()
-
         version = (
             db.query(IsoVersion)
             .options(
@@ -411,33 +410,36 @@ def inject_proxmox_autoinstall_task(
             raise ValueError(
                 f"Version {iso_version_id} ou config {config_id} introuvable"
             )
-
-        inject_active_proxmox_autoinstall(version, cfg)
-        regenerate_all(db)
-
-        if upload:
-            upload.status = "done"
-            db.commit()
-        logger.info(
-            "Proxmox autoinstall injecté — version %s config %s",
-            iso_version_id,
-            config_id,
-        )
-        return {"status": "ok", "iso_version_id": iso_version_id, "config_id": config_id}
-    except Exception as exc:
-        logger.exception("inject_proxmox_autoinstall_task failed")
-        db.rollback()
-        try:
-            upload = db.query(Upload).get(upload_id)
-            if upload:
-                upload.status = "error"
-                upload.error_msg = str(exc)[:4000]
-                db.commit()
-        except Exception:
-            pass
-        raise self.retry(exc=exc, countdown=0, max_retries=0)
+        # Charger les relations avant de fermer la session (injection xorriso = longue).
+        _ = version.boot_entry
+        _ = version.os_type
     finally:
         db.close()
+
+    try:
+        inject_active_proxmox_autoinstall(version, cfg)
+    except Exception as exc:
+        logger.exception("inject_proxmox_autoinstall_task failed")
+        try:
+            update_upload_status(upload_id, "error", error_msg=str(exc))
+        except Exception:
+            logger.exception("Impossible d'enregistrer l'erreur upload %s", upload_id)
+        raise self.retry(exc=exc, countdown=0, max_retries=0)
+
+    db = SessionLocal()
+    try:
+        regenerate_all(db)
+        db.commit()
+    finally:
+        db.close()
+
+    update_upload_status(upload_id, "done")
+    logger.info(
+        "Proxmox autoinstall injecté — version %s config %s",
+        iso_version_id,
+        config_id,
+    )
+    return {"status": "ok", "iso_version_id": iso_version_id, "config_id": config_id}
 
 
 @celery.task(bind=True, name="regenerate_winpe_scripts", soft_time_limit=900, time_limit=1200)
