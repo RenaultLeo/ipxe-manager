@@ -138,12 +138,14 @@ class Settings(BaseSettings):
     ubuntu_nfs_host: str = ""  # Vide : hôte dérivé de SERVER_BASE_URL puis IPv4 locale
     ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Passé en nfsopts= (casper), pas après une virgule dans nfsroot
     ubuntu_ramdisk_size: int = 1_500_000  # Paramètre noyau ramdisk_size= (autoinstall HTTP)
-    # Proxmox VE installateur réseau (doc / iPXE : souvent 16777216 = 16 Go en KiB)
+    # Proxmox VE : ramdisk_size= en KiB (dual_initrd / install complet : ~16 GiB doc PVE)
     proxmox_ramdisk_size: int = 16_777_216
+    # Mode low_ram (isourl= + wget en initramfs) : ~3 GiB suffit souvent pour la phase iPXE
+    proxmox_low_ram_ramdisk_size: int = 3_145_728
     # vga=791 video=vesafb (communauté PXE / pve-auto-install-pxe) ; désactiver si headless pur
     proxmox_vga_params: bool = True
-    # auto | iso_http | single — voir README Proxmox (extracted_http retiré : url= boot/ ne marche pas)
-    proxmox_boot_delivery: str = "auto"
+    # auto | low_ram | iso_http | dual_initrd | single — voir README Proxmox
+    proxmox_boot_delivery: str = "low_ram"
 
     # WinPE : partage Samba (nom du share, chemin = http/boot) et index image dans boot.wim
     winpe_smb_share: str = "boot"

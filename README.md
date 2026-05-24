@@ -163,18 +163,19 @@ Tu crées une **version** pour un type d’OS (label lisible : « 22.04 LTS », 
 
 Pour **Windows** et **WinPE**, l’extraction est **complète** : détection de **BCD**, **boot.sdi** et **boot.wim** (priorité `sources/` / `boot/`), menus **wimboot** (`http://…/wimboot` installé par `setup.sh`). Tu peux **remplacer uniquement `boot.wim`** depuis la fiche version. Config auto : **`autounattend.xml`** / **`unattend.xml`**.
 
-Pour **Proxmox VE**, l’ISO est extraite **en entier** sous `boot/proxmox/<version>/` ; noyau **`linux26`** + **`initrd.img`**. Trois modes (`.env` **`PROXMOX_BOOT_DELIVERY`** , défaut **`auto`**) :
+Pour **Proxmox VE**, l’ISO est extraite **en entier** sous `boot/proxmox/<version>/` ; noyau **`linux26`** + **`initrd.img`**. Modes (`.env` **`PROXMOX_BOOT_DELIVERY`**, défaut **`low_ram`**) :
 
-| Mode | Quand | iPXE généré |
-|------|--------|-------------|
-| **`auto` / `iso_http`** | ISO accessible en HTTP | `linux26` + `initrd.img` **(gzip)** + **2e initrd** `… proxmox.iso` |
+| Mode | RAM cible | iPXE généré |
+|------|-----------|-------------|
+| **`low_ram`** (défaut) | **4 GiB+** (test VM) | `linux26` + **`initrd-netboot.img`** + **`isourl=http://…/proxmox-netboot.iso`** (ISO wget en initramfs, pas de 2e initrd iPXE) |
+| **`dual_initrd` / `iso_http` / `auto`** | **~6 GiB+** recommandés | `initrd.img` + **2e initrd** `proxmox-netboot.iso` alias `proxmox.iso` |
 | **`single`** | Initrd custom ([pve-iso-2-pxe](https://github.com/morph027/pve-iso-2-pxe)) | Un seul `initrd` |
 
-À l’**extraction**, l’ISO est aussi publiée en **`boot/proxmox/<version>/proxmox-netboot.iso`** (hardlink ou copie) : le boot PXE continue de fonctionner même si vous **purgez** l’ISO sous `isos-ipxe/`. Le paramètre noyau **`url=`** vers `boot/` **ne fonctionne pas** (boucle `/dev/sr0`) — ne plus l’utiliser.
+À l’**extraction** : **`proxmox-netboot.iso`** (hardlink/copie) et **`initrd-netboot.img`** (initrd patché, scripts [ProxmoxPxeBoot](https://github.com/tohara/ProxmoxPxeBoot)) — nécessite **`bash`**, **`unsquashfs`**, **`zstd`** (si initrd zstd), idéalement **`bsdtar`** sur le serveur. Le paramètre noyau **`url=`** vers `boot/` **ne fonctionne pas** (boucle `/dev/sr0`).
 
-Après mise à jour : **ré-extraire** une fois l’ISO Proxmox (pour créer `proxmox-netboot.iso`), puis **régénérer les menus**. Le menu doit contenir **sans** `url=` sur la ligne kernel, et une ligne `initrd http://…/proxmox-netboot.iso proxmox.iso` (ou l’ISO dans `isos-ipxe`).
+Après mise à jour : **ré-extraire** l’ISO Proxmox, puis **régénérer les menus**. En **`low_ram`**, le menu doit montrer **`initrd …/initrd-netboot.img`** et **`isourl=…`** sur la ligne kernel (pas de 2e `initrd proxmox.iso`).
 
-Paramètres noyau ajoutés : **`vga=791 video=vesafb:ywrap,mtrr`** (désactiver : `PROXMOX_VGA_PARAMS=false`), **`ramdisk_size=16777216`**, **`rw quiet splash=silent`**, **`initrd=<nom fichier>`**. Config auto : **`answer.toml`** → **`proxmox-installer.answer-file=`** + **`proxmox-start-auto-installer`**. NFS n’est pas supporté nativement par l’installateur Proxmox (contrairement à Ubuntu casper).
+Paramètres noyau : **`vga=791 video=vesafb:ywrap,mtrr`** (`PROXMOX_VGA_PARAMS=false` pour headless), **`ramdisk_size=`** (`PROXMOX_LOW_RAM_RAMDISK_SIZE` en low_ram, sinon `PROXMOX_RAMDISK_SIZE`), **`rw quiet splash=silent`**, **`initrd=<fichier>`**. Config auto : **`answerurl=`** + **`proxmox-start-auto-installer`** en low_ram ; sinon **`proxmox-installer.answer-file=`**. NFS non supporté par l’installateur Proxmox.
 
 Pour **Ubuntu**, l’ISO est aussi extraite **en entier** ; noyau et initrd dans **`casper/`**. Par défaut les menus utilisent le mode **HTTP autoinstall** (`root=/dev/ram0`, `url=` vers l’ISO si elle est encore sur le serveur, `autoinstall ds=nocloud-net` + `cloud-config-url=/dev/null` sur les configs auto). Option **`UBUNTU_NFS_ENABLED=true`** pour l’ancien mode NFS.
 

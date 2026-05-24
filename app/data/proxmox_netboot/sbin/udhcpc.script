@@ -1,0 +1,19 @@
+#!/bin/sh
+# Adapted from ProxmoxPxeBoot (MIT) — https://github.com/tohara/ProxmoxPxeBoot
+
+case "$1" in
+ bound|renew)
+ echo "Configuring interface $interface"
+ ip addr flush dev "$interface"
+ ip addr add "$ip/$mask" dev "$interface"
+ ip link set "$interface" up
+
+ if [ -n "$router" ]; then
+ ip route add default via "$router"
+ fi
+
+ echo "nameserver $dns" > /etc/resolv.conf
+ ;;
+esac
+
+exit 0

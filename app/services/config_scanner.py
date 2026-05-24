@@ -181,6 +181,14 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         return (
             f"proxmox-installer.answer-file={url} proxmox-start-auto-installer"
         )
+
+
+def proxmox_low_ram_boot_arg(url: str) -> str:
+    """Args noyau pour initrd patché (answer.toml via HTTP en initramfs)."""
+    u = (url or "").strip()
+    if not u:
+        return ""
+    return f"answerurl={u} proxmox-start-auto-installer"
     elif config_type == "alpine-answer":
         return f"ANSWERSFILE={url}"
     elif config_type == "custom":
