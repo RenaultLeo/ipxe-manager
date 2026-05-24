@@ -898,9 +898,9 @@ async def iso_clear_active_config(
 
         clear_active_ubuntu_publish(db, version)
     elif os_slug == "proxmox":
-        version.active_autoconfig_id = None
-        db.add(version)
-        db.commit()
+        from app.services.autoconfig_publish import clear_active_proxmox_publish
+
+        clear_active_proxmox_publish(db, version)
     if version.status == "ready":
         regenerate_all(db)
     return RedirectResponse(f"/isos/{version_id}", status_code=302)

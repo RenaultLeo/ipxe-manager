@@ -121,3 +121,91 @@ def clear_active_ubuntu_publish(db, version: IsoVersion) -> None:
     db.add(version)
     db.commit()
     clear_ubuntu_seed_from_boot(boot_version_dir(version))
+
+
+# ── Proxmox VE (answer.toml) ─────────────────────────────────────────────────
+
+PROXMOX_OS_SLUG = "proxmox"
+PROXMOX_ANSWER_BASENAME = "answer.toml"
+PROXMOX_CONFIG_SUBDIR = "config"
+
+
+def proxmox_boot_version_segment(version: IsoVersion) -> str:
+    """Nom du dossier sous boot/proxmox/ (aligné sur kernel_path après extraction)."""
+    be = version.boot_entry
+    if be:
+        for rel in (be.kernel_path, be.initrd_path):
+            if not rel:
+                continue
+            parts = rel.replace("\\", "/").lstrip("/").split("/")
+            if len(parts) >= 3 and parts[0] == "boot" and parts[1].lower() == PROXMOX_OS_SLUG:
+                return parts[2]
+    return slugify(version.version_label)
+
+
+def proxmox_boot_version_dir(version: IsoVersion) -> Path:
+    return settings.boot_dir / PROXMOX_OS_SLUG / proxmox_boot_version_segment(version)
+
+
+def clear_proxmox_answer_from_boot(version: IsoVersion) -> None:
+    """Retire answer.toml à la racine et sous config/ de l’arborescence boot extraite."""
+    boot_dir = proxmox_boot_version_dir(version)
+    if not boot_dir.is_dir():
+        return
+    for rel in (PROXMOX_ANSWER_BASENAME, f"{PROXMOX_CONFIG_SUBDIR}/{PROXMOX_ANSWER_BASENAME}"):
+        p = boot_dir / rel
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                logger.exception("Suppression %s", p)
+
+
+def publish_proxmox_answer_config(version: IsoVersion, content: str) -> str:
+    """
+    Copie answer.toml à la racine de boot/proxmox/<release>/ et dans config/.
+    Retourne le chemin relatif du dossier boot (sans nom de fichier).
+    """
+    boot_dir = proxmox_boot_version_dir(version)
+    boot_dir.mkdir(parents=True, exist_ok=True)
+    (boot_dir / PROXMOX_CONFIG_SUBDIR).mkdir(parents=True, exist_ok=True)
+    for dest in (
+        boot_dir / PROXMOX_ANSWER_BASENAME,
+        boot_dir / PROXMOX_CONFIG_SUBDIR / PROXMOX_ANSWER_BASENAME,
+    ):
+        dest.write_text(content, encoding="utf-8")
+    rel = f"boot/{PROXMOX_OS_SLUG}/{proxmox_boot_version_segment(version)}"
+    logger.info(
+        "Proxmox answer.toml publié vers %s/ et %s/config/ (version %s)",
+        rel,
+        rel,
+        version.id,
+    )
+    return rel
+
+
+def publish_proxmox_answer_from_autoconfig(
+    version: IsoVersion, cfg: AutoConfig
+) -> str | None:
+    """Synchronise boot/ depuis le fichier configs/ ou le contenu en base."""
+    if cfg.config_type != "proxmox-answer":
+        return None
+    content: str | None = None
+    rel = (cfg.file_path or "").strip().lstrip("/")
+    if rel:
+        src = Path(settings.http_root) / rel.replace("\\", "/")
+        if src.is_file():
+            content = src.read_text(encoding="utf-8", errors="replace")
+    if content is None and (cfg.content or "").strip():
+        content = cfg.content
+    if content is None:
+        return None
+    return publish_proxmox_answer_config(version, content)
+
+
+def clear_active_proxmox_publish(db, version: IsoVersion) -> None:
+    """Retire la config courante et nettoie answer.toml sous boot/."""
+    version.active_autoconfig_id = None
+    db.add(version)
+    db.commit()
+    clear_proxmox_answer_from_boot(version)

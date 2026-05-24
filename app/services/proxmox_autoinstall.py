@@ -464,6 +464,16 @@ def activate_proxmox_config(db: Session, version: IsoVersion, cfg: AutoConfig) -
     version.active_autoconfig_id = cfg.id
     db.add(version)
     db.commit()
+    from app.services.autoconfig_publish import publish_proxmox_answer_from_autoconfig
+
+    try:
+        publish_proxmox_answer_from_autoconfig(version, cfg)
+    except Exception:
+        logger.exception(
+            "Publication answer.toml vers boot/proxmox (version %s, config %s)",
+            version.id,
+            cfg.id,
+        )
 
 
 def queue_proxmox_inject(

@@ -405,6 +405,10 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
             )
 
             clear_ubuntu_seed_from_boot(boot_version_dir(ver))
+        elif (ver.os_type.slug or "").lower() == "proxmox":
+            from app.services.autoconfig_publish import clear_proxmox_answer_from_boot
+
+            clear_proxmox_answer_from_boot(ver)
         regenerate_all(db)
     return RedirectResponse("/ipxe-configs", status_code=302)
 
@@ -461,4 +465,18 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
 
     dest = cfg_dir / fname
     dest.write_text(content, encoding="utf-8")
-    return f"configs/{version.os_type.slug}/{version_slug}/{fname}"
+    rel = f"configs/{version.os_type.slug}/{version_slug}/{fname}"
+    if (
+        (version.os_type.slug or "").lower() == "proxmox"
+        and cfg.config_type == "proxmox-answer"
+    ):
+        try:
+            from app.services.autoconfig_publish import publish_proxmox_answer_config
+
+            publish_proxmox_answer_config(version, content)
+        except Exception:
+            logger.exception(
+                "Publication answer.toml vers boot/proxmox (version %s)",
+                version.id,
+            )
+    return rel
