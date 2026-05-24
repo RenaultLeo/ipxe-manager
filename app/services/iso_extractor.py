@@ -1194,35 +1194,29 @@ _PROXMOX_INITRD_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 _GZIP_MAGIC = b"\x1f\x8b"
 # Copie/lien de l’ISO sous boot/proxmox/<version>/ pour iPXE (2e initrd proxmox.iso) après purge isos-ipxe
 PROXMOX_NETBOOT_ISO_BASENAME = "proxmox-netboot.iso"
+# Copie d’origine jamais modifiée ; l’injection answer.toml part toujours de ce fichier.
+PROXMOX_NETBOOT_BASE_BASENAME = "proxmox-netboot-base.iso"
 
 
 def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
     """
-    Conserve l’ISO pour le boot réseau : hardlink (ou copie) vers
-    ``boot/proxmox/<version>/proxmox-netboot.iso`` (servi en HTTP comme proxmox.iso).
+    Copie l’ISO source vers ``proxmox-netboot-base.iso`` (intacte) et
+    ``proxmox-netboot.iso`` (servie en HTTP comme proxmox.iso / 2e initrd).
+    Pas de hardlink : l’injection ne doit pas toucher l’ISO dans isos-ipxe.
     """
     if not iso.is_file():
         return
+    dest.mkdir(parents=True, exist_ok=True)
+    base = dest / PROXMOX_NETBOOT_BASE_BASENAME
     target = dest / PROXMOX_NETBOOT_ISO_BASENAME
-    if target.is_file():
-        try:
-            if target.stat().st_ino == iso.stat().st_ino and target.stat().st_dev == iso.stat().st_dev:
-                return
-        except OSError:
-            pass
-        try:
-            target.unlink()
-        except OSError:
-            pass
     try:
-        os.link(iso, target)
-        logger.info("Proxmox : hardlink ISO netboot %s", target)
-        return
-    except OSError:
-        pass
-    try:
+        shutil.copy2(iso, base)
         shutil.copy2(iso, target)
-        logger.info("Proxmox : copie ISO netboot %s", target)
+        logger.info(
+            "Proxmox : ISO netboot publiée %s (base %s)",
+            target.name,
+            base.name,
+        )
     except OSError as e:
         logger.warning("Proxmox : impossible de publier %s : %s", target, e)
 
