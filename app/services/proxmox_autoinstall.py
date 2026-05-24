@@ -74,7 +74,10 @@ def inject_answer_into_netboot_iso(
     answer_toml: Path,
     out_iso: Path,
 ) -> None:
-    """Ouvre proxmox-netboot.iso, injecte answer + mode ISO, écrit proxmox-netboot-autoinstall.iso."""
+    """
+    Copie intégrale de proxmox-netboot.iso puis ajout de answer.toml à la racine (xorriso in-place).
+    indev/outdev sur deux fichiers distincts ne recopie pas l’ISO — d’où les ~400 Ko corrompus.
+    """
     xorriso = shutil.which("xorriso")
     if not xorriso:
         raise RuntimeError("xorriso introuvable (apt install xorriso).")
@@ -84,44 +87,56 @@ def inject_answer_into_netboot_iso(
         raise FileNotFoundError(f"answer.toml absent : {answer_toml}")
 
     out_iso.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="pve-inject-") as tmp:
-        tmp_dir = Path(tmp)
-        mode_file = tmp_dir / "auto-installer-mode.toml"
-        mode_file.write_text(_AUTOINSTALLER_MODE, encoding="utf-8")
-        tmp_out = tmp_dir / "out.iso"
-        proc = subprocess.run(
-            [
-                xorriso,
-                "-indev",
-                str(netboot_iso),
-                "-outdev",
-                str(tmp_out),
-                "-boot_image",
-                "any",
-                "replay",
-                "-map",
-                str(mode_file),
-                "/auto-installer-mode.toml",
-                "-map",
-                str(answer_toml),
-                "/answer.toml",
-                "-commit",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if not _xorriso_ok(proc) or not tmp_out.is_file():
+    src_size = netboot_iso.stat().st_size
+    tmp_out = out_iso.with_name(f".{out_iso.name}.injecting")
+    try:
+        shutil.copy2(netboot_iso, tmp_out)
+        with tempfile.TemporaryDirectory(prefix="pve-inject-") as tmp:
+            mode_file = Path(tmp) / "auto-installer-mode.toml"
+            mode_file.write_text(_AUTOINSTALLER_MODE, encoding="utf-8")
+            proc = subprocess.run(
+                [
+                    xorriso,
+                    "-indev",
+                    str(tmp_out),
+                    "-outdev",
+                    str(tmp_out),
+                    "-boot_image",
+                    "any",
+                    "replay",
+                    "-map",
+                    str(mode_file),
+                    "/auto-installer-mode.toml",
+                    "-map",
+                    str(answer_toml),
+                    "/answer.toml",
+                    "-commit",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+        if not _xorriso_ok(proc):
             blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
             raise RuntimeError(
                 f"Échec xorriso ({netboot_iso.name} → {out_iso.name}) : "
                 f"{blob[-1500:] if blob else proc.returncode}"
             )
+        out_size = tmp_out.stat().st_size
+        if out_size < src_size * 0.9:
+            raise RuntimeError(
+                f"ISO autoinstall tronquée ({out_size} o, source {src_size} o) — "
+                "vérifiez xorriso et réessayez l’injection."
+            )
         os.replace(tmp_out, out_iso)
+    except Exception:
+        tmp_out.unlink(missing_ok=True)
+        raise
 
     logger.info(
-        "Proxmox : %s créé depuis %s (answer=%s)",
+        "Proxmox : %s créé (%s o) depuis %s (answer=%s)",
         out_iso.name,
+        out_iso.stat().st_size,
         netboot_iso.name,
         answer_toml.name,
     )
