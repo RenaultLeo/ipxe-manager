@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Active HTTPS (cert auto-signé + Nginx + SERVER_BASE_URL).
+# Active HTTPS (cert auto-signé + Nginx + SERVER_BASE_URL + firmware iPXE).
 # Usage : sudo bash deploy/enable-https.sh [IP_ou_FQDN]
 set -euo pipefail
 
@@ -18,8 +18,9 @@ if [ -z "$HOST" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_URL="https://${HOST}"
 
-echo "==> [1/4] Certificats TLS (OpenSSL)…"
+echo "==> [1/3] Certificats TLS (OpenSSL)…"
 bash "$SCRIPT_DIR/generate-tls-cert.sh" "$HOST"
 
 if [ ! -f /srv/ipxe/ssl/server.crt ]; then
@@ -27,15 +28,13 @@ if [ ! -f /srv/ipxe/ssl/server.crt ]; then
   exit 1
 fi
 
-echo "==> [2/4] Nginx HTTPS…"
+echo "==> [2/3] Nginx HTTPS…"
 cp "$SCRIPT_DIR/nginx-https.conf" /etc/nginx/sites-available/ipxe-manager
 ln -sf /etc/nginx/sites-available/ipxe-manager /etc/nginx/sites-enabled/ipxe-manager
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl reload nginx
 
-echo "==> [3/4] SERVER_BASE_URL → https://${HOST}…"
-BASE_URL="https://${HOST}"
 if [ -f "$APP_DIR/.env" ]; then
   if grep -q '^SERVER_BASE_URL=' "$APP_DIR/.env"; then
     sed -i "s|^SERVER_BASE_URL=.*|SERVER_BASE_URL=${BASE_URL}|" "$APP_DIR/.env"
@@ -44,7 +43,7 @@ if [ -f "$APP_DIR/.env" ]; then
   fi
 fi
 
-if [ -x "$VENV/bin/python" ] && [ -f "$APP_DIR/deploy/seed_db.py" ]; then
+if [ -x "$VENV/bin/python" ]; then
   cd "$APP_DIR"
   "$VENV/bin/python" - <<PY
 from app.database import SessionLocal
@@ -58,8 +57,10 @@ finally:
 PY
 fi
 
-echo "==> [4/4] Redémarrage services…"
 systemctl restart ipxe-manager ipxe-celery
+
+echo "==> [3/3] Firmware iPXE HTTPS + menus…"
+bash "$SCRIPT_DIR/bootstrap-https-firmware.sh" "$HOST"
 
 echo ""
 echo "======================================================"
@@ -67,11 +68,5 @@ echo "  HTTPS activé"
 echo "======================================================"
 echo "  Interface : ${BASE_URL}/"
 echo "  Menus     : ${BASE_URL}/menus/menu.ipxe"
-echo ""
-echo "  IMPORTANT — firmware iPXE :"
-echo "    1. Ouvrir ${BASE_URL}/firmware"
-echo "    2. Lancer « Compiler » (patch DOWNLOAD_PROTO_HTTPS + CERT/TRUST=ca.crt)"
-echo "    3. Régénérer les menus iPXE (ISOs ou page Menus)"
-echo ""
-echo "  Rollback HTTP : sudo bash $SCRIPT_DIR/disable-https.sh"
+echo "  Rollback  : sudo bash $SCRIPT_DIR/disable-https.sh $HOST"
 echo ""

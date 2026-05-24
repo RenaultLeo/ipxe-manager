@@ -6,7 +6,6 @@ Celery background jobs:
 """
 import json
 import logging
-import re
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
@@ -17,84 +16,7 @@ from app.models.models import IsoVersion, BootEntry, Upload, AutoConfig
 
 logger = logging.getLogger(__name__)
 
-# Upstream iPXE désactive CONSOLE_CMD / CONSOLE_FRAMEBUFFER sur pcbios (undionly) via #undef ;
-# sans ça, « colour », « console » et PNG de fond ne sont pas disponibles en boot BIOS classique.
-
-
-def _patch_ipxe_graphical_console_headers(src_dir: Path, logs: list[str]) -> None:
-    """Retire les #undef qui coupent console / couleur / framebuffer en build BIOS."""
-    general = src_dir / "src" / "config" / "general.h"
-    console = src_dir / "src" / "config" / "console.h"
-    if not general.is_file() or not console.is_file():
-        raise RuntimeError(
-            f"Sources iPXE incomplètes (config manquante) : {general=} {console=}"
-        )
-
-    g = general.read_text(encoding="utf-8", errors="replace")
-    g_new = re.sub(r"^[ \t]*#undef CONSOLE_CMD[ \t]*\r?\n", "", g, flags=re.MULTILINE)
-    if g_new != g:
-        general.write_text(g_new, encoding="utf-8")
-        logs.append(
-            "config/general.h : retrait de #undef CONSOLE_CMD (console / colour / cpair en BIOS)."
-        )
-
-    c = console.read_text(encoding="utf-8", errors="replace")
-    c_new = re.sub(
-        r"^[ \t]*#undef CONSOLE_FRAMEBUFFER[ \t]*\r?\n", "", c, flags=re.MULTILINE
-    )
-    if c_new != c:
-        console.write_text(c_new, encoding="utf-8")
-        logs.append(
-            "config/console.h : retrait de #undef CONSOLE_FRAMEBUFFER (fond PNG / mode graphique)."
-        )
-
-    if g_new == g and c_new == c:
-        logs.append(
-            "Aucun #undef CONSOLE_CMD / CONSOLE_FRAMEBUFFER trouvé (déjà patché ou sources inattendues)."
-        )
-
-
-def _patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
-    """Active DOWNLOAD_PROTO_HTTPS dans config/general.h (boot HTTPS)."""
-    general = src_dir / "src" / "config" / "general.h"
-    if not general.is_file():
-        raise RuntimeError(f"Sources iPXE incomplètes : {general}")
-
-    g = general.read_text(encoding="utf-8", errors="replace")
-    if re.search(r"^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE):
-        logs.append("config/general.h : DOWNLOAD_PROTO_HTTPS déjà activé.")
-        return
-
-    g_new, n = re.subn(
-        r"^[ \t]*#undef[ \t]+DOWNLOAD_PROTO_HTTPS[^\n]*\n",
-        "#define DOWNLOAD_PROTO_HTTPS\t\t/* Secure Hypertext Transfer Protocol */\n",
-        g,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if n == 0:
-        raise RuntimeError(
-            "config/general.h : ligne #undef DOWNLOAD_PROTO_HTTPS introuvable — "
-            "sources iPXE inattendues."
-        )
-    general.write_text(g_new, encoding="utf-8")
-    logs.append(
-        "config/general.h : #undef DOWNLOAD_PROTO_HTTPS → #define DOWNLOAD_PROTO_HTTPS."
-    )
-
-
-def _ipxe_tls_make_args() -> list[str]:
-    """
-    CERT= et TRUST= pour make iPXE (doivent être en dernier dans la ligne make).
-    Utilise la CA auto-signée /srv/ipxe/ssl/ca.crt si présente.
-    """
-    from app.config import settings
-
-    ca = settings.tls_ca_cert_path
-    if not ca.is_file():
-        return []
-    ca_s = str(ca.resolve())
-    return [f"CERT={ca_s}", f"TRUST={ca_s}"]
+# Patches iPXE : voir app.services.ipxe_compiler (HTTPS ré-appliqué après chaque git pull).
 
 
 @celery.task(bind=True, name="extract_iso")
@@ -538,188 +460,27 @@ def regenerate_menus_task():
     time_limit=2700,        # 45 min hard
 )
 def compile_ipxe_task(self, menu_url: str):
-    """
-    Clone (ou pull) le dépôt iPXE officiel, patche la config pour console couleur
-    et fond PNG en build BIOS, génère embed.ipxe avec un chainload vers menu_url,
-    compile undionly.kpxe et les EFI puis copie les binaires dans le TFTP.
-
-    Retourne un dict avec les paths des fichiers produits et les logs.
-    """
-    import subprocess
-    import shutil
-    from app.config import settings
+    """Compile les firmwares iPXE (HTTPS + TRUST CA locale si présente)."""
+    from app.services.ipxe_compiler import compile_ipxe_firmware
 
     logs: list[str] = []
     completed_steps: list[str] = []
-    tftp_dir = Path(settings.tftp_root)
-    src_dir  = settings.ipxe_src_dir
-    build_dir = Path(settings.build_dir)
 
-    def run(cmd: list[str], cwd=None) -> str:
-        """Lance une commande, ajoute sa sortie aux logs, lève en cas d'erreur."""
-        logs.append(f"$ {' '.join(cmd)}")
-        try:
-            result = subprocess.run(
-                cmd, cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True, timeout=1800,
-            )
-            logs.append(result.stdout[-4000:] if len(result.stdout) > 4000 else result.stdout)
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"Commande échouée (code {result.returncode}) : {' '.join(cmd)}\n{result.stdout[-2000:]}"
-                )
-            return result.stdout
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Timeout dépassé pour : {' '.join(cmd)}")
+    def on_progress(step: str, completed: list[str], step_logs: list[str]) -> None:
+        nonlocal logs, completed_steps
+        logs = step_logs
+        completed_steps = completed
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "step": step,
+                "completed_steps": list(completed_steps),
+                "logs": logs,
+            },
+        )
 
     try:
-        self.update_state(
-            state="PROGRESS",
-            meta={"step": "init", "completed_steps": list(completed_steps), "logs": logs},
-        )
-
-        # ── 1. Créer les répertoires nécessaires ────────────────────────────
-        build_dir.mkdir(parents=True, exist_ok=True)
-        tftp_dir.mkdir(parents=True, exist_ok=True)
-
-        # ── 2. Cloner ou mettre à jour les sources iPXE ─────────────────────
-        if (src_dir / ".git").exists():
-            logs.append("Sources iPXE déjà présentes — git pull")
-            self.update_state(
-                state="PROGRESS",
-                meta={"step": "git_pull", "completed_steps": list(completed_steps), "logs": logs},
-            )
-            run(["git", "pull", "--ff-only"], cwd=src_dir)
-            completed_steps.append("git_pull")
-        else:
-            logs.append("Clonage du dépôt iPXE (peut prendre quelques minutes)…")
-            self.update_state(
-                state="PROGRESS",
-                meta={"step": "git_clone", "completed_steps": list(completed_steps), "logs": logs},
-            )
-            run([
-                "git", "clone", "--depth=1",
-                "https://github.com/ipxe/ipxe.git",
-                str(src_dir),
-            ])
-            completed_steps.append("git_clone")
-
-        # ── 3. Générer embed.ipxe ────────────────────────────────────────────
-        embed_path = src_dir / "src" / "embed.ipxe"
-        embed_content = (
-            "#!ipxe\n"
-            "\n"
-            "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)\n"
-            "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
-            "\n"
-            ":retry\n"
-            f"chain --autofree {menu_url} || goto load_error\n"
-            "# Menu terminé sans boot (ne doit plus arriver pour « disque local »)\n"
-            "exit\n"
-            "\n"
-            ":load_error\n"
-            f"echo iPXE : impossible de charger {menu_url}\n"
-            "sleep 5\n"
-            "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
-            "goto retry\n"
-        )
-        self.update_state(
-            state="PROGRESS",
-            meta={"step": "embed", "completed_steps": list(completed_steps), "logs": logs},
-        )
-        embed_path.write_text(embed_content, encoding="utf-8")
-        logs.append(f"embed.ipxe généré :\n{embed_content}")
-        completed_steps.append("embed")
-        make_dir = src_dir / "src"
-
-        # ── 3b. Activer console / couleur / fond PNG sur build BIOS (undionly) ──
-        logs.append("Patch config iPXE (CONSOLE_CMD + CONSOLE_FRAMEBUFFER pour pcbios)…")
-        self.update_state(
-            state="PROGRESS",
-            meta={"step": "patch_ipxe_config", "completed_steps": list(completed_steps), "logs": logs},
-        )
-        _patch_ipxe_graphical_console_headers(src_dir, logs)
-        completed_steps.append("patch_ipxe_config")
-
-        tls_args = _ipxe_tls_make_args()
-        if tls_args:
-            logs.append("Patch config iPXE (HTTPS + certificat CA local)…")
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "step": "patch_ipxe_https",
-                    "completed_steps": list(completed_steps),
-                    "logs": logs,
-                },
-            )
-            _patch_ipxe_https_support(src_dir, logs)
-            logs.append(
-                f"Compilation avec {' '.join(tls_args)} (CERT/TRUST en fin de ligne make)."
-            )
-            completed_steps.append("patch_ipxe_https")
-        else:
-            logs.append(
-                "Pas de /srv/ipxe/ssl/ca.crt — compilation sans TRUST custom "
-                "(HTTP ou HTTPS public CA uniquement). Lancez deploy/enable-https.sh pour TLS local."
-            )
-
-        # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
-        logs.append("Compilation undionly.kpxe (BIOS)…")
-        self.update_state(
-            state="PROGRESS",
-            meta={"step": "compile_bios", "completed_steps": list(completed_steps), "logs": logs},
-        )
-        run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *tls_args], cwd=make_dir)
-        completed_steps.append("compile_bios")
-
-        # ── 5a. Compiler snponly.efi (UEFI — utilise drivers réseau EFI de la VM) ─
-        # snponly.efi délègue au SNP (Simple Network Protocol) de l'EFI :
-        # compatible virtio-net, e1000, vmxnet3, etc. sans driver intégré.
-        logs.append("Compilation snponly.efi (UEFI SNP — VMs / matériel avec driver EFI)…")
-        self.update_state(
-            state="PROGRESS",
-            meta={"step": "compile_efi", "completed_steps": list(completed_steps), "logs": logs},
-        )
-        run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *tls_args], cwd=make_dir)
-
-        # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
-        logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
-        run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *tls_args], cwd=make_dir)
-        completed_steps.append("compile_efi")
-
-        # ── 6. Copier les binaires en TFTP ───────────────────────────────────
-        logs.append(f"Copie des binaires vers {tftp_dir}")
-        self.update_state(
-            state="PROGRESS",
-            meta={"step": "copy", "completed_steps": list(completed_steps), "logs": logs},
-        )
-
-        kpxe_src     = make_dir / "bin" / "undionly.kpxe"
-        efi_src      = make_dir / "bin-x86_64-efi" / "ipxe.efi"
-        snponly_src  = make_dir / "bin-x86_64-efi" / "snponly.efi"
-
-        shutil.copy2(kpxe_src,    tftp_dir / "undionly.kpxe")
-        shutil.copy2(efi_src,     tftp_dir / "ipxe.efi")
-        shutil.copy2(snponly_src, tftp_dir / "snponly.efi")
-
-        for fname in ("undionly.kpxe", "ipxe.efi", "snponly.efi"):
-            (tftp_dir / fname).chmod(0o644)
-
-        completed_steps.append("copy")
-        logs.append("Compilation terminée avec succès.")
-        return {
-            "status":          "success",
-            "menu_url":        menu_url,
-            "embed":           embed_content,
-            "undionly":        str(tftp_dir / "undionly.kpxe"),
-            "efi":             str(tftp_dir / "ipxe.efi"),
-            "snponly":         str(tftp_dir / "snponly.efi"),
-            "logs":            "\n".join(logs),
-            "completed_steps": completed_steps,
-        }
-
+        return compile_ipxe_firmware(menu_url, on_progress=on_progress)
     except SoftTimeLimitExceeded:
         logs.append("TIMEOUT : compilation annulée après 40 minutes.")
         raise

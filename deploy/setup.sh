@@ -116,7 +116,7 @@ echo "[6/15] Configuration de l'environnement (.env)…"
 if [ ! -f "$APP_DIR/.env" ]; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     cat > "$APP_DIR/.env" <<EOF
-SERVER_BASE_URL=http://$SERVER_IP
+SERVER_BASE_URL=https://$SERVER_IP
 SECRET_KEY=$SECRET
 ADMIN_PASSWORD=admin
 DATABASE_URL=sqlite:////srv/ipxe/app/ipxe.db
@@ -137,7 +137,8 @@ UBUNTU_NFS_MOUNT_OPTS=vers=4,tcp
 EOF
     echo "  .env créé — mot de passe par défaut : admin (à changer !)"
 else
-    echo "  .env déjà présent — conservé."
+    echo "  .env déjà présent — secrets conservés ; SERVER_BASE_URL → https://$SERVER_IP"
+    sed -i "s|^SERVER_BASE_URL=.*|SERVER_BASE_URL=https://$SERVER_IP|" "$APP_DIR/.env" 2>/dev/null || true
     # S'assurer que BUILD_DIR est présent dans le .env existant
     grep -q "BUILD_DIR" "$APP_DIR/.env" || echo "BUILD_DIR=/srv/ipxe/build" >> "$APP_DIR/.env"
     grep -q "^ISO_HTTP_ALIAS" "$APP_DIR/.env" || echo "ISO_HTTP_ALIAS=isos-ipxe" >> "$APP_DIR/.env"
@@ -148,9 +149,18 @@ else
 fi
 
 # ── 7. Base de données ────────────────────────────────────────────────────────
-echo "[7/15] Initialisation de la base de données…"
+echo "[7/16] Initialisation de la base de données…"
 cd "$APP_DIR"
 "$VENV/bin/python" deploy/seed_db.py
+"$VENV/bin/python" - <<PY
+from app.database import SessionLocal
+from app.config import persist_server_base_url
+db = SessionLocal()
+try:
+    persist_server_base_url(db, "https://${SERVER_IP}")
+finally:
+    db.close()
+PY
 echo "  Base initialisée avec tous les OS de base."
 
 # ── 8. Firmwares iPXE (génériques — en attendant la compilation custom) ───────
@@ -228,18 +238,19 @@ TFTP_OPTIONS="--secure --create --blocksize 1468"
 EOF
 chmod -R 755 "$DATA_DIR/tftpboot"
 
-# ── 10. Nginx ─────────────────────────────────────────────────────────────────
-echo "[10/15] Configuration Nginx…"
-if [ ! -f "$APP_DIR/deploy/nginx.conf" ]; then
-    echo "ERREUR : $APP_DIR/deploy/nginx.conf introuvable." >&2
+# ── 10. TLS + Nginx HTTPS ─────────────────────────────────────────────────────
+echo "[10/16] Certificats TLS + Nginx HTTPS…"
+if [ -f "$APP_DIR/deploy/generate-tls-cert.sh" ]; then
+    bash "$APP_DIR/deploy/generate-tls-cert.sh" "$SERVER_IP"
+else
+    echo "  ! generate-tls-cert.sh absent" >&2
     exit 1
 fi
-NGINX_SRC="$APP_DIR/deploy/nginx.conf"
-if [ -f "$DATA_DIR/ssl/server.crt" ] && [ -f "$APP_DIR/deploy/nginx-https.conf" ]; then
-    NGINX_SRC="$APP_DIR/deploy/nginx-https.conf"
-    echo "  Certificat TLS détecté — déploiement nginx-https.conf"
+if [ ! -f "$APP_DIR/deploy/nginx-https.conf" ]; then
+    echo "ERREUR : $APP_DIR/deploy/nginx-https.conf introuvable." >&2
+    exit 1
 fi
-cp "$NGINX_SRC" /etc/nginx/sites-available/ipxe-manager
+cp "$APP_DIR/deploy/nginx-https.conf" /etc/nginx/sites-available/ipxe-manager
 
 ln -sf /etc/nginx/sites-available/ipxe-manager /etc/nginx/sites-enabled/ipxe-manager
 rm -f /etc/nginx/sites-enabled/default
@@ -362,7 +373,7 @@ chmod -R o+rX "$DATA_DIR/http/configs" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/isos" 2>/dev/null || true
 
 # ── 15. Démarrage de tous les services ────────────────────────────────────────
-echo "[15/15] Démarrage des services…"
+echo "[15/16] Démarrage des services…"
 systemctl daemon-reload
 systemctl enable --now redis-server
 systemctl enable --now tftpd-hpa
@@ -389,27 +400,33 @@ systemctl enable --now ipxe-celery
 # tftpd-hpa peut avoir démarré pendant la mise à jour des fichiers ; redémarrer une fois tout écrit.
 systemctl restart tftpd-hpa
 
+# ── 16. Firmware iPXE HTTPS + menus ───────────────────────────────────────────
+echo "[16/16] Firmware iPXE (clone + compile HTTPS) + menus…"
+echo "  (10–25 min — patch DOWNLOAD_PROTO_HTTPS + CERT/TRUST=ca.crt)"
+if [ -f "$APP_DIR/deploy/bootstrap-https-firmware.sh" ]; then
+    bash "$APP_DIR/deploy/bootstrap-https-firmware.sh" "$SERVER_IP" \
+        || echo "  ! Compilation firmware échouée — relancer : sudo bash $APP_DIR/deploy/bootstrap-https-firmware.sh $SERVER_IP"
+else
+    echo "  ! bootstrap-https-firmware.sh absent — compilez depuis /firmware"
+fi
+
 # ── Résumé ────────────────────────────────────────────────────────────────────
 echo ""
 echo "======================================================"
 echo "  Installation terminée !"
 echo "======================================================"
 echo ""
-WEB_SCHEME="http"
-if [ -f "$DATA_DIR/ssl/server.crt" ]; then
-    WEB_SCHEME="https"
-fi
+WEB_SCHEME="https"
 echo "  Interface web  : ${WEB_SCHEME}://$SERVER_IP/"
 echo "  Login          : admin  /  Mot de passe : admin"
-echo "  Menu iPXE HTTP : ${WEB_SCHEME}://$SERVER_IP/menus/menu.ipxe"
+echo "  Menu iPXE      : ${WEB_SCHEME}://$SERVER_IP/menus/menu.ipxe"
 echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
 echo "  Samba share    : \\\\$SERVER_IP\\boot"
 echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (optionnel — UBUNTU_NFS_ENABLED=true dans .env)"
 echo ""
 echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
-echo "  FIRMWARE  : Compiler un firmware custom avec embed depuis /firmware"
-echo "  HTTPS     : sudo bash $APP_DIR/deploy/enable-https.sh $SERVER_IP"
-echo "              (rollback : deploy/disable-https.sh)"
+echo "  FIRMWARE  : Compilé à l’install (HTTPS + TRUST ca.crt) — recompiler via /firmware si besoin"
+echo "  Rollback HTTP : sudo bash $APP_DIR/deploy/disable-https.sh $SERVER_IP"
 echo ""
 echo "  Mise à jour :"
 echo "    sudo bash $APP_DIR/deploy/update.sh"
