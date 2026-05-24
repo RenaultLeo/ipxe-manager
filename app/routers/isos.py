@@ -698,6 +698,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
 
     active_autoconfig = None
     published_boot_path = ""
+    proxmox_netboot_iso_path = ""
     active_id = getattr(version, "active_autoconfig_id", None)
     if active_id:
         active_autoconfig = next(
@@ -705,12 +706,24 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             None,
         )
         if active_autoconfig:
-            try:
-                from app.services.autoconfig_publish import published_seed_dir_rel_path
+            if version.os_type.slug == "ubuntu":
+                try:
+                    from app.services.autoconfig_publish import published_seed_dir_rel_path
 
-                published_boot_path = published_seed_dir_rel_path(version)
-            except Exception:
-                published_boot_path = ""
+                    published_boot_path = published_seed_dir_rel_path(version)
+                except Exception:
+                    published_boot_path = ""
+            elif version.os_type.slug == "proxmox" and version.boot_entry:
+                try:
+                    from app.services.proxmox_autoinstall import netboot_iso_path
+
+                    nb = netboot_iso_path(version, version.boot_entry)
+                    if nb:
+                        proxmox_netboot_iso_path = str(
+                            nb.relative_to(settings.http_root)
+                        ).replace("\\", "/")
+                except Exception:
+                    proxmox_netboot_iso_path = ""
 
     extract_error_msg = ""
     if version.status == "error":
@@ -772,6 +785,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             alpine_repo_default_public=ALPINE_REPO_DEFAULT_PUBLIC,
             can_modify=can_modify,
             published_boot_path=published_boot_path,
+            proxmox_netboot_iso_path=proxmox_netboot_iso_path,
         ),
     )
 
@@ -783,7 +797,7 @@ async def iso_activate_config(
     db: Session = Depends(get_db),
     config_id: int = Form(...),
 ):
-    """Publie une config Ubuntu vers boot/ et la définit comme config courante pour cette ISO."""
+    """Ubuntu Desktop : publie cloud-init. Proxmox : injecte answer.toml dans proxmox-netboot.iso."""
     redir = _auth(request)
     if redir:
         return redir
@@ -794,10 +808,6 @@ async def iso_activate_config(
     user = get_session_user(request)
     if not can_modify_iso_version(user, version):
         raise HTTPException(403)
-    if version.os_type.slug != "ubuntu":
-        raise HTTPException(400, detail=translate(lang, "iso.active_config_not_ubuntu"))
-    if (getattr(version, "ubuntu_variant", None) or "desktop").lower() == "server":
-        raise HTTPException(400, detail=translate(lang, "iso.active_config_desktop_only"))
 
     cfg = (
         db.query(AutoConfig)
@@ -810,17 +820,47 @@ async def iso_activate_config(
     if not cfg:
         raise HTTPException(404, detail=translate(lang, "iso.active_config_not_found"))
 
-    try:
-        from app.services.autoconfig_publish import activate_ubuntu_config
+    os_slug = (version.os_type.slug or "").lower()
 
-        activate_ubuntu_config(db, version, cfg)
-        regenerate_all(db)
-    except FileNotFoundError as exc:
-        raise HTTPException(400, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(400, detail=str(exc)) from exc
+    if os_slug == "ubuntu":
+        if (getattr(version, "ubuntu_variant", None) or "desktop").lower() == "server":
+            raise HTTPException(400, detail=translate(lang, "iso.active_config_desktop_only"))
+        try:
+            from app.services.autoconfig_publish import activate_ubuntu_config
 
-    return RedirectResponse(f"/isos/{version_id}?msg=active_config_ok", status_code=302)
+            activate_ubuntu_config(db, version, cfg)
+            regenerate_all(db)
+        except FileNotFoundError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        return RedirectResponse(f"/isos/{version_id}?msg=active_config_ok", status_code=302)
+
+    if os_slug == "proxmox":
+        if cfg.config_type != "proxmox-answer":
+            raise HTTPException(
+                400, detail=translate(lang, "iso.proxmox_active_config_bad_type")
+            )
+        if not version.boot_entry:
+            raise HTTPException(
+                400, detail=translate(lang, "iso.proxmox_inject_need_extract")
+            )
+        try:
+            from app.services.proxmox_autoinstall import queue_proxmox_inject
+
+            upload = queue_proxmox_inject(db, version, cfg)
+        except FileNotFoundError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(500, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/isos/{version_id}?msg=proxmox_inject_started&upload_id={upload.id}",
+            status_code=302,
+        )
+
+    raise HTTPException(400, detail=translate(lang, "iso.active_config_not_ubuntu"))
 
 
 @router.post("/{version_id}/clear-active-config")
@@ -839,9 +879,15 @@ async def iso_clear_active_config(
     if not can_modify_iso_version(user, version):
         raise HTTPException(403)
 
-    from app.services.autoconfig_publish import clear_active_ubuntu_publish
+    os_slug = (version.os_type.slug or "").lower()
+    if os_slug == "ubuntu":
+        from app.services.autoconfig_publish import clear_active_ubuntu_publish
 
-    clear_active_ubuntu_publish(db, version)
+        clear_active_ubuntu_publish(db, version)
+    elif os_slug == "proxmox":
+        version.active_autoconfig_id = None
+        db.add(version)
+        db.commit()
     if version.status == "ready":
         regenerate_all(db)
     return RedirectResponse(f"/isos/{version_id}", status_code=302)

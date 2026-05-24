@@ -45,6 +45,19 @@ router = APIRouter(prefix="/ipxe-configs")
 UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
 
 
+def _queue_proxmox_after_config_push(
+    db: Session, version: IsoVersion, cfg: AutoConfig
+):
+    """Lance l’injection answer.toml dans proxmox-netboot.iso (tâche Celery)."""
+    if (version.os_type.slug or "").lower() != "proxmox":
+        return None
+    if cfg.config_type != "proxmox-answer":
+        return None
+    from app.services.proxmox_autoinstall import queue_proxmox_inject
+
+    return queue_proxmox_inject(db, version, cfg)
+
+
 def _maybe_republish_active_ubuntu(db: Session, version: IsoVersion, cfg: AutoConfig) -> None:
     """Si cette config est la config courante, recopie vers boot/ et régénère les menus."""
     if getattr(version, "active_autoconfig_id", None) != cfg.id:
@@ -261,6 +274,12 @@ async def config_create(
     file_path = _write_config_file(cfg, version, content, forced_filename=forced_filename)
     cfg.file_path = file_path
     db.commit()
+    upload = _queue_proxmox_after_config_push(db, version, cfg)
+    if upload:
+        return RedirectResponse(
+            f"/isos/{version.id}?msg=proxmox_inject_started&upload_id={upload.id}",
+            status_code=302,
+        )
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 
@@ -344,6 +363,12 @@ async def config_update(
     fp = _write_config_file(cfg, ver, content)
     cfg.file_path = fp
     db.commit()
+    upload = _queue_proxmox_after_config_push(db, ver, cfg)
+    if upload:
+        return RedirectResponse(
+            f"/isos/{ver.id}?msg=proxmox_inject_started&upload_id={upload.id}",
+            status_code=302,
+        )
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 
@@ -371,10 +396,15 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
     db.delete(cfg)
     db.commit()
     if was_active and ver:
-        from app.services.autoconfig_publish import boot_version_dir, clear_ubuntu_seed_from_boot
         from app.services.menu_generator import regenerate_all
 
-        clear_ubuntu_seed_from_boot(boot_version_dir(ver))
+        if (ver.os_type.slug or "").lower() == "ubuntu":
+            from app.services.autoconfig_publish import (
+                boot_version_dir,
+                clear_ubuntu_seed_from_boot,
+            )
+
+            clear_ubuntu_seed_from_boot(boot_version_dir(ver))
         regenerate_all(db)
     return RedirectResponse("/ipxe-configs", status_code=302)
 

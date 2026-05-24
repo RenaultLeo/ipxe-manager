@@ -376,6 +376,70 @@ def _regenerate_winpe_scripts_impl(iso_version_id: int) -> dict:
         db.close()
 
 
+@celery.task(bind=True, name="inject_proxmox_autoinstall", soft_time_limit=900, time_limit=1200)
+def inject_proxmox_autoinstall_task(
+    self,
+    iso_version_id: int,
+    config_id: int,
+    upload_id: int,
+):
+    """Injecte answer.toml dans proxmox-netboot.iso puis régénère les menus iPXE."""
+    from sqlalchemy.orm import joinedload
+
+    from app.services.menu_generator import regenerate_all
+    from app.services.proxmox_autoinstall import inject_active_proxmox_autoinstall
+
+    db = SessionLocal()
+    try:
+        upload: Upload | None = db.query(Upload).get(upload_id)
+        if upload:
+            upload.status = "processing"
+            upload.task_id = self.request.id
+            db.commit()
+
+        version = (
+            db.query(IsoVersion)
+            .options(
+                joinedload(IsoVersion.boot_entry),
+                joinedload(IsoVersion.os_type),
+            )
+            .filter(IsoVersion.id == iso_version_id)
+            .first()
+        )
+        cfg = db.query(AutoConfig).filter(AutoConfig.id == config_id).first()
+        if not version or not cfg:
+            raise ValueError(
+                f"Version {iso_version_id} ou config {config_id} introuvable"
+            )
+
+        inject_active_proxmox_autoinstall(version, cfg)
+        regenerate_all(db)
+
+        if upload:
+            upload.status = "done"
+            db.commit()
+        logger.info(
+            "Proxmox autoinstall injecté — version %s config %s",
+            iso_version_id,
+            config_id,
+        )
+        return {"status": "ok", "iso_version_id": iso_version_id, "config_id": config_id}
+    except Exception as exc:
+        logger.exception("inject_proxmox_autoinstall_task failed")
+        db.rollback()
+        try:
+            upload = db.query(Upload).get(upload_id)
+            if upload:
+                upload.status = "error"
+                upload.error_msg = str(exc)[:4000]
+                db.commit()
+        except Exception:
+            pass
+        raise self.retry(exc=exc, countdown=0, max_retries=0)
+    finally:
+        db.close()
+
+
 @celery.task(bind=True, name="regenerate_winpe_scripts", soft_time_limit=900, time_limit=1200)
 def regenerate_winpe_scripts_task(self, iso_version_id: int):
     try:

@@ -233,6 +233,27 @@ def _menu_autoconfig_entries(
             )
         return entries
 
+    if slug_l == "proxmox":
+        active_id = getattr(v, "active_autoconfig_id", None)
+        pve_configs = [ac for ac in configs if ac.config_type == "proxmox-answer"]
+        if active_id:
+            pve_configs = [ac for ac in pve_configs if ac.id == active_id]
+        else:
+            pve_configs = []
+        for ac in pve_configs:
+            rel = ac.file_path or ""
+            boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
+            entries.append(
+                {
+                    "id": ac.id,
+                    "label": resolve_autoconfig_menu_label(ac),
+                    "url": h(rel) if rel else "",
+                    "type": ac.config_type,
+                    "boot_arg": boot_arg,
+                }
+            )
+        return entries
+
     for ac in configs:
         rel = ac.file_path or ""
         boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
