@@ -425,7 +425,7 @@ def inject_proxmox_autoinstall_task(
             raise ValueError(
                 f"Version {iso_version_id} ou config {config_id} introuvable"
             )
-        # Charger les relations avant de fermer la session (injection xorriso = longue).
+        # Charger les relations avant de fermer la session (prepare-iso = long).
         _ = version.boot_entry
         _ = version.os_type
     finally:
