@@ -21,7 +21,11 @@ from app.models.models import AutoConfig, IsoVersion, Upload
 from app.services.iso_extractor import (
     PROXMOX_NETBOOT_AUTOINSTALL_BASENAME,
     PROXMOX_NETBOOT_BASE_BASENAME,
+    PROXMOX_NETBOOT_DIRNAME,
     PROXMOX_NETBOOT_ISO_BASENAME,
+    _NETBOOT_ARTIFACT_BASENAMES,
+    migrate_legacy_proxmox_netboot_isos,
+    proxmox_netboot_dir,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,16 +70,27 @@ def _proxmox_boot_dir(
     return cfg.boot_dir / "proxmox" / seg
 
 
+def _netboot_dir_for_version(
+    iso_version: IsoVersion,
+    be,
+    cfg: Settings | None = None,
+) -> Path | None:
+    extract_dest = _proxmox_boot_dir(iso_version, be, cfg)
+    if not extract_dest:
+        return None
+    return migrate_legacy_proxmox_netboot_isos(extract_dest)
+
+
 def netboot_iso_path(
     iso_version: IsoVersion,
     be,
     cfg: Settings | None = None,
 ) -> Path | None:
     """ISO sans autoconfig (installation manuelle)."""
-    boot_dir = _proxmox_boot_dir(iso_version, be, cfg)
-    if not boot_dir:
+    netboot = _netboot_dir_for_version(iso_version, be, cfg)
+    if not netboot:
         return None
-    p = boot_dir / PROXMOX_NETBOOT_ISO_BASENAME
+    p = netboot / PROXMOX_NETBOOT_ISO_BASENAME
     return p if p.is_file() else None
 
 
@@ -85,15 +100,17 @@ def netboot_autoinstall_iso_path(
     cfg: Settings | None = None,
 ) -> Path:
     """Chemin de l’ISO autoinstall (créé à l’injection)."""
-    boot_dir = _proxmox_boot_dir(iso_version, be, cfg)
-    if not boot_dir:
-        boot_dir = Path(settings.boot_dir) / "proxmox" / "_"
-    boot_dir.mkdir(parents=True, exist_ok=True)
-    return boot_dir / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
+    cfg = cfg or settings
+    netboot = _netboot_dir_for_version(iso_version, be, cfg)
+    if not netboot:
+        seg = _boot_version_segment(be, iso_version) if be else "unknown"
+        netboot = proxmox_netboot_dir(cfg.boot_dir / "proxmox" / seg)
+        netboot.mkdir(parents=True, exist_ok=True)
+    return netboot / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
 
 
-def netboot_base_iso_path(boot_dir: Path) -> Path:
-    return boot_dir / PROXMOX_NETBOOT_BASE_BASENAME
+def netboot_base_iso_path(netboot_dir: Path) -> Path:
+    return netboot_dir / PROXMOX_NETBOOT_BASE_BASENAME
 
 
 def pick_proxmox_autoconfig(iso_version: IsoVersion) -> AutoConfig | None:
@@ -114,8 +131,39 @@ def _xorriso_rc_ok(proc: subprocess.CompletedProcess[str]) -> bool:
     return proc.returncode in (5, 32)
 
 
-def _xorriso_ls(xorriso: str, iso: Path, iso_path: str) -> bool:
-    """Teste la présence d’un fichier ou répertoire dans l’ISO (xorriso -ls)."""
+def _extracted_tree_has_installer(extract_dest: Path) -> bool:
+    """Arborescence extraite sous boot/proxmox/<version>/ (preuve que l’ISO source est valide)."""
+    return (extract_dest / "boot" / "initrd.img").is_file() or (
+        extract_dest / "boot" / "linux26"
+    ).is_file()
+
+
+def _xorriso_find_name(xorriso: str, iso: Path, name: str) -> bool:
+    proc = subprocess.run(
+        [xorriso, "-indev", str(iso), "-find", "/", "-name", name],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if not _xorriso_rc_ok(proc):
+        return False
+    return name in (proc.stdout or "")
+
+
+def _xorriso_boot_dir_ok(xorriso: str, iso: Path) -> bool:
+    proc = subprocess.run(
+        [xorriso, "-indev", str(iso), "-ls", "/boot"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if not _xorriso_rc_ok(proc):
+        return False
+    out = (proc.stdout or "").lower()
+    return "initrd" in out or "linux26" in out or "vmlinuz" in out
+
+
+def _xorriso_path_exists(xorriso: str, iso: Path, iso_path: str) -> bool:
     proc = subprocess.run(
         [xorriso, "-indev", str(iso), "-ls", iso_path],
         capture_output=True,
@@ -124,36 +172,35 @@ def _xorriso_ls(xorriso: str, iso: Path, iso_path: str) -> bool:
     )
     if not _xorriso_rc_ok(proc):
         return False
-    out = (proc.stdout or "").strip()
-    if not out:
-        return False
-    low = out.lower()
-    if "no such file or directory" in low or "cannot find" in low:
-        return False
-    return True
+    return bool((proc.stdout or "").strip())
 
 
 def _verify_pve_iso_structure(
     xorriso: str,
     iso: Path,
     *,
+    extract_dest: Path | None = None,
     require_autoinstall: bool = False,
 ) -> tuple[bool, str]:
-    """Marqueurs d’une ISO installateur Proxmox VE (pas le dossier extrait sous boot/)."""
-    boot_ok = _xorriso_ls(xorriso, iso, "/boot/initrd.img") or _xorriso_ls(
-        xorriso, iso, "/boot/linux26"
-    )
+    if extract_dest and _extracted_tree_has_installer(extract_dest):
+        boot_ok = True
+    else:
+        boot_ok = (
+            _xorriso_find_name(xorriso, iso, "initrd.img")
+            or _xorriso_find_name(xorriso, iso, "linux26")
+            or _xorriso_boot_dir_ok(xorriso, iso)
+        )
     if not boot_ok:
-        return False, "structure ISO invalide (/boot/initrd.img absent)"
-    disk_ok = _xorriso_ls(xorriso, iso, "/.disk/info") or _xorriso_ls(
-        xorriso, iso, "/.disk"
+        return False, "structure ISO invalide (fichiers boot absents dans l’ISO)"
+    disk_ok = _xorriso_path_exists(xorriso, iso, "/.disk") or _xorriso_find_name(
+        xorriso, iso, "info"
     )
-    if not disk_ok:
+    if not disk_ok and not (extract_dest and (extract_dest / ".disk").is_dir()):
         return False, "structure ISO invalide (/.disk absent)"
     if require_autoinstall:
-        if not _xorriso_ls(xorriso, iso, "/answer.toml"):
+        if not _xorriso_path_exists(xorriso, iso, "/answer.toml"):
             return False, "answer.toml absent à la racine de l’ISO"
-        if not _xorriso_ls(xorriso, iso, "/auto-installer-mode.toml"):
+        if not _xorriso_path_exists(xorriso, iso, "/auto-installer-mode.toml"):
             return False, "auto-installer-mode.toml absent à la racine de l’ISO"
     return True, ""
 
@@ -165,7 +212,9 @@ def _inject_with_xorriso(
     mode_file: Path,
     answer_copy: Path,
 ) -> tuple[bool, str]:
-    ok, reason = _verify_pve_iso_structure(xorriso, base_iso, require_autoinstall=False)
+    ok, reason = _verify_pve_iso_structure(
+        xorriso, base_iso, require_autoinstall=False
+    )
     if not ok:
         return False, f"ISO source : {reason}"
 
@@ -234,6 +283,10 @@ def _find_pristine_proxmox_iso(iso_version: IsoVersion, cfg: Settings) -> Path |
                 _add(p)
 
     for p in candidates:
+        if p.name in _NETBOOT_ARTIFACT_BASENAMES or p.name.startswith(
+            "proxmox-netboot"
+        ):
+            continue
         try:
             if p.is_file() and p.stat().st_size >= _MIN_PVE_ISO_BYTES:
                 return p
@@ -242,11 +295,11 @@ def _find_pristine_proxmox_iso(iso_version: IsoVersion, cfg: Settings) -> Path |
     return None
 
 
-def _sync_netboot_isos_from_pristine(boot_dir: Path, pristine: Path) -> Path:
+def _sync_netboot_isos_from_pristine(netboot_dir: Path, pristine: Path) -> Path:
     """Recopie l’ISO source vers base + manuel (écrase une base corrompue)."""
-    boot_dir.mkdir(parents=True, exist_ok=True)
-    base = netboot_base_iso_path(boot_dir)
-    manual = boot_dir / PROXMOX_NETBOOT_ISO_BASENAME
+    netboot_dir.mkdir(parents=True, exist_ok=True)
+    base = netboot_base_iso_path(netboot_dir)
+    manual = netboot_dir / PROXMOX_NETBOOT_ISO_BASENAME
     shutil.copy2(pristine, base)
     shutil.copy2(pristine, manual)
     logger.info(
@@ -259,16 +312,17 @@ def _sync_netboot_isos_from_pristine(boot_dir: Path, pristine: Path) -> Path:
 
 
 def _ensure_base_iso(
-    boot_dir: Path,
+    extract_dest: Path,
     iso_version: IsoVersion | None,
     cfg: Settings,
 ) -> Path:
     """
     Recopie toujours depuis l’ISO Proxmox uploadée avant injection.
-    Évite d’utiliser une proxmox-netboot-base.iso corrompue par un ancien xorriso.
+    Les ISO netboot vivent dans ``<extract_dest>/netboot/``, pas à la racine extraite.
     """
     if not iso_version:
         raise FileNotFoundError("Version ISO Proxmox requise pour l’injection.")
+    netboot_dir = migrate_legacy_proxmox_netboot_isos(extract_dest)
     pristine = _find_pristine_proxmox_iso(iso_version, cfg)
     if not pristine:
         raise FileNotFoundError(
@@ -278,13 +332,16 @@ def _ensure_base_iso(
     xorriso = shutil.which("xorriso")
     if xorriso:
         ok, reason = _verify_pve_iso_structure(
-            xorriso, pristine, require_autoinstall=False
+            xorriso,
+            pristine,
+            extract_dest=extract_dest,
+            require_autoinstall=False,
         )
         if not ok:
             raise RuntimeError(
                 f"ISO source invalide ({pristine.name}) : {reason}"
             )
-    return _sync_netboot_isos_from_pristine(boot_dir, pristine)
+    return _sync_netboot_isos_from_pristine(netboot_dir, pristine)
 
 
 def inject_proxmox_autoinstall_into_netboot_iso(
@@ -305,9 +362,18 @@ def inject_proxmox_autoinstall_into_netboot_iso(
             "xorriso introuvable sur le serveur (apt install xorriso)."
         )
 
-    bdir = boot_dir or autoinstall_iso.parent
-    bdir.mkdir(parents=True, exist_ok=True)
-    base_iso = _ensure_base_iso(bdir, iso_version, cfg)
+    if boot_dir is not None:
+        extract_dest = boot_dir
+        if extract_dest.name == PROXMOX_NETBOOT_DIRNAME:
+            extract_dest = extract_dest.parent
+    else:
+        extract_dest = autoinstall_iso.parent
+        if extract_dest.name == PROXMOX_NETBOOT_DIRNAME:
+            extract_dest = extract_dest.parent
+    extract_dest.mkdir(parents=True, exist_ok=True)
+    autoinstall_iso = migrate_legacy_proxmox_netboot_isos(extract_dest)
+    autoinstall_iso = autoinstall_iso / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
+    base_iso = _ensure_base_iso(extract_dest, iso_version, cfg)
 
     with tempfile.TemporaryDirectory(prefix="pve-ais-") as tmp:
         tmp_dir = Path(tmp)
@@ -351,16 +417,20 @@ def inject_active_proxmox_autoinstall(
         raise FileNotFoundError(
             f"answer.toml introuvable : {(cfg.file_path or '').strip() or '?'}"
         )
-    manual = netboot_iso_path(iso_version, be, cfg_settings)
-    if not manual:
+    extract_dest = _proxmox_boot_dir(iso_version, be, cfg_settings)
+    if not extract_dest or not _extracted_tree_has_installer(extract_dest):
         raise FileNotFoundError(
-            "proxmox-netboot.iso absent — extraire l’ISO Proxmox sur cette version d’abord."
+            "ISO Proxmox non extraite — extraire l’ISO sur cette version d’abord."
+        )
+    if not netboot_iso_path(iso_version, be, cfg_settings):
+        raise FileNotFoundError(
+            "proxmox-netboot.iso absent — ré-extraire l’ISO Proxmox."
         )
     autoinstall = netboot_autoinstall_iso_path(iso_version, be, cfg_settings)
     inject_proxmox_autoinstall_into_netboot_iso(
         autoinstall,
         answer_p,
-        boot_dir=manual.parent,
+        boot_dir=extract_dest,
         iso_version=iso_version,
         settings_obj=cfg_settings,
     )

@@ -1198,26 +1198,61 @@ PROXMOX_NETBOOT_ISO_BASENAME = "proxmox-netboot.iso"
 PROXMOX_NETBOOT_AUTOINSTALL_BASENAME = "proxmox-netboot-autoinstall.iso"
 # Copie d’origine jamais modifiée ; l’injection part toujours de ce fichier.
 PROXMOX_NETBOOT_BASE_BASENAME = "proxmox-netboot-base.iso"
+# Sous-dossier des ISO netboot (séparé de l’arborescence ISO extraite : boot/, dists/, …).
+PROXMOX_NETBOOT_DIRNAME = "netboot"
+_NETBOOT_ARTIFACT_BASENAMES = frozenset(
+    {
+        PROXMOX_NETBOOT_ISO_BASENAME,
+        PROXMOX_NETBOOT_AUTOINSTALL_BASENAME,
+        PROXMOX_NETBOOT_BASE_BASENAME,
+    }
+)
+
+
+def proxmox_netboot_dir(extract_dest: Path) -> Path:
+    """Répertoire des ISO servies en 2e initrd (hors contenu extrait de l’ISO)."""
+    return extract_dest / PROXMOX_NETBOOT_DIRNAME
+
+
+def migrate_legacy_proxmox_netboot_isos(extract_dest: Path) -> Path:
+    """Déplace d’éventuelles ISO netboot publiées à la racine de l’extraction (ancien layout)."""
+    netboot = proxmox_netboot_dir(extract_dest)
+    netboot.mkdir(parents=True, exist_ok=True)
+    for name in _NETBOOT_ARTIFACT_BASENAMES:
+        legacy = extract_dest / name
+        if not legacy.is_file():
+            continue
+        target = netboot / name
+        try:
+            if target.is_file():
+                legacy.unlink()
+            else:
+                legacy.replace(target)
+            logger.info("Proxmox : ISO netboot déplacée %s → %s/", name, PROXMOX_NETBOOT_DIRNAME)
+        except OSError as e:
+            logger.warning("Proxmox : déplacement %s : %s", legacy, e)
+    return netboot
 
 
 def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
     """
-    Copie l’ISO source vers ``proxmox-netboot-base.iso`` et ``proxmox-netboot.iso``
-    (installation manuelle). L’ISO autoinstall est recréée à la prochaine injection.
+    Copie l’ISO uploadée dans ``<extract_dest>/netboot/`` (base + manuel).
+    L’ISO autoinstall est recréée à la prochaine injection.
     """
     if not iso.is_file():
         return
-    dest.mkdir(parents=True, exist_ok=True)
-    base = dest / PROXMOX_NETBOOT_BASE_BASENAME
-    manual = dest / PROXMOX_NETBOOT_ISO_BASENAME
-    autoinstall = dest / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
+    netboot = migrate_legacy_proxmox_netboot_isos(dest)
+    base = netboot / PROXMOX_NETBOOT_BASE_BASENAME
+    manual = netboot / PROXMOX_NETBOOT_ISO_BASENAME
+    autoinstall = netboot / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
     try:
         shutil.copy2(iso, base)
         shutil.copy2(iso, manual)
         if autoinstall.is_file():
             autoinstall.unlink()
         logger.info(
-            "Proxmox : ISO netboot publiée %s (base %s)",
+            "Proxmox : ISO netboot publiée %s/%s (base %s)",
+            PROXMOX_NETBOOT_DIRNAME,
             manual.name,
             base.name,
         )

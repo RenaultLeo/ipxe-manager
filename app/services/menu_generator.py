@@ -792,22 +792,35 @@ def _proxmox_iso_http_url_for_menu(
     """
     from app.services.iso_extractor import (
         PROXMOX_NETBOOT_AUTOINSTALL_BASENAME,
+        PROXMOX_NETBOOT_DIRNAME,
         PROXMOX_NETBOOT_ISO_BASENAME,
+        migrate_legacy_proxmox_netboot_isos,
     )
 
     if be:
         seg = _boot_os_version_segment(be, "proxmox")
         if seg:
-            boot_sub = cfg.boot_dir / "proxmox" / seg
+            extract_dest = cfg.boot_dir / "proxmox" / seg
+            netboot_sub = migrate_legacy_proxmox_netboot_isos(extract_dest)
+            rel_prefix = f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_DIRNAME}"
             if autoinstall:
-                ais = boot_sub / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
+                ais = netboot_sub / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
                 if ais.is_file():
+                    return _http(
+                        f"{rel_prefix}/{PROXMOX_NETBOOT_AUTOINSTALL_BASENAME}",
+                        cfg,
+                    )
+                legacy_ais = extract_dest / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
+                if legacy_ais.is_file():
                     return _http(
                         f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_AUTOINSTALL_BASENAME}",
                         cfg,
                     )
-            manual = boot_sub / PROXMOX_NETBOOT_ISO_BASENAME
+            manual = netboot_sub / PROXMOX_NETBOOT_ISO_BASENAME
             if manual.is_file():
+                return _http(f"{rel_prefix}/{PROXMOX_NETBOOT_ISO_BASENAME}", cfg)
+            legacy_manual = extract_dest / PROXMOX_NETBOOT_ISO_BASENAME
+            if legacy_manual.is_file():
                 return _http(
                     f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_ISO_BASENAME}", cfg
                 )
