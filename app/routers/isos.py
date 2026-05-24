@@ -411,6 +411,13 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if not os_type:
         raise HTTPException(404, "Type d'OS introuvable")
 
+    ubuntu_variant = "desktop"
+    if os_type.slug == "ubuntu":
+        uv = str(form.get("ubuntu_variant") or "desktop").strip().lower()
+        if uv not in ("desktop", "server"):
+            raise HTTPException(400, translate(lang, "iso.upload.ubuntu_variant_invalid"))
+        ubuntu_variant = uv
+
     file_iso = _pick_upload_file(form, "file")
     iso_safe_name = ""
     if file_iso:
@@ -438,6 +445,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         status="uploaded",
         iso_size=0,
         notes=notes,
+        ubuntu_variant=ubuntu_variant,
     )
     db.add(version)
     db.flush()
@@ -788,6 +796,8 @@ async def iso_activate_config(
         raise HTTPException(403)
     if version.os_type.slug != "ubuntu":
         raise HTTPException(400, detail=translate(lang, "iso.active_config_not_ubuntu"))
+    if (getattr(version, "ubuntu_variant", None) or "desktop").lower() == "server":
+        raise HTTPException(400, detail=translate(lang, "iso.active_config_desktop_only"))
 
     cfg = (
         db.query(AutoConfig)

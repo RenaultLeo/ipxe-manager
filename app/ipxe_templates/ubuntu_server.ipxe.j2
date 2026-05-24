@@ -1,0 +1,35 @@
+#!ipxe
+# Ubuntu Server — une entrée par configuration cloud-init (dossier conf-cloudInit-*)
+set menu-timeout 30000
+set menu-default {{ default_id }}
+:menu
+menu === Ubuntu Server — Configurations ===
+item --gap --             Autoinstall (ds=nocloud) — une entrée par config
+{% for item in flat_items %}
+item {{ item.menu_id }}   {{ item.label }}
+{% endfor %}
+{% if has_autres %}
+item autres               Scripts iPXE personnalisés…
+{% endif %}
+item back                 Retour au menu Ubuntu
+choose --default ${menu-default} --timeout ${menu-timeout} selected
+goto ${selected}
+
+{% for item in flat_items %}
+:{{ item.menu_id }}
+kernel {{ item.kernel_url }} {{ item.kernel_args }} {{ item.boot_arg }}
+{% if item.initrd_url %}initrd {{ item.initrd_url }}{% endif %}
+boot
+{% endfor %}
+{% if has_autres %}
+:autres
+chain --autofree {{ server_url }}/menus/ubuntu_autres.ipxe || goto menu_failed
+{% endif %}
+
+:back
+chain --autofree {{ server_url }}/menus/ubuntu.ipxe || goto menu_failed
+
+:menu_failed
+echo Échec du chargement du menu
+sleep 5
+exit

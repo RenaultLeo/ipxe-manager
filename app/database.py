@@ -57,6 +57,8 @@ def _migrate_columns():
     _add_column_if_missing("iso_versions", "iso_was_extracted", "BOOLEAN DEFAULT 0")
     _add_column_if_missing("iso_versions", "delete_iso_after_next_extract", "BOOLEAN DEFAULT 0")
     _add_column_if_missing("iso_versions", "ubuntu_nfs_boot", "BOOLEAN DEFAULT 0")
+    if _add_column_if_missing("iso_versions", "ubuntu_variant", "VARCHAR(16) DEFAULT 'desktop'"):
+        _backfill_ubuntu_variant_desktop()
     _add_column_if_missing("iso_versions", "extract_basename_report_json", "TEXT DEFAULT ''")
     _add_column_if_missing("iso_versions", "active_autoconfig_id", "INTEGER")
     _add_column_if_missing("iso_versions", "active_winpe_install_id", "INTEGER")
@@ -186,6 +188,26 @@ def _backfill_iso_was_extracted() -> None:
             conn.commit()
     except Exception:
         logger.exception("Migration : backfill iso_was_extracted")
+
+
+def _backfill_ubuntu_variant_desktop() -> None:
+    """ISO Ubuntu existantes : variante desktop (comportement menu avant le hub)."""
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE iso_versions
+                    SET ubuntu_variant = 'desktop'
+                    WHERE ubuntu_variant IS NULL OR TRIM(ubuntu_variant) = ''
+                    """
+                )
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Migration : backfill ubuntu_variant")
 
 
 def _add_column_if_missing(table: str, column: str, col_type: str) -> bool:

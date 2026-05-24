@@ -127,28 +127,115 @@ def _ubuntu_nocloud_boot_arg(seed_dir_url: str) -> str:
     return f"autoinstall ds=nocloud;s={base} cloud-config-url=/dev/null"
 
 
+def _ubuntu_server_bundle_rel_path(v: IsoVersion, cloud_slug: str) -> str:
+    """Dossier HTTP cloud-init Server : boot/ubuntu/<release>/conf-cloudInit-<slug>/."""
+    be = v.boot_entry
+    seg = _boot_os_version_segment(be, "ubuntu") or slugify(v.version_label)
+    return f"boot/ubuntu/{seg}/conf-cloudInit-{cloud_slug}"
+
+
+def _ubuntu_server_seed_dir_rel(v: IsoVersion, ac) -> str | None:
+    slug = (getattr(ac, "ubuntu_cloud_slug", None) or "").strip()
+    if slug:
+        return _ubuntu_server_bundle_rel_path(v, slug)
+    rel = (ac.file_path or "").replace("\\", "/").strip().lstrip("/")
+    if not rel:
+        return None
+    parts = rel.split("/")
+    for i, part in enumerate(parts):
+        if part.startswith("conf-cloudInit"):
+            return "/".join(parts[: i + 1])
+    return None
+
+
+def _ubuntu_server_flat_items(entries: list[dict]) -> list[dict]:
+    """Menu Server plat : une ligne par config (+ manuel par version)."""
+    flat: list[dict] = []
+    for e in entries:
+        k = e.get("kernel") or ""
+        i = e.get("initrd") or ""
+        ka = e.get("kernel_args") or ""
+        vid = e["id"]
+        base = e.get("label") or f"Ubuntu {vid}"
+        for ac in e.get("autoconfigs") or []:
+            flat.append(
+                {
+                    "menu_id": f"ac{vid}_{ac['id']}",
+                    "label": f"{base} — {ac['label']}",
+                    "kernel_url": k,
+                    "initrd_url": i,
+                    "kernel_args": ka,
+                    "boot_arg": ac.get("boot_arg") or "",
+                }
+            )
+        flat.append(
+            {
+                "menu_id": f"manual_{vid}",
+                "label": f"{base} — installation manuelle",
+                "kernel_url": k,
+                "initrd_url": i,
+                "kernel_args": ka,
+                "boot_arg": "",
+            }
+        )
+    return flat
+
+
 def _menu_autoconfig_entries(
     v: IsoVersion,
     os_type: OsType,
     h,
+    *,
+    ubuntu_variant: str = "desktop",
 ) -> list[dict]:
-    """Entrées menu autoconfig : config courante → seed publié à la racine boot/ubuntu/<release>/."""
-    active_id = getattr(v, "active_autoconfig_id", None)
+    """Entrées autoconfig pour les sous-menus iPXE."""
+    slug_l = os_type.slug.lower()
+    variant = (ubuntu_variant or "desktop").lower()
     configs = list(v.autoconfigs or [])
-    if os_type.slug.lower() == "ubuntu" and active_id:
-        configs = [ac for ac in configs if ac.id == active_id]
     entries: list[dict] = []
+
+    if slug_l == "ubuntu" and variant == "desktop":
+        active_id = getattr(v, "active_autoconfig_id", None)
+        if active_id:
+            configs = [ac for ac in configs if ac.id == active_id]
+        for ac in configs:
+            rel = ac.file_path or ""
+            boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
+            if active_id == ac.id and ac.ubuntu_cloud_slug:
+                rel = published_seed_dir_rel_path(v)
+                boot_arg = _ubuntu_nocloud_boot_arg(h(rel))
+            url = h(rel) if rel else ""
+            entries.append(
+                {
+                    "id": ac.id,
+                    "label": resolve_autoconfig_menu_label(ac),
+                    "url": url,
+                    "type": ac.config_type,
+                    "boot_arg": boot_arg,
+                }
+            )
+        return entries
+
+    if slug_l == "ubuntu" and variant == "server":
+        for ac in configs:
+            dir_rel = _ubuntu_server_seed_dir_rel(v, ac)
+            if not dir_rel:
+                continue
+            boot_arg = _ubuntu_nocloud_boot_arg(h(dir_rel))
+            entries.append(
+                {
+                    "id": ac.id,
+                    "label": resolve_autoconfig_menu_label(ac),
+                    "url": h(dir_rel),
+                    "type": ac.config_type,
+                    "boot_arg": boot_arg,
+                }
+            )
+        return entries
+
     for ac in configs:
         rel = ac.file_path or ""
         boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
-        if (
-            os_type.slug.lower() == "ubuntu"
-            and active_id == ac.id
-            and ac.ubuntu_cloud_slug
-        ):
-            rel = published_seed_dir_rel_path(v)
-            seed_url = h(rel)
-            boot_arg = _ubuntu_nocloud_boot_arg(seed_url)
         url = h(rel) if rel else ""
         entries.append(
             {
@@ -222,6 +309,12 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
                 be.kernel_path.replace("\\", "/").rstrip("/").split("/")[-1]
             )
 
+    ubuntu_variant = ""
+    if slug_l == "ubuntu":
+        ubuntu_variant = (getattr(v, "ubuntu_variant", None) or "desktop").lower()
+        if ubuntu_variant not in ("desktop", "server"):
+            ubuntu_variant = "desktop"
+
     winpe_active_label = ""
     if be and (os_type.boot_type or "").lower() == "windows":
         active_wid = getattr(v, "active_winpe_install_id", None)
@@ -254,11 +347,15 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
         ),
         "boot_type":   os_type.boot_type or "linux",
-        "autoconfigs": _menu_autoconfig_entries(v, os_type, h),
+        "ubuntu_variant": ubuntu_variant,
+        "autoconfigs": _menu_autoconfig_entries(
+            v, os_type, h, ubuntu_variant=ubuntu_variant or "desktop"
+        ),
         "ipxe_item_tag": f"v{v.id}",
         "ubuntu_nfs_boot": use_ubuntu_nfs,
         "ubuntu_direct_boot": (
-            os_type.slug.lower() == "ubuntu"
+            slug_l == "ubuntu"
+            and ubuntu_variant == "desktop"
             and bool(getattr(v, "active_autoconfig_id", None))
             and not use_ubuntu_nfs
         ),
@@ -485,34 +582,97 @@ def regenerate_all(db: Session) -> list[str]:
             else:
                 slug_l = (os_type.slug or "").lower()
                 bt_l = (os_type.boot_type or "linux").lower()
-                if slug_l == "esxi" or bt_l == "esxi":
-                    tmpl_name = "esxi.ipxe.j2"
-                elif bt_l == "windows":
-                    tmpl_name = "windows.ipxe.j2"
+
+                if slug_l == "ubuntu":
+                    desktop_entries = [
+                        e
+                        for e in standard_entries
+                        if e.get("ubuntu_variant") != "server"
+                    ]
+                    server_entries = [
+                        e
+                        for e in standard_entries
+                        if e.get("ubuntu_variant") == "server"
+                    ]
+                    hub = env.get_template("ubuntu_hub.ipxe.j2")
+                    out_hub = cfg.menus_dir / "ubuntu.ipxe"
+                    out_hub.write_text(
+                        hub.render(server_url=base, has_menu_theme=has_menu_theme),
+                        encoding="utf-8",
+                    )
+                    written.append(str(out_hub))
+
+                    linux_tmpl = env.get_template("linux.ipxe.j2")
+                    out_desktop = cfg.menus_dir / "ubuntu_desktop.ipxe"
+                    out_desktop.write_text(
+                        linux_tmpl.render(
+                            os_type=os_type,
+                            entries=desktop_entries,
+                            has_autres=has_autres,
+                            server_url=base,
+                            has_menu_theme=has_menu_theme,
+                            back_menu_url=f"{base}/menus/ubuntu.ipxe",
+                            back_item_label="Retour au menu Ubuntu",
+                            ubuntu_nfs_enabled=any(
+                                e.get("ubuntu_nfs_boot") for e in desktop_entries
+                            ),
+                            ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
+                            ubuntu_nfs_export_path=(
+                                Path(cfg.http_root) / "boot" / "ubuntu"
+                            ).as_posix(),
+                        ),
+                        encoding="utf-8",
+                    )
+                    written.append(str(out_desktop))
+
+                    flat = _ubuntu_server_flat_items(server_entries)
+                    server_tmpl = env.get_template("ubuntu_server.ipxe.j2")
+                    out_server = cfg.menus_dir / "ubuntu_server.ipxe"
+                    out_server.write_text(
+                        server_tmpl.render(
+                            flat_items=flat,
+                            default_id=flat[0]["menu_id"] if flat else "back",
+                            has_autres=has_autres,
+                            server_url=base,
+                            has_menu_theme=has_menu_theme,
+                        ),
+                        encoding="utf-8",
+                    )
+                    written.append(str(out_server))
+
+                    autres_back_target = f"{base}/menus/ubuntu.ipxe"
+                    autres_back_item = "Retour au menu Ubuntu"
                 else:
-                    tmpl_name = "linux.ipxe.j2"
-                if not (TMPL_DIR / tmpl_name).exists():
-                    tmpl_name = "linux.ipxe.j2"
+                    if slug_l == "esxi" or bt_l == "esxi":
+                        tmpl_name = "esxi.ipxe.j2"
+                    elif bt_l == "windows":
+                        tmpl_name = "windows.ipxe.j2"
+                    else:
+                        tmpl_name = "linux.ipxe.j2"
+                    if not (TMPL_DIR / tmpl_name).exists():
+                        tmpl_name = "linux.ipxe.j2"
 
-                tmpl = env.get_template(tmpl_name)
-                content = tmpl.render(
-                    os_type=os_type,
-                    entries=standard_entries,
-                    has_autres=has_autres,
-                    server_url=base,
-                    has_menu_theme=has_menu_theme,
-                    ubuntu_nfs_enabled=any(
-                        e.get("ubuntu_nfs_boot") for e in standard_entries
-                    ),
-                    ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
-                    ubuntu_nfs_export_path=(Path(cfg.http_root) / "boot" / "ubuntu").as_posix(),
-                )
-                out = cfg.menus_dir / f"{os_type.slug}.ipxe"
-                out.write_text(content, encoding="utf-8")
-                written.append(str(out))
+                    tmpl = env.get_template(tmpl_name)
+                    content = tmpl.render(
+                        os_type=os_type,
+                        entries=standard_entries,
+                        has_autres=has_autres,
+                        server_url=base,
+                        has_menu_theme=has_menu_theme,
+                        ubuntu_nfs_enabled=any(
+                            e.get("ubuntu_nfs_boot") for e in standard_entries
+                        ),
+                        ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
+                        ubuntu_nfs_export_path=(
+                            Path(cfg.http_root) / "boot" / "ubuntu"
+                        ).as_posix(),
+                    )
+                    out = cfg.menus_dir / f"{os_type.slug}.ipxe"
+                    out.write_text(content, encoding="utf-8")
+                    written.append(str(out))
 
-                autres_back_target = f"{base}/menus/{os_type.slug}.ipxe"
-                autres_back_item = f"Retour à {os_type.label}"
+                    autres_back_target = f"{base}/menus/{os_type.slug}.ipxe"
+                    autres_back_item = f"Retour à {os_type.label}"
 
             # ── Sous-menu "Autres" (scripts iPXE custom) ────────────────────
             if has_autres:

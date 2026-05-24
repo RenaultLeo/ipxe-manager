@@ -22,7 +22,7 @@ item --gap
 {% if has_autres %}
 item autres Fichiers iPXE personnalisés pour {{ os_type.label }}…
 {% endif %}
-item back Retour au menu principal
+item back {{ back_item_label if back_item_label is defined else 'Retour au menu principal' }}
 choose selected || goto back
 goto ${selected}
 
@@ -56,7 +56,7 @@ goto ${selected}
   boot
 
   :back_v{{ e.id }}
-  goto v{{ e.id }}
+  goto start
 
 {% else %}
   kernel {{ e.kernel }} {{ e.kernel_args }}
@@ -72,4 +72,4 @@ chain --autofree {{ server_url }}/menus/{{ os_type.slug }}_autres.ipxe
 
 {% endif %}
 :back
-chain --autofree {{ server_url }}/menus/menu.ipxe
+chain --autofree {{ back_menu_url if back_menu_url is defined else (server_url ~ '/menus/menu.ipxe') }}

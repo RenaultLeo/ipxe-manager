@@ -1,0 +1,26 @@
+#!ipxe
+# Menu Ubuntu — Desktop ou Server (généré automatiquement)
+set menu-timeout 30000
+set menu-default ubuntu_desktop
+:menu
+menu === Ubuntu — Choisissez le type d'installation ===
+item --gap --             Versions Desktop (live) ou Server (cloud-init)
+item ubuntu_desktop       Ubuntu Desktop
+item ubuntu_server        Ubuntu Server
+item back                 Retour au menu principal
+choose --default ${menu-default} --timeout ${menu-timeout} selected
+goto ${selected}
+
+:ubuntu_desktop
+chain --autofree {{ server_url }}/menus/ubuntu_desktop.ipxe || goto menu_failed
+
+:ubuntu_server
+chain --autofree {{ server_url }}/menus/ubuntu_server.ipxe || goto menu_failed
+
+:back
+chain --autofree {{ server_url }}/menus/menu.ipxe || goto menu_failed
+
+:menu_failed
+echo Échec du chargement du menu
+sleep 5
+exit

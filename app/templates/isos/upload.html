@@ -74,6 +74,25 @@
                 {{ t('iso.upload.ubuntu_notice') }}
               </div>
 
+              <div id="ubuntu-variant-block" class="card border-secondary mb-3 d-none">
+                <div class="card-body py-3">
+                  <label class="form-label mb-2">{{ t('iso.upload.ubuntu_variant_label') }}</label>
+                  <div class="btn-group" role="group" aria-label="{{ t('iso.upload.ubuntu_variant_label') }}">
+                    <input type="radio" class="btn-check" name="ubuntu_variant" id="ubuntu-variant-desktop"
+                           value="desktop" checked autocomplete="off">
+                    <label class="btn btn-outline-primary btn-sm" for="ubuntu-variant-desktop">
+                      {{ t('iso.upload.ubuntu_variant_desktop') }}
+                    </label>
+                    <input type="radio" class="btn-check" name="ubuntu_variant" id="ubuntu-variant-server"
+                           value="server" autocomplete="off">
+                    <label class="btn btn-outline-primary btn-sm" for="ubuntu-variant-server">
+                      {{ t('iso.upload.ubuntu_variant_server') }}
+                    </label>
+                  </div>
+                  <div class="form-text mt-2">{{ t('iso.upload.ubuntu_variant_help') }}</div>
+                </div>
+              </div>
+
               <div id="extract-plan-banner" class="alert alert-secondary small py-3 d-none mb-3">
                 <div class="mb-1">{{ t('iso.upload.extract_plan_intro') }}</div>
                 <div id="extract-plan-badges-wrap" class="d-none mb-2">
@@ -262,6 +281,8 @@ function updateLinuxFields() {
   rebuildLinuxManualSlots(slug, terms);
 
   document.getElementById('ubuntu-notice').classList.toggle('d-none', !info.fullExtract);
+  const uvBlock = document.getElementById('ubuntu-variant-block');
+  if (uvBlock) uvBlock.classList.toggle('d-none', slug !== 'ubuntu');
   const hasIso = !!document.getElementById('iso-file').value;
   document.getElementById('linux-manual-fields').style.opacity = (hasIso && (isUbuntuStyle || metaFull)) ? '0.45' : '1';
 
