@@ -127,7 +127,6 @@ def clear_active_ubuntu_publish(db, version: IsoVersion) -> None:
 
 PROXMOX_OS_SLUG = "proxmox"
 PROXMOX_ANSWER_BASENAME = "answer.toml"
-PROXMOX_CONFIG_SUBDIR = "config"
 
 
 def proxmox_boot_version_segment(version: IsoVersion) -> str:
@@ -148,11 +147,11 @@ def proxmox_boot_version_dir(version: IsoVersion) -> Path:
 
 
 def clear_proxmox_answer_from_boot(version: IsoVersion) -> None:
-    """Retire answer.toml à la racine et sous config/ de l’arborescence boot extraite."""
+    """Retire answer.toml à la racine de boot/proxmox/<release>/ (+ ancien config/)."""
     boot_dir = proxmox_boot_version_dir(version)
     if not boot_dir.is_dir():
         return
-    for rel in (PROXMOX_ANSWER_BASENAME, f"{PROXMOX_CONFIG_SUBDIR}/{PROXMOX_ANSWER_BASENAME}"):
+    for rel in (PROXMOX_ANSWER_BASENAME, f"config/{PROXMOX_ANSWER_BASENAME}"):
         p = boot_dir / rel
         if p.is_file():
             try:
@@ -162,25 +161,12 @@ def clear_proxmox_answer_from_boot(version: IsoVersion) -> None:
 
 
 def publish_proxmox_answer_config(version: IsoVersion, content: str) -> str:
-    """
-    Copie answer.toml à la racine de boot/proxmox/<release>/ et dans config/.
-    Retourne le chemin relatif du dossier boot (sans nom de fichier).
-    """
+    """Copie answer.toml à la racine de boot/proxmox/<release>/ (miroir de configs/)."""
     boot_dir = proxmox_boot_version_dir(version)
     boot_dir.mkdir(parents=True, exist_ok=True)
-    (boot_dir / PROXMOX_CONFIG_SUBDIR).mkdir(parents=True, exist_ok=True)
-    for dest in (
-        boot_dir / PROXMOX_ANSWER_BASENAME,
-        boot_dir / PROXMOX_CONFIG_SUBDIR / PROXMOX_ANSWER_BASENAME,
-    ):
-        dest.write_text(content, encoding="utf-8")
+    (boot_dir / PROXMOX_ANSWER_BASENAME).write_text(content, encoding="utf-8")
     rel = f"boot/{PROXMOX_OS_SLUG}/{proxmox_boot_version_segment(version)}"
-    logger.info(
-        "Proxmox answer.toml publié vers %s/ et %s/config/ (version %s)",
-        rel,
-        rel,
-        version.id,
-    )
+    logger.info("Proxmox answer.toml → %s/%s (version %s)", rel, PROXMOX_ANSWER_BASENAME, version.id)
     return rel
 
 

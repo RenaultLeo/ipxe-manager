@@ -476,7 +476,7 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
             publish_proxmox_answer_config(version, content)
         except Exception:
             logger.exception(
-                "Publication answer.toml vers boot/proxmox (version %s)",
+                "Copie answer.toml vers boot/proxmox/<version>/ (version %s)",
                 version.id,
             )
     return rel

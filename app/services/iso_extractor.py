@@ -1196,15 +1196,13 @@ _GZIP_MAGIC = b"\x1f\x8b"
 PROXMOX_NETBOOT_ISO_BASENAME = "proxmox-netboot.iso"
 # ISO avec answer.toml injecté (boot auto-install iPXE uniquement).
 PROXMOX_NETBOOT_AUTOINSTALL_BASENAME = "proxmox-netboot-autoinstall.iso"
-# Copie d’origine jamais modifiée ; l’injection part toujours de ce fichier.
-PROXMOX_NETBOOT_BASE_BASENAME = "proxmox-netboot-base.iso"
 # Sous-dossier des ISO netboot (séparé de l’arborescence ISO extraite : boot/, dists/, …).
 PROXMOX_NETBOOT_DIRNAME = "netboot"
 _NETBOOT_ARTIFACT_BASENAMES = frozenset(
     {
         PROXMOX_NETBOOT_ISO_BASENAME,
         PROXMOX_NETBOOT_AUTOINSTALL_BASENAME,
-        PROXMOX_NETBOOT_BASE_BASENAME,
+        "proxmox-netboot-base.iso",  # legacy
     }
 )
 
@@ -1236,25 +1234,23 @@ def migrate_legacy_proxmox_netboot_isos(extract_dest: Path) -> Path:
 
 def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
     """
-    Copie l’ISO uploadée dans ``<extract_dest>/netboot/`` (base + manuel).
+    Copie l’ISO uploadée vers ``netboot/proxmox-netboot.iso``.
     L’ISO autoinstall est recréée à la prochaine injection.
     """
     if not iso.is_file():
         return
     netboot = migrate_legacy_proxmox_netboot_isos(dest)
-    base = netboot / PROXMOX_NETBOOT_BASE_BASENAME
     manual = netboot / PROXMOX_NETBOOT_ISO_BASENAME
     autoinstall = netboot / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
     try:
-        shutil.copy2(iso, base)
         shutil.copy2(iso, manual)
         if autoinstall.is_file():
             autoinstall.unlink()
         logger.info(
-            "Proxmox : ISO netboot publiée %s/%s (base %s)",
+            "Proxmox : %s publié sous %s/%s",
+            manual.name,
             PROXMOX_NETBOOT_DIRNAME,
             manual.name,
-            base.name,
         )
     except OSError as e:
         logger.warning("Proxmox : impossible de publier %s : %s", manual, e)
