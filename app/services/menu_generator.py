@@ -757,12 +757,37 @@ def _iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
     return cfg.iso_public_http_url(raw) or ""
 
 
-def _proxmox_boot_http_root(be: BootEntry | None, cfg: Settings) -> str:
-    """Racine HTTP de l’ISO extraite : boot/proxmox/<version>/ (squashfs, .installer, …)."""
-    seg = _boot_os_version_segment(be, "proxmox")
-    if not seg:
-        return ""
-    return _http(f"boot/proxmox/{seg}/", cfg)
+def _proxmox_iso_http_url_for_menu(
+    iso_version: IsoVersion | None,
+    be: BootEntry | None,
+    cfg: Settings,
+) -> str:
+    """
+    URL HTTP de l’ISO pour le 2e initrd ``proxmox.iso`` :
+    1) ``boot/proxmox/<version>/proxmox-netboot.iso`` (après extraction, survit à la purge isos-ipxe)
+    2) ``isos-ipxe/…`` via ``iso_path`` en BDD
+    3) scan ``isos/proxmox/<id>/*.iso``
+    """
+    from app.services.iso_extractor import PROXMOX_NETBOOT_ISO_BASENAME
+
+    if be:
+        seg = _boot_os_version_segment(be, "proxmox")
+        if seg:
+            netboot = cfg.boot_dir / "proxmox" / seg / PROXMOX_NETBOOT_ISO_BASENAME
+            if netboot.is_file():
+                return _http(f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_ISO_BASENAME}", cfg)
+
+    url = _iso_http_url(iso_version, cfg)
+    if url:
+        return url
+
+    if iso_version is not None:
+        pack = Path(cfg.iso_root) / "proxmox" / str(iso_version.id)
+        if pack.is_dir():
+            for p in sorted(pack.glob("*.iso")):
+                if p.is_file():
+                    return cfg.iso_public_http_url(p) or ""
+    return ""
 
 
 def _resolve_proxmox_boot(
@@ -771,57 +796,29 @@ def _resolve_proxmox_boot(
     cfg: Settings,
 ) -> dict[str, str]:
     """
-    Stratégie d’accès au contenu installateur Proxmox.
-
-    - ``dual_initrd`` : ISO HTTP en 2e initrd ``proxmox.iso`` (méthode officielle assistant --pxe).
-    - ``extracted_http`` : ISO extraite sous boot/ + ``url=`` vers cette racine (expérimental).
-    - ``single`` : linux26 + initrd seuls (initrd reconstruit avec ISO embarquée, ex. pve-iso-2-pxe).
+  Stratégie Proxmox : ``dual_initrd`` (initrd.img gzip + ISO en proxmox.iso) ou ``single`` si aucune ISO HTTP.
+    Le paramètre noyau ``url=`` vers boot/ ne fonctionne pas — ne plus l’utiliser.
     """
     mode_pref = (getattr(cfg, "proxmox_boot_delivery", None) or "auto").strip().lower()
-    iso_url = _iso_http_url(iso_version, cfg)
-    boot_root = ""
-    if be and iso_version and getattr(iso_version, "iso_was_extracted", False):
-        boot_root = _proxmox_boot_http_root(be, cfg)
+    iso_url = _proxmox_iso_http_url_for_menu(iso_version, be, cfg)
 
-    if mode_pref == "iso_http":
-        mode = "dual_initrd" if iso_url else "single"
-    elif mode_pref == "extracted_http":
-        mode = "extracted_http" if boot_root else "single"
+    if mode_pref == "single":
+        mode = "single"
     elif iso_url:
         mode = "dual_initrd"
     else:
         mode = "single"
 
-    if mode == "dual_initrd" and iso_version is not None:
-        raw = (iso_version.iso_path or "").strip()
-        if raw:
-            try:
-                if not Path(raw).is_file():
-                    logger.warning(
-                        'Proxmox "%s" : ISO absente sur disque (%s) mais URL HTTP conservée '
-                        "pour le 2e initrd proxmox.iso — vérifier isos-ipxe.",
-                        getattr(iso_version, "version_label", "?"),
-                        raw,
-                    )
-            except OSError:
-                pass
-    elif mode == "single" and iso_version is not None:
+    if mode == "single" and iso_version is not None:
         logger.warning(
-            'Proxmox "%s" : pas d’URL ISO (iso_path vide ou hors isos-ipxe) — '
-            "conservez l’ISO sur le serveur pour le 2e initrd proxmox.iso.",
-            getattr(iso_version, "version_label", "?"),
-        )
-    elif mode == "extracted_http" and iso_version is not None:
-        logger.warning(
-            'Proxmox "%s" : mode extracted_http (url= boot/) — peu fiable ; '
-            "préférez iso_http avec ISO dans isos-ipxe.",
+            'Proxmox "%s" : aucune ISO HTTP pour proxmox.iso — ré-extraire l’ISO '
+            "(crée boot/…/proxmox-netboot.iso) ou laisser l’ISO dans isos-ipxe.",
             getattr(iso_version, "version_label", "?"),
         )
 
     return {
         "proxmox_boot_mode": mode,
         "proxmox_iso_url": iso_url if mode == "dual_initrd" else "",
-        "proxmox_boot_root_url": boot_root if mode == "extracted_http" else "",
     }
 
 
@@ -844,14 +841,48 @@ def _proxmox_menu_fields(
         return {
             "proxmox_boot_mode": "single",
             "proxmox_iso_url": "",
-            "proxmox_boot_root_url": "",
         }
     initrd_p = _proxmox_initrd_on_disk(be, cfg)
     if initrd_p:
         from app.services.iso_extractor import _ensure_proxmox_initrd_gzip_for_ipxe
 
         _ensure_proxmox_initrd_gzip_for_ipxe(initrd_p)
+    _ensure_proxmox_netboot_iso_published(iso_version, be, cfg)
     return _resolve_proxmox_boot(iso_version, be, cfg)
+
+
+def _ensure_proxmox_netboot_iso_published(
+    iso_version: IsoVersion | None,
+    be: BootEntry | None,
+    cfg: Settings,
+) -> None:
+    """Crée proxmox-netboot.iso sous boot/ si l’ISO est encore dans isos-ipxe mais pas encore publiée."""
+    if not iso_version or not be:
+        return
+    from app.services.iso_extractor import PROXMOX_NETBOOT_ISO_BASENAME, publish_proxmox_netboot_iso
+
+    seg = _boot_os_version_segment(be, "proxmox")
+    if not seg:
+        return
+    dest = cfg.boot_dir / "proxmox" / seg
+    netboot = dest / PROXMOX_NETBOOT_ISO_BASENAME
+    if netboot.is_file():
+        return
+    raw = (iso_version.iso_path or "").strip()
+    if raw:
+        try:
+            p = Path(raw)
+            if p.is_file():
+                publish_proxmox_netboot_iso(p, dest)
+                return
+        except OSError:
+            pass
+    pack = Path(cfg.iso_root) / "proxmox" / str(iso_version.id)
+    if pack.is_dir():
+        for p in sorted(pack.glob("*.iso")):
+            if p.is_file():
+                publish_proxmox_netboot_iso(p, dest)
+                return
 
 
 def _append_ubuntu_http_casper_args(
@@ -961,9 +992,7 @@ def _build_kernel_args(
 
     # Proxmox VE : linux26 + initrd (PXE communautaire + assistant --pxe-loader ipxe)
     if os_slug == "proxmox" and be:
-        delivery = _resolve_proxmox_boot(iso_version, be, cfg)
-        if delivery["proxmox_boot_mode"] != "extracted_http":
-            args = _strip_kernel_arg_tokens(args, (r"\burl=\S+",))
+        args = _strip_kernel_arg_tokens(args, (r"\burl=\S+",))
         if getattr(cfg, "proxmox_vga_params", True):
             if not re.search(r"(?:^|\s)vga=", args):
                 args = (
@@ -983,11 +1012,6 @@ def _build_kernel_args(
             init_bn = be.initrd_path.replace("\\", "/").rstrip("/").split("/")[-1]
             if init_bn:
                 args = f"{args} initrd={init_bn}".strip()
-        root_url = delivery.get("proxmox_boot_root_url") or ""
-        if delivery["proxmox_boot_mode"] == "extracted_http" and root_url:
-            base = root_url.rstrip("/") + "/"
-            if not re.search(r"(?:^|\s)url=", args):
-                args = f"{args} url={base}".strip()
         return args.strip()
 
     # Ubuntu : NFS optionnel (UBUNTU_NFS_ENABLED), sinon HTTP autoinstall (défaut).

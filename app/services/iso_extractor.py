@@ -336,6 +336,7 @@ def extract_iso(
             paths = _find_debian_in_dest(dest, os_slug, version_slug, rule)
         elif rule["type"] == "proxmox":
             paths = _find_proxmox_in_dest(dest, os_slug, version_slug, rule)
+            publish_proxmox_netboot_iso(iso, dest)
         else:
             paths = _find_el_anaconda_iso_in_dest(dest, os_slug, version_slug, rule)
     else:
@@ -1191,6 +1192,39 @@ _PROXMOX_EXTRA_KERNEL_BASENAMES = frozenset(
 )
 _PROXMOX_INITRD_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 _GZIP_MAGIC = b"\x1f\x8b"
+# Copie/lien de l’ISO sous boot/proxmox/<version>/ pour iPXE (2e initrd proxmox.iso) après purge isos-ipxe
+PROXMOX_NETBOOT_ISO_BASENAME = "proxmox-netboot.iso"
+
+
+def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
+    """
+    Conserve l’ISO pour le boot réseau : hardlink (ou copie) vers
+    ``boot/proxmox/<version>/proxmox-netboot.iso`` (servi en HTTP comme proxmox.iso).
+    """
+    if not iso.is_file():
+        return
+    target = dest / PROXMOX_NETBOOT_ISO_BASENAME
+    if target.is_file():
+        try:
+            if target.stat().st_ino == iso.stat().st_ino and target.stat().st_dev == iso.stat().st_dev:
+                return
+        except OSError:
+            pass
+        try:
+            target.unlink()
+        except OSError:
+            pass
+    try:
+        os.link(iso, target)
+        logger.info("Proxmox : hardlink ISO netboot %s", target)
+        return
+    except OSError:
+        pass
+    try:
+        shutil.copy2(iso, target)
+        logger.info("Proxmox : copie ISO netboot %s", target)
+    except OSError as e:
+        logger.warning("Proxmox : impossible de publier %s : %s", target, e)
 
 
 def _ensure_proxmox_initrd_gzip_for_ipxe(initrd_path: Path) -> None:

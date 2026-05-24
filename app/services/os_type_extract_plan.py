@@ -22,6 +22,7 @@ from app.services.iso_extractor import (
     _extract_esxi_from_full_dest,
     _find_in_dest,
     _find_proxmox_in_dest,
+    publish_proxmox_netboot_iso,
     _find_windows_in_dest,
     _fix_permissions,
     extract_iso_archive,
@@ -270,6 +271,9 @@ def try_extract_with_plan(
             )
         esxi_paths = _extract_esxi_from_full_dest(dest, os_slug, version_slug)
         result.update(esxi_paths)
+
+    if os_slug == "proxmox":
+        publish_proxmox_netboot_iso(Path(iso_path), dest)
 
     filtered_report = {k: v for k, v in basename_report.items()}
     paths_out = {k: v for k, v in result.items()}

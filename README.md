@@ -167,11 +167,12 @@ Pour **Proxmox VE**, l’ISO est extraite **en entier** sous `boot/proxmox/<vers
 
 | Mode | Quand | iPXE généré |
 |------|--------|-------------|
-| **`auto` / `iso_http`** | `iso_path` renseigné (fichier dans `isos-ipxe/…`) | `linux26` + `initrd.img` **(gzip)** + **2e initrd** `proxmox.iso` — méthode officielle `--pxe` |
-| **`extracted_http`** | Expérimental (souvent échec → retour menu) | `url=` vers `boot/proxmox/<version>/` sans ISO |
-| **`single`** | Initrd custom avec ISO embarquée ([pve-iso-2-pxe](https://github.com/morph027/pve-iso-2-pxe)) | Un seul `initrd` |
+| **`auto` / `iso_http`** | ISO accessible en HTTP | `linux26` + `initrd.img` **(gzip)** + **2e initrd** `… proxmox.iso` |
+| **`single`** | Initrd custom ([pve-iso-2-pxe](https://github.com/morph027/pve-iso-2-pxe)) | Un seul `initrd` |
 
-À l’extraction (et à chaque régénération de menu), `initrd.img` **zstd** (PVE 8+) est recompressé en **gzip** pour iPXE (`zstd` requis sur le serveur). Si le boot échoue tout de suite : vérifier que l’ISO n’a pas été purgée et que le menu contient bien la ligne `initrd … proxmox.iso`.
+À l’**extraction**, l’ISO est aussi publiée en **`boot/proxmox/<version>/proxmox-netboot.iso`** (hardlink ou copie) : le boot PXE continue de fonctionner même si vous **purgez** l’ISO sous `isos-ipxe/`. Le paramètre noyau **`url=`** vers `boot/` **ne fonctionne pas** (boucle `/dev/sr0`) — ne plus l’utiliser.
+
+Après mise à jour : **ré-extraire** une fois l’ISO Proxmox (pour créer `proxmox-netboot.iso`), puis **régénérer les menus**. Le menu doit contenir **sans** `url=` sur la ligne kernel, et une ligne `initrd http://…/proxmox-netboot.iso proxmox.iso` (ou l’ISO dans `isos-ipxe`).
 
 Paramètres noyau ajoutés : **`vga=791 video=vesafb:ywrap,mtrr`** (désactiver : `PROXMOX_VGA_PARAMS=false`), **`ramdisk_size=16777216`**, **`rw quiet splash=silent`**, **`initrd=<nom fichier>`**. Config auto : **`answer.toml`** → **`proxmox-installer.answer-file=`** + **`proxmox-start-auto-installer`**. NFS n’est pas supporté nativement par l’installateur Proxmox (contrairement à Ubuntu casper).
 
