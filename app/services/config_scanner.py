@@ -181,6 +181,12 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
         return (
             f"proxmox-installer.answer-file={url} proxmox-start-auto-installer"
         )
+    elif config_type == "alpine-answer":
+        return f"ANSWERSFILE={url}"
+    elif config_type == "custom":
+        return f"url={url}"
+    else:
+        return f"url={url}"
 
 
 def proxmox_low_ram_boot_arg(url: str) -> str:
@@ -189,12 +195,6 @@ def proxmox_low_ram_boot_arg(url: str) -> str:
     if not u:
         return ""
     return f"answerurl={u} proxmox-start-auto-installer"
-    elif config_type == "alpine-answer":
-        return f"ANSWERSFILE={url}"
-    elif config_type == "custom":
-        return f"url={url}"
-    else:
-        return f"url={url}"
 
 
 def scan_and_import(db: Session) -> dict:
