@@ -48,7 +48,7 @@ UBUNTU_CLOUD_PREFIX = "conf-cloudInit-"
 def _queue_proxmox_after_config_push(
     db: Session, version: IsoVersion, cfg: AutoConfig
 ):
-    """Lance l’injection answer.toml dans proxmox-netboot.iso (tâche Celery)."""
+    """Lance l’injection answer.toml dans proxmox-netboot-autoinstall.iso (tâche Celery)."""
     if (version.os_type.slug or "").lower() != "proxmox":
         return None
     if cfg.config_type != "proxmox-answer":

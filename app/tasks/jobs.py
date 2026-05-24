@@ -383,7 +383,7 @@ def inject_proxmox_autoinstall_task(
     config_id: int,
     upload_id: int,
 ):
-    """Injecte answer.toml dans proxmox-netboot.iso puis régénère les menus iPXE."""
+    """Injecte answer.toml dans proxmox-netboot-autoinstall.iso puis régénère les menus iPXE."""
     from sqlalchemy.orm import joinedload
 
     from app.services.menu_generator import regenerate_all

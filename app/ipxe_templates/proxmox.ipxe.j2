@@ -37,8 +37,8 @@ goto ${selected}
   :ac{{ ac.id }}
     kernel {{ e.kernel }} {{ e.kernel_args }} {{ ac.boot_arg }}
     {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
-    {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
-    initrd {{ e.proxmox_iso_url }} proxmox.iso
+    {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_autoinstall_url %}
+    initrd {{ e.proxmox_iso_autoinstall_url }} proxmox.iso
     {% endif %}
     boot || goto pve_fail_{{ e.id }}
   {% endfor %}

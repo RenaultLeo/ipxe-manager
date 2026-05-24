@@ -782,21 +782,38 @@ def _proxmox_iso_http_url_for_menu(
     iso_version: IsoVersion | None,
     be: BootEntry | None,
     cfg: Settings,
+    *,
+    autoinstall: bool = False,
 ) -> str:
     """
-    URL HTTP de l’ISO pour le 2e initrd ``proxmox.iso`` :
-    1) ``boot/proxmox/<version>/proxmox-netboot.iso`` (après extraction, survit à la purge isos-ipxe)
-    2) ``isos-ipxe/…`` via ``iso_path`` en BDD
-    3) scan ``isos/proxmox/<id>/*.iso``
+    URL HTTP du 2e initrd ``proxmox.iso`` :
+    - manuel : ``proxmox-netboot.iso``
+    - auto-install : ``proxmox-netboot-autoinstall.iso`` (sinon repli sur manuel)
     """
-    from app.services.iso_extractor import PROXMOX_NETBOOT_ISO_BASENAME
+    from app.services.iso_extractor import (
+        PROXMOX_NETBOOT_AUTOINSTALL_BASENAME,
+        PROXMOX_NETBOOT_ISO_BASENAME,
+    )
 
     if be:
         seg = _boot_os_version_segment(be, "proxmox")
         if seg:
-            netboot = cfg.boot_dir / "proxmox" / seg / PROXMOX_NETBOOT_ISO_BASENAME
-            if netboot.is_file():
-                return _http(f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_ISO_BASENAME}", cfg)
+            boot_sub = cfg.boot_dir / "proxmox" / seg
+            if autoinstall:
+                ais = boot_sub / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
+                if ais.is_file():
+                    return _http(
+                        f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_AUTOINSTALL_BASENAME}",
+                        cfg,
+                    )
+            manual = boot_sub / PROXMOX_NETBOOT_ISO_BASENAME
+            if manual.is_file():
+                return _http(
+                    f"boot/proxmox/{seg}/{PROXMOX_NETBOOT_ISO_BASENAME}", cfg
+                )
+
+    if autoinstall:
+        return ""
 
     url = _iso_http_url(iso_version, cfg)
     if url:
@@ -821,11 +838,16 @@ def _resolve_proxmox_boot(
     Le paramètre noyau ``url=`` vers boot/ ne fonctionne pas — ne plus l’utiliser.
     """
     mode_pref = (getattr(cfg, "proxmox_boot_delivery", None) or "auto").strip().lower()
-    iso_url = _proxmox_iso_http_url_for_menu(iso_version, be, cfg)
+    manual_url = _proxmox_iso_http_url_for_menu(
+        iso_version, be, cfg, autoinstall=False
+    )
+    autoinstall_url = _proxmox_iso_http_url_for_menu(
+        iso_version, be, cfg, autoinstall=True
+    )
 
     if mode_pref == "single":
         mode = "single"
-    elif iso_url:
+    elif manual_url:
         mode = "dual_initrd"
     else:
         mode = "single"
@@ -837,9 +859,16 @@ def _resolve_proxmox_boot(
             getattr(iso_version, "version_label", "?"),
         )
 
+    if mode == "dual_initrd":
+        return {
+            "proxmox_boot_mode": mode,
+            "proxmox_iso_url": manual_url,
+            "proxmox_iso_autoinstall_url": autoinstall_url or manual_url,
+        }
     return {
         "proxmox_boot_mode": mode,
-        "proxmox_iso_url": iso_url if mode == "dual_initrd" else "",
+        "proxmox_iso_url": "",
+        "proxmox_iso_autoinstall_url": "",
     }
 
 
@@ -862,6 +891,7 @@ def _proxmox_menu_fields(
         return {
             "proxmox_boot_mode": "single",
             "proxmox_iso_url": "",
+            "proxmox_iso_autoinstall_url": "",
         }
     initrd_p = _proxmox_initrd_on_disk(be, cfg)
     if initrd_p:

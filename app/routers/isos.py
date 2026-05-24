@@ -699,6 +699,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
     active_autoconfig = None
     published_boot_path = ""
     proxmox_netboot_iso_path = ""
+    proxmox_netboot_autoinstall_iso_path = ""
     active_id = getattr(version, "active_autoconfig_id", None)
     if active_id:
         active_autoconfig = next(
@@ -715,15 +716,26 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
                     published_boot_path = ""
             elif version.os_type.slug == "proxmox" and version.boot_entry:
                 try:
-                    from app.services.proxmox_autoinstall import netboot_iso_path
+                    from app.services.proxmox_autoinstall import (
+                        netboot_autoinstall_iso_path,
+                        netboot_iso_path,
+                    )
 
                     nb = netboot_iso_path(version, version.boot_entry)
                     if nb:
                         proxmox_netboot_iso_path = str(
                             nb.relative_to(settings.http_root)
                         ).replace("\\", "/")
+                    na = netboot_autoinstall_iso_path(
+                        version, version.boot_entry
+                    )
+                    if na.is_file():
+                        proxmox_netboot_autoinstall_iso_path = str(
+                            na.relative_to(settings.http_root)
+                        ).replace("\\", "/")
                 except Exception:
                     proxmox_netboot_iso_path = ""
+                    proxmox_netboot_autoinstall_iso_path = ""
 
     extract_error_msg = ""
     if version.status == "error":
@@ -786,6 +798,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             can_modify=can_modify,
             published_boot_path=published_boot_path,
             proxmox_netboot_iso_path=proxmox_netboot_iso_path,
+            proxmox_netboot_autoinstall_iso_path=proxmox_netboot_autoinstall_iso_path,
         ),
     )
 
@@ -797,7 +810,7 @@ async def iso_activate_config(
     db: Session = Depends(get_db),
     config_id: int = Form(...),
 ):
-    """Ubuntu Desktop : publie cloud-init. Proxmox : injecte answer.toml dans proxmox-netboot.iso."""
+    """Ubuntu Desktop : publie cloud-init. Proxmox : crée proxmox-netboot-autoinstall.iso."""
     redir = _auth(request)
     if redir:
         return redir

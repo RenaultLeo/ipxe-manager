@@ -1194,31 +1194,35 @@ _PROXMOX_INITRD_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 _GZIP_MAGIC = b"\x1f\x8b"
 # Copie/lien de l’ISO sous boot/proxmox/<version>/ pour iPXE (2e initrd proxmox.iso) après purge isos-ipxe
 PROXMOX_NETBOOT_ISO_BASENAME = "proxmox-netboot.iso"
-# Copie d’origine jamais modifiée ; l’injection answer.toml part toujours de ce fichier.
+# ISO avec answer.toml injecté (boot auto-install iPXE uniquement).
+PROXMOX_NETBOOT_AUTOINSTALL_BASENAME = "proxmox-netboot-autoinstall.iso"
+# Copie d’origine jamais modifiée ; l’injection part toujours de ce fichier.
 PROXMOX_NETBOOT_BASE_BASENAME = "proxmox-netboot-base.iso"
 
 
 def publish_proxmox_netboot_iso(iso: Path, dest: Path) -> None:
     """
-    Copie l’ISO source vers ``proxmox-netboot-base.iso`` (intacte) et
-    ``proxmox-netboot.iso`` (servie en HTTP comme proxmox.iso / 2e initrd).
-    Pas de hardlink : l’injection ne doit pas toucher l’ISO dans isos-ipxe.
+    Copie l’ISO source vers ``proxmox-netboot-base.iso`` et ``proxmox-netboot.iso``
+    (installation manuelle). L’ISO autoinstall est recréée à la prochaine injection.
     """
     if not iso.is_file():
         return
     dest.mkdir(parents=True, exist_ok=True)
     base = dest / PROXMOX_NETBOOT_BASE_BASENAME
-    target = dest / PROXMOX_NETBOOT_ISO_BASENAME
+    manual = dest / PROXMOX_NETBOOT_ISO_BASENAME
+    autoinstall = dest / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
     try:
         shutil.copy2(iso, base)
-        shutil.copy2(iso, target)
+        shutil.copy2(iso, manual)
+        if autoinstall.is_file():
+            autoinstall.unlink()
         logger.info(
             "Proxmox : ISO netboot publiée %s (base %s)",
-            target.name,
+            manual.name,
             base.name,
         )
     except OSError as e:
-        logger.warning("Proxmox : impossible de publier %s : %s", target, e)
+        logger.warning("Proxmox : impossible de publier %s : %s", manual, e)
 
 
 def _ensure_proxmox_initrd_gzip_for_ipxe(initrd_path: Path) -> None:

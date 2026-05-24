@@ -742,7 +742,10 @@
           <span class="badge bg-success">{{ t('iso.active_config_current') }}</span>
           <strong class="ms-1">{{ active_autoconfig.label }}</strong>
           {% if proxmox_netboot_iso_path %}
-          <span class="d-block font-monospace text-muted mt-1">{{ proxmox_netboot_iso_path }}</span>
+          <span class="d-block font-monospace text-muted mt-1" title="{{ t('iso.proxmox_netboot_manual_hint') }}">{{ proxmox_netboot_iso_path }}</span>
+          {% endif %}
+          {% if proxmox_netboot_autoinstall_iso_path %}
+          <span class="d-block font-monospace text-muted mt-1" title="{{ t('iso.proxmox_netboot_autoinstall_hint') }}">{{ proxmox_netboot_autoinstall_iso_path }}</span>
           {% endif %}
         </p>
         {% endif %}
