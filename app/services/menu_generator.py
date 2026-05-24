@@ -820,8 +820,10 @@ def _proxmox_iso_http_url_for_menu(
 
 
 def _proxmox_delivery_pref(cfg: Settings) -> str:
-    """``auto`` = ``dual_initrd`` (comportement historique) ; ``iso_http`` = alias."""
+    """``auto`` = ``low_ram`` (4+ GiB) ; ``iso_http`` / ``dual_initrd`` = 2e initrd iPXE (~6+ GiB)."""
     pref = (getattr(cfg, "proxmox_boot_delivery", None) or "auto").strip().lower()
+    if pref == "auto":
+        return "low_ram"
     if pref in ("iso_http", "dual_initrd"):
         return "dual_initrd"
     return pref
@@ -857,8 +859,6 @@ def _resolve_proxmox_boot(
             mode = "single"
     elif mode_pref == "dual_initrd" and iso_url:
         mode = "dual_initrd"
-    elif mode_pref == "auto" and iso_url:
-        mode = "dual_initrd"
     else:
         mode = "single"
 
@@ -893,9 +893,13 @@ def _proxmox_iso_path_for_build(
 
     seg = _boot_os_version_segment(be, "proxmox") if be else None
     if seg:
-        netboot = cfg.boot_dir / "proxmox" / seg / PROXMOX_NETBOOT_ISO_BASENAME
+        boot_ver = cfg.boot_dir / "proxmox" / seg
+        netboot = boot_ver / PROXMOX_NETBOOT_ISO_BASENAME
         if netboot.is_file():
             return netboot
+        for p in sorted(boot_ver.glob("*.iso")):
+            if p.is_file():
+                return p
     if iso_version:
         raw = (iso_version.iso_path or "").strip()
         if raw:
@@ -923,6 +927,7 @@ def _proxmox_menu_fields(
             "proxmox_boot_mode": "single",
             "proxmox_iso_url": "",
             "proxmox_initrd_http_rel": "",
+            "proxmox_boot_incomplete": False,
         }
     initrd_p = _proxmox_initrd_on_disk(be, cfg)
     if initrd_p:
@@ -959,6 +964,13 @@ def _proxmox_menu_fields(
     )
     fields["proxmox_initrd_http_rel"] = (
         initrd_http_rel if fields.get("proxmox_boot_mode") == "low_ram" else ""
+    )
+    mode_pref = _proxmox_delivery_pref(cfg)
+    iso_url = fields.get("proxmox_iso_url") or ""
+    fields["proxmox_boot_incomplete"] = (
+        mode_pref == "low_ram"
+        and fields.get("proxmox_boot_mode") == "single"
+        and bool(iso_url or initrd_p)
     )
     return fields
 

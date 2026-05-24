@@ -168,7 +168,8 @@ Pour **Proxmox VE**, l’ISO est extraite **en entier** sous `boot/proxmox/<vers
 | Mode | RAM cible | iPXE généré |
 |------|-----------|-------------|
 | **`low_ram`** (défaut) | **4 GiB+** (test VM) | `linux26` + **`initrd-netboot.img`** + **`isourl=http://…/proxmox-netboot.iso`** (ISO wget en initramfs, pas de 2e initrd iPXE) |
-| **`dual_initrd` / `iso_http` / `auto`** | **~6 GiB+** recommandés | `initrd.img` + **2e initrd** `proxmox-netboot.iso` alias `proxmox.iso` |
+| **`dual_initrd` / `iso_http`** | **~6 GiB+** recommandés | `initrd.img` + **2e initrd** `proxmox-netboot.iso` alias `proxmox.iso` |
+| **`auto`** | comme **`low_ram`** | alias de `low_ram` |
 | **`single`** | Initrd custom ([pve-iso-2-pxe](https://github.com/morph027/pve-iso-2-pxe)) | Un seul `initrd` |
 
 À l’**extraction** : **`proxmox-netboot.iso`** (hardlink/copie) et **`initrd-netboot.img`** (initrd patché, scripts [ProxmoxPxeBoot](https://github.com/tohara/ProxmoxPxeBoot)) — nécessite **`bash`**, **`unsquashfs`**, **`zstd`** (si initrd zstd), idéalement **`bsdtar`** sur le serveur. Le paramètre noyau **`url=`** vers `boot/` **ne fonctionne pas** (boucle `/dev/sr0`).
