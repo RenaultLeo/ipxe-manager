@@ -8,7 +8,6 @@ import json
 import logging
 import re
 from pathlib import Path
-from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
 

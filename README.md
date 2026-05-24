@@ -103,7 +103,8 @@ sudo bash /srv/ipxe/app/deploy/setup.sh 192.168.2.6
 
 Ce que fait **`deploy/setup.sh`** (synthèse) :
 
-- Installe les paquets : Nginx, tftpd-hpa, Redis, Python, p7zip, outils de build pour iPXE, Samba, etc.
+- Installe les paquets : Nginx, tftpd-hpa, Redis, Python, **p7zip-full**, **xorriso**, **wimtools**, outils de build iPXE, Samba, NFS, etc.
+- Installe **`proxmox-auto-install-assistant`** (script `deploy/install-proxmox-autoinstall-assistant.sh`, dépôt Proxmox) pour l’injection Proxmox autoinstall.
 - Crée l’utilisateur système **`ipxe`**, les répertoires sous `/srv/ipxe/`, les unités **`ipxe-manager`** et **`ipxe-celery`**.
 - Configure **Nginx** avec des alias pour `/menus/`, `/boot/`, **`/isos-ipxe/`** (ISO sous `ISO_ROOT`, sans entrer en conflit avec les routes UI `/isos`), etc., et des limites d’upload pour les grosses ISO.
 - Écrit **`/etc/default/tftpd-hpa`** et **redémarre `tftpd-hpa` à la fin** : pendant le script, le service peut démarrer avec une config encore incomplète ; le redémarrage final évite un TFTP qui ne lit qu’une partie des paramètres ou des répertoires.
@@ -123,7 +124,7 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 ### Référence `deploy/` (noms systemd)
 
-Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/setup.sh`** est aussi exposé brut sur GitHub pour un **bootstrap** « **curl \| bash** » (voir Installation en une ligne).
+Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/install-proxmox-autoinstall-assistant.sh`** ajoute le dépôt Proxmox et le binaire **`proxmox-auto-install-assistant`** (appelé par `setup.sh` et, si absent, par **`deploy/update.sh`**). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/setup.sh`** est aussi exposé brut sur GitHub pour un **bootstrap** « **curl \| bash** » (voir Installation en une ligne).
 
 ### Première connexion
 
@@ -170,11 +171,38 @@ Pour **Proxmox VE**, l’ISO est extraite **en entier** sous `boot/proxmox/<vers
 | **`auto` / `iso_http`** | ISO accessible en HTTP | `linux26` + `initrd.img` **(gzip)** + **2e initrd** `… proxmox.iso` |
 | **`single`** | Initrd custom ([pve-iso-2-pxe](https://github.com/morph027/pve-iso-2-pxe)) | Un seul `initrd` |
 
-À l’**extraction**, l’ISO est aussi publiée en **`boot/proxmox/<version>/proxmox-netboot.iso`** (hardlink ou copie) : le boot PXE continue de fonctionner même si vous **purgez** l’ISO sous `isos-ipxe/`. Le paramètre noyau **`url=`** vers `boot/` **ne fonctionne pas** (boucle `/dev/sr0`) — ne plus l’utiliser.
+À l’**extraction**, l’ISO officielle est aussi publiée sous **`boot/proxmox/<version>/netboot/`** :
 
-Après mise à jour : **ré-extraire** une fois l’ISO Proxmox (pour créer `proxmox-netboot.iso`), puis **régénérer les menus**. Le menu doit contenir **sans** `url=` sur la ligne kernel, et une ligne `initrd http://…/proxmox-netboot.iso proxmox.iso` (ou l’ISO dans `isos-ipxe`).
+| Fichier | Rôle |
+|---------|------|
+| **`proxmox-netboot.iso`** | Boot **manuel** (2ᵉ initrd `proxmox.iso` dans le menu iPXE) |
+| **`proxmox-netboot-autoinstall.iso`** | Boot **autoinstall** (généré par l’assistant, voir ci-dessous) |
 
-Paramètres noyau ajoutés : **`vga=791 video=vesafb:ywrap,mtrr`** (désactiver : `PROXMOX_VGA_PARAMS=false`), **`ramdisk_size=16777216`**, **`rw quiet splash=silent`**, **`initrd=<nom fichier>`**. Config auto : à l’enregistrement ou lors du choix de la **config courante**, seuls **`answer.toml`** et **`auto-installer-mode.toml`** sont ajoutés à la racine de **`proxmox-netboot.iso`** (recopiée depuis **`proxmox-netboot-base.iso`**, copie d’origine à l’extraction) via **xorriso -update** ; le menu ajoute **`proxmox-start-auto-installer`**. Si le boot échoue avec *no device with valid ISO*, **ré-extraire l’ISO** puis ré-injecter la config. Nécessite **`xorriso`**. NFS n’est pas supporté nativement par l’installateur Proxmox (contrairement à Ubuntu casper).
+Le paramètre noyau **`url=`** vers `boot/` **ne fonctionne pas** (boucle `/dev/sr0`) — ne pas l’utiliser. Après mise à jour du code : **ré-extraire** l’ISO Proxmox une fois (pour recréer `netboot/proxmox-netboot.iso`), puis **régénérer les menus**.
+
+Paramètres noyau ajoutés : **`vga=791 video=vesafb:ywrap,mtrr`** (désactiver : `PROXMOX_VGA_PARAMS=false`), **`ramdisk_size=16777216`**, **`rw quiet splash=silent`**, **`initrd=<nom fichier>`**.
+
+**Config auto (`answer.toml`)** : copie sous `configs/proxmox/<version>/` et `boot/proxmox/<version>/answer.toml`. L’injection dans l’ISO autoinstall utilise **`proxmox-auto-install-assistant prepare-iso`** (installé par `setup.sh`). Sans config active : menu → `proxmox-netboot.iso`. Avec config active : tâche Celery → `proxmox-netboot-autoinstall.iso` + argument **`proxmox-start-auto-installer`**. Exemple minimal PVE 9 (adapter disques / réseau) :
+
+```toml
+[global]
+keyboard = "fr"
+country = "fr"
+fqdn = "pve.example.local"
+mailto = "admin@example.local"
+timezone = "Europe/Paris"
+root-password = "ChangeMe!"
+reboot-mode = "reboot"
+
+[network]
+source = "from-dhcp"
+
+[disk-setup]
+filesystem = "ext4"
+disk-list = ["sda"]
+```
+
+Ne pas laisser une section **`[post-installation-webhook]`** avec `url = ""` (l’installateur échoue). Valider depuis l’UI ou : `proxmox-auto-install-assistant validate-answer answer.toml`. NFS n’est pas supporté nativement par l’installateur Proxmox.
 
 Pour **Ubuntu**, l’ISO est aussi extraite **en entier** ; noyau et initrd dans **`casper/`**. Par défaut les menus utilisent le mode **HTTP autoinstall** (`root=/dev/ram0`, `url=` vers l’ISO si elle est encore sur le serveur, `autoinstall ds=nocloud-net` + `cloud-config-url=/dev/null` sur les configs auto). Option **`UBUNTU_NFS_ENABLED=true`** pour l’ancien mode NFS.
 

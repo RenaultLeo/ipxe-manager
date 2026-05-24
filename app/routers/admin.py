@@ -122,14 +122,3 @@ async def users_delete(user_id: int, request: Request, db: Session = Depends(get
     db.commit()
     ok = translate(lang, "admin.user_deleted")
     return RedirectResponse(f"/admin/users?msg={quote(ok)}", status_code=302)
-
-
-@router.post("/services/restart")
-async def services_restart(request: Request):
-    """Redirige vers Supervision (relance avec sudo si configuré)."""
-    from urllib.parse import quote
-
-    redir = auth_redirect_admin(request)
-    if redir:
-        return redir
-    return RedirectResponse("/admin/supervision#actions", status_code=302)

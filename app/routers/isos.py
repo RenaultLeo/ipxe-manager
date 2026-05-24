@@ -721,14 +721,12 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
                         netboot_iso_path,
                     )
 
-                    nb = netboot_iso_path(version, version.boot_entry)
+                    nb = netboot_iso_path(version)
                     if nb:
                         proxmox_netboot_iso_path = str(
                             nb.relative_to(settings.http_root)
                         ).replace("\\", "/")
-                    na = netboot_autoinstall_iso_path(
-                        version, version.boot_entry
-                    )
+                    na = netboot_autoinstall_iso_path(version)
                     if na.is_file():
                         proxmox_netboot_autoinstall_iso_path = str(
                             na.relative_to(settings.http_root)

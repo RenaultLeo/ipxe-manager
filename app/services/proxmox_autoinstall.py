@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -37,12 +38,12 @@ def _netboot_dir(iso_version: IsoVersion) -> Path:
     return migrate_legacy_proxmox_netboot_isos(proxmox_boot_version_dir(iso_version))
 
 
-def netboot_iso_path(iso_version: IsoVersion, be=None, cfg=None) -> Path | None:
+def netboot_iso_path(iso_version: IsoVersion) -> Path | None:
     p = _netboot_dir(iso_version) / PROXMOX_NETBOOT_ISO_BASENAME
     return p if p.is_file() else None
 
 
-def netboot_autoinstall_iso_path(iso_version: IsoVersion, be=None, cfg=None) -> Path:
+def netboot_autoinstall_iso_path(iso_version: IsoVersion) -> Path:
     return _netboot_dir(iso_version) / PROXMOX_NETBOOT_AUTOINSTALL_BASENAME
 
 
@@ -81,7 +82,29 @@ def _format_assistant_error(blob: str) -> str:
         for line in text.splitlines():
             if "TOML parse error" in line or "unknown field" in line:
                 return f"answer.toml invalide : {line.strip()}"
+    if "post-installation-webhook" in text and "empty string" in text:
+        return (
+            "post-installation-webhook : url vide. "
+            "Supprimez toute la section [post-installation-webhook] si vous n’utilisez pas de webhook."
+        )
     return text[-2000:] if len(text) > 2000 else text
+
+
+def _lint_answer_toml(answer_toml: Path) -> None:
+    """Contrôles simples avant prepare-iso (complète validate-answer)."""
+    text = answer_toml.read_text(encoding="utf-8", errors="replace")
+    if re.search(
+        r"\[post-installation-webhook\][\s\S]*?url\s*=\s*\"\"\s*$",
+        text,
+        re.MULTILINE,
+    ) or (
+        "[post-installation-webhook]" in text
+        and re.search(r"^\s*url\s*=\s*\"\"\s*$", text, re.MULTILINE)
+    ):
+        raise RuntimeError(
+            "answer.toml : [post-installation-webhook] avec url vide fait échouer l’install. "
+            "Supprimez toute cette section si vous n’avez pas d’URL de webhook."
+        )
 
 
 def validate_answer_toml(answer_toml: Path) -> None:
@@ -116,6 +139,7 @@ def prepare_autoinstall_iso(
         raise FileNotFoundError(f"answer.toml absent : {answer_toml}")
 
     assistant = _require_assistant()
+    _lint_answer_toml(answer_toml)
     validate_answer_toml(answer_toml)
 
     src_size = netboot_iso.stat().st_size

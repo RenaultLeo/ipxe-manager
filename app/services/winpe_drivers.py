@@ -220,19 +220,6 @@ def resolve_machine_upload(
     raise ValueError("Mode de sélection de machine invalide.")
 
 
-def register_machine_in_catalog(label: str, slug: str) -> None:
-    cat = load_catalog()
-    cat[label] = {
-        "path": rel_folder_path(slug),
-        "count": count_driver_files(drivers_root() / slug),
-        "slug": slug,
-    }
-    catalog_path().write_text(
-        json.dumps(cat, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
 async def save_uploaded_driver_files(
     folder: Path,
     files: list,

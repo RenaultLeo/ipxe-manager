@@ -40,10 +40,6 @@ def published_seed_dir_rel_path(version: IsoVersion) -> str:
     return f"boot/{UBUNTU_OS_SLUG}/{seg}"
 
 
-# Alias rétrocompat
-published_bundle_rel_path = published_seed_dir_rel_path
-
-
 def config_bundle_dir(cfg: AutoConfig) -> Path | None:
     if not cfg.file_path or not cfg.ubuntu_cloud_slug:
         return None

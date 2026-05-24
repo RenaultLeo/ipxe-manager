@@ -404,20 +404,19 @@ autoinstall:
 local-hostname: ubuntu-pxe`,
 
   'proxmox-answer': `[global]
-keyboard = fr
-country = fr
-fqdn = proxmox.local
-mailto = admin@example.com
-timezone = Europe/Paris
-root_password = changeme
-root_email = admin@example.com
+keyboard = "fr"
+country = "fr"
+fqdn = "pve.local"
+mailto = "admin@example.com"
+timezone = "Europe/Paris"
+root-password = "changeme"
 
 [network]
-source = from-dhcp
+source = "from-dhcp"
 
 [disk-setup]
-filesystem = ext4
-disk_list = sda
+filesystem = "ext4"
+disk-list = ["sda"]
 `,
 
   'alpine-answer': `# Réponses pour setup-alpine

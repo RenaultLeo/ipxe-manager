@@ -178,7 +178,7 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
     elif config_type == "unattend":
         return ""   # injecté comme initrd dans wimboot (Windows)
     elif config_type == "proxmox-answer":
-        # answer.toml est injecté dans proxmox-netboot.iso (auto-installer-mode.toml mode=iso)
+        # Menu autoinstall : initrd proxmox-netboot-autoinstall.iso (prepare-iso officiel)
         return "proxmox-start-auto-installer"
     elif config_type == "alpine-answer":
         return f"ANSWERSFILE={url}"

@@ -120,8 +120,3 @@ def authenticate_user(username: str, password: str) -> SessionUser | None:
         return SessionUser(id=row.id, username=row.username, role=row.role)
     finally:
         db.close()
-
-
-def check_admin_password(password: str) -> bool:
-    """Compat : connexion avec le seul mot de passe admin (ancien formulaire)."""
-    return authenticate_user("admin", password) is not None

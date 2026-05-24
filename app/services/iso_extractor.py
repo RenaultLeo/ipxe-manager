@@ -324,7 +324,7 @@ def extract_iso(
         # Ubuntu  : cloud-init autoinstall via HTTP
         # Debian : dists/ + inst.repo= (xorriso pour les liens symboliques)
         # Rocky / Alma / CentOS / Fedora : Anaconda (inst.repo / inst.stage2)
-        # Proxmox : installateur + answer.toml (proxmox-installer.answer-file=)
+        # Proxmox : installateur + proxmox-netboot.iso sous netboot/
         logger.info("Extraction complète %s → %s", os_slug, dest)
         extract_iso_archive(iso, dest)
         _fix_permissions(dest)

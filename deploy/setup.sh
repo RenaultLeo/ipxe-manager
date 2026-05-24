@@ -400,8 +400,8 @@ echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
 echo "  FIRMWARE  : Compiler un firmware custom avec embed depuis /firmware"
 echo ""
 echo "  Mise à jour :"
-echo "    cd $APP_DIR && git pull && systemctl restart ipxe-manager ipxe-celery"
-echo "    $VENV/bin/python deploy/seed_db.py   # si nouvelles migrations DB"
+echo "    sudo bash $APP_DIR/deploy/update.sh"
+echo "    (ou : git pull, pip install -r requirements.txt, seed_db.py, restart services)"
 echo ""
 
 # Statut de chaque service
