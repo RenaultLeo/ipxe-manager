@@ -5,6 +5,7 @@ avec des règles spécifiques à chaque distro.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import os
@@ -1188,6 +1189,68 @@ _PROXMOX_KERNEL_FALLBACK = ("vmlinuz",)
 _PROXMOX_EXTRA_KERNEL_BASENAMES = frozenset(
     {"linux26", "vmlinuz", "vmlinux", "bzimage", "kernel"}
 )
+_PROXMOX_INITRD_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _ensure_proxmox_initrd_gzip_for_ipxe(initrd_path: Path) -> None:
+    """
+    iPXE ne décompresse pas initrd.img en zstd (PVE 8+).
+    Recompresse en gzip sur place (format attendu par les loaders PXE / doc assistant --pxe).
+    """
+    if not initrd_path.is_file():
+        return
+    try:
+        head = initrd_path.read_bytes()[:4]
+    except OSError as e:
+        logger.warning("Proxmox initrd illisible %s : %s", initrd_path, e)
+        return
+    if head == _GZIP_MAGIC:
+        return
+    if head != _PROXMOX_INITRD_ZSTD_MAGIC:
+        logger.info(
+            "Proxmox initrd %s : format non zstd/gzip (%r) — laissé tel quel",
+            initrd_path.name,
+            head,
+        )
+        return
+
+    tmp_raw = initrd_path.with_suffix(initrd_path.suffix + ".ipxe-raw")
+    try:
+        proc = subprocess.run(
+            ["zstd", "-d", "-f", str(initrd_path), "-o", str(tmp_raw)],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except FileNotFoundError:
+        logger.error(
+            "Proxmox : initrd en zstd mais binaire « zstd » absent — "
+            "installez zstd sur le serveur puis ré-extraire l’ISO."
+        )
+        return
+    except subprocess.TimeoutExpired:
+        logger.error("Proxmox : timeout décompression zstd pour %s", initrd_path)
+        return
+
+    if proc.returncode != 0:
+        logger.error(
+            "Proxmox : échec zstd -d pour %s : %s",
+            initrd_path,
+            (proc.stderr or proc.stdout or "").strip(),
+        )
+        return
+
+    try:
+        with tmp_raw.open("rb") as src, gzip.open(initrd_path, "wb", compresslevel=6) as dst:
+            shutil.copyfileobj(src, dst)
+    except OSError as e:
+        logger.error("Proxmox : recompression gzip échouée pour %s : %s", initrd_path, e)
+        return
+    finally:
+        tmp_raw.unlink(missing_ok=True)
+
+    logger.info("Proxmox initrd recompressé zstd→gzip pour iPXE : %s", initrd_path)
 
 
 def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:
@@ -1229,6 +1292,7 @@ def _find_proxmox_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dic
         dest, initrd_names, mode="initrd", preferred_parent_names=pve_boot_pref
     )
     if initrd:
+        _ensure_proxmox_initrd_gzip_for_ipxe(initrd)
         rel = initrd.relative_to(dest)
         result["initrd_path"] = f"{base}/{rel.as_posix()}"
         logger.info("Proxmox initrd : %s", rel)

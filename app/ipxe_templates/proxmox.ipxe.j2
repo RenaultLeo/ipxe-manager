@@ -2,7 +2,7 @@
 
 ########################################
 # Sous-menu {{ os_type.label }} — généré automatiquement
-# dual_initrd : ISO HTTP → initrd proxmox.iso | extracted_http : url= racine boot/ | single : initrd seul
+# dual_initrd : initrd.img (gzip) + ISO HTTP proxmox.iso | extracted_http : expérimental
 ########################################
 
 :start
@@ -40,7 +40,7 @@ goto ${selected}
     {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
     initrd {{ e.proxmox_iso_url }} proxmox.iso
     {% endif %}
-    boot
+    boot || goto pve_fail_{{ e.id }}
   {% endfor %}
 
   :manual_{{ e.id }}
@@ -49,7 +49,7 @@ goto ${selected}
   {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
   initrd {{ e.proxmox_iso_url }} proxmox.iso
   {% endif %}
-  boot
+  boot || goto pve_fail_{{ e.id }}
 
   :back_v{{ e.id }}
   goto start
@@ -60,8 +60,15 @@ goto ${selected}
   {% if e.proxmox_boot_mode == 'dual_initrd' and e.proxmox_iso_url %}
   initrd {{ e.proxmox_iso_url }} proxmox.iso
   {% endif %}
-  boot
+  boot || goto pve_fail_{{ e.id }}
 {% endif %}
+
+:pve_fail_{{ e.id }}
+echo
+echo Echec boot Proxmox {{ e.label }}
+echo Verifier : initrd gzip (re-extraire si zstd), ISO proxmox.iso HTTP, PROXMOX_BOOT_DELIVERY=auto
+sleep 8
+goto start
 
 {% endfor %}
 

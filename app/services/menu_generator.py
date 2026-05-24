@@ -757,18 +757,6 @@ def _iso_http_url(iso_version: IsoVersion | None, cfg: Settings) -> str:
     return cfg.iso_public_http_url(raw) or ""
 
 
-def _proxmox_iso_file_exists(iso_version: IsoVersion | None) -> bool:
-    if iso_version is None:
-        return False
-    raw = (iso_version.iso_path or "").strip()
-    if not raw:
-        return False
-    try:
-        return Path(raw).is_file()
-    except OSError:
-        return False
-
-
 def _proxmox_boot_http_root(be: BootEntry | None, cfg: Settings) -> str:
     """Racine HTTP de l’ISO extraite : boot/proxmox/<version>/ (squashfs, .installer, …)."""
     seg = _boot_os_version_segment(be, "proxmox")
@@ -790,7 +778,7 @@ def _resolve_proxmox_boot(
     - ``single`` : linux26 + initrd seuls (initrd reconstruit avec ISO embarquée, ex. pve-iso-2-pxe).
     """
     mode_pref = (getattr(cfg, "proxmox_boot_delivery", None) or "auto").strip().lower()
-    iso_url = _iso_http_url(iso_version, cfg) if _proxmox_iso_file_exists(iso_version) else ""
+    iso_url = _iso_http_url(iso_version, cfg)
     boot_root = ""
     if be and iso_version and getattr(iso_version, "iso_was_extracted", False):
         boot_root = _proxmox_boot_http_root(be, cfg)
@@ -801,15 +789,32 @@ def _resolve_proxmox_boot(
         mode = "extracted_http" if boot_root else "single"
     elif iso_url:
         mode = "dual_initrd"
-    elif boot_root:
-        mode = "extracted_http"
     else:
         mode = "single"
 
-    if mode == "single" and iso_version is not None:
+    if mode == "dual_initrd" and iso_version is not None:
+        raw = (iso_version.iso_path or "").strip()
+        if raw:
+            try:
+                if not Path(raw).is_file():
+                    logger.warning(
+                        'Proxmox "%s" : ISO absente sur disque (%s) mais URL HTTP conservée '
+                        "pour le 2e initrd proxmox.iso — vérifier isos-ipxe.",
+                        getattr(iso_version, "version_label", "?"),
+                        raw,
+                    )
+            except OSError:
+                pass
+    elif mode == "single" and iso_version is not None:
         logger.warning(
-            'Proxmox "%s" : ni ISO HTTP ni arborescence extraite — boot linux26+initrd seul '
-            "(souvent initrd reconstruit avec ISO embarquée).",
+            'Proxmox "%s" : pas d’URL ISO (iso_path vide ou hors isos-ipxe) — '
+            "conservez l’ISO sur le serveur pour le 2e initrd proxmox.iso.",
+            getattr(iso_version, "version_label", "?"),
+        )
+    elif mode == "extracted_http" and iso_version is not None:
+        logger.warning(
+            'Proxmox "%s" : mode extracted_http (url= boot/) — peu fiable ; '
+            "préférez iso_http avec ISO dans isos-ipxe.",
             getattr(iso_version, "version_label", "?"),
         )
 
@@ -818,6 +823,16 @@ def _resolve_proxmox_boot(
         "proxmox_iso_url": iso_url if mode == "dual_initrd" else "",
         "proxmox_boot_root_url": boot_root if mode == "extracted_http" else "",
     }
+
+
+def _proxmox_initrd_on_disk(be: BootEntry | None, cfg: Settings) -> Path | None:
+    if not be or not be.initrd_path:
+        return None
+    rel = be.initrd_path.replace("\\", "/").lstrip("/")
+    if rel.startswith("boot/"):
+        rel = rel[5:]
+    p = cfg.boot_dir / rel
+    return p if p.is_file() else None
 
 
 def _proxmox_menu_fields(
@@ -831,6 +846,11 @@ def _proxmox_menu_fields(
             "proxmox_iso_url": "",
             "proxmox_boot_root_url": "",
         }
+    initrd_p = _proxmox_initrd_on_disk(be, cfg)
+    if initrd_p:
+        from app.services.iso_extractor import _ensure_proxmox_initrd_gzip_for_ipxe
+
+        _ensure_proxmox_initrd_gzip_for_ipxe(initrd_p)
     return _resolve_proxmox_boot(iso_version, be, cfg)
 
 
