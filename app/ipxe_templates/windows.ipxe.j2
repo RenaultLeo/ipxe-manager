@@ -30,8 +30,8 @@ goto ${selected}
   {% endfor %}
   item --gap
   item manual_{{ e.id }} Installation manuelle (sans config)
-  item back_v Retour
-  choose conf || goto back_v
+  item back_v{{ e.id }} Retour
+  choose conf || goto back_v{{ e.id }}
   goto ${conf}
 
   {% for ac in e.autoconfigs %}
@@ -45,7 +45,6 @@ goto ${selected}
   {% endfor %}
 
   :manual_{{ e.id }}
-{% endif %}
   kernel {{ server_url }}/wimboot
 {% if e.bcd %}
   initrd {{ e.bcd }} BCD
@@ -60,6 +59,26 @@ goto ${selected}
   initrd {{ e.unattend_url }} autounattend.xml
 {% endif %}
   boot
+
+  :back_v{{ e.id }}
+  goto v{{ e.id }}
+
+{% else %}
+  kernel {{ server_url }}/wimboot
+{% if e.bcd %}
+  initrd {{ e.bcd }} BCD
+{% endif %}
+{% if e.boot_sdi %}
+  initrd {{ e.boot_sdi }} boot.sdi
+{% endif %}
+{% if e.boot_wim %}
+  initrd {{ e.boot_wim }} boot.wim
+{% endif %}
+{% if e.unattend_url %}
+  initrd {{ e.unattend_url }} autounattend.xml
+{% endif %}
+  boot
+{% endif %}
 
 {% endfor %}
 

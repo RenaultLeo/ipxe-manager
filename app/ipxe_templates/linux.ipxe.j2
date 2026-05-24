@@ -28,20 +28,15 @@ goto ${selected}
 
 {% for e in entries %}
 :v{{ e.id }}
-{% if e.autoconfigs and e.get('ubuntu_direct_boot') and e.autoconfigs|length == 1 %}
-  {% set ac = e.autoconfigs[0] %}
-  kernel {{ e.kernel }} {{ e.kernel_args }} {{ ac.boot_arg }}
-  {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
-  boot
-{% elif e.autoconfigs %}
+{% if e.autoconfigs %}
   menu {{ e.label }} — Choisissez une configuration
   {% for ac in e.autoconfigs %}
   item ac{{ ac.id }} {{ ac.label }}
   {% endfor %}
   item --gap
   item manual_{{ e.id }} Installation manuelle (sans config)
-  item back_v Retour
-  choose conf || goto back_v
+  item back_v{{ e.id }} Retour
+  choose conf || goto back_v{{ e.id }}
   goto ${conf}
 
   {% for ac in e.autoconfigs %}
@@ -56,10 +51,18 @@ goto ${selected}
   {% endfor %}
 
   :manual_{{ e.id }}
-{% endif %}
   kernel {{ e.kernel }} {{ e.kernel_args }}
   {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
   boot
+
+  :back_v{{ e.id }}
+  goto v{{ e.id }}
+
+{% else %}
+  kernel {{ e.kernel }} {{ e.kernel_args }}
+  {% if e.initrd %}initrd {{ e.initrd }}{% endif %}
+  boot
+{% endif %}
 
 {% endfor %}
 

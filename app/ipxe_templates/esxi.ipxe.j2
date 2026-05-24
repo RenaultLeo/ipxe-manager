@@ -32,8 +32,8 @@ goto ${selected}
   {% endfor %}
   item --gap
   item manual_{{ e.ipxe_item_tag }} Installation manuelle (sans kickstart / args supplémentaires)
-  item back_v Retour
-  choose conf || goto back_v
+  item back_v{{ e.ipxe_item_tag }} Retour
+  choose conf || goto back_v{{ e.ipxe_item_tag }}
   goto ${conf}
 
   {% for ac in e.autoconfigs %}
@@ -48,7 +48,6 @@ goto ${selected}
   {% endfor %}
 
   :manual_{{ e.ipxe_item_tag }}
-{% endif %}
   kernel {{ e.kernel }}
   imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
@@ -56,6 +55,19 @@ goto ${selected}
   module {{ u }}
   {% endfor %}
   boot
+
+  :back_v{{ e.ipxe_item_tag }}
+  goto {{ e.ipxe_item_tag }}
+
+{% else %}
+  kernel {{ e.kernel }}
+  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+
+  {% for u in e.esxi_module_urls %}
+  module {{ u }}
+  {% endfor %}
+  boot
+{% endif %}
 
 {% endfor %}
 
