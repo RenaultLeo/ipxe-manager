@@ -7,6 +7,7 @@ L’installateur lit ``auto-installer-mode.toml`` et ``answer.toml`` à la racin
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -73,23 +74,68 @@ def pick_proxmox_autoconfig(iso_version: IsoVersion) -> AutoConfig | None:
     return None
 
 
+def _xorriso_rc_ok(proc: subprocess.CompletedProcess[str]) -> bool:
+    if proc.returncode in (0, 1):
+        return True
+    # xorriso : avertissements fréquents (codes 5, 32) sans échec bloquant
+    return proc.returncode in (5, 32)
+
+
+def _inject_with_xorriso(
+    xorriso: str,
+    netboot_iso: Path,
+    mode_file: Path,
+    answer_copy: Path,
+) -> tuple[bool, str]:
+    """Réécrit l’ISO via xorriso (7z ne peut pas modifier les ISO9660 : E_NOTIMPL)."""
+    with tempfile.TemporaryDirectory(prefix="pve-ais-") as tmp:
+        out_iso = Path(tmp) / "proxmox-netboot-new.iso"
+        cmd = [
+            xorriso,
+            "-indev",
+            str(netboot_iso),
+            "-outdev",
+            str(out_iso),
+            "-boot_image",
+            "any",
+            "replay",
+            "-map",
+            str(mode_file),
+            "/auto-installer-mode.toml",
+            "-map",
+            str(answer_copy),
+            "/answer.toml",
+            "-commit",
+        ]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if not _xorriso_rc_ok(proc):
+            blob = ((proc.stderr or "") + (proc.stdout or "")).strip()
+            return False, blob[-2000:] if blob else f"code {proc.returncode}"
+        if not out_iso.is_file() or out_iso.stat().st_size < 1024:
+            return False, "xorriso n’a pas produit d’ISO de sortie"
+        os.replace(out_iso, netboot_iso)
+    return True, ""
+
+
 def inject_proxmox_autoinstall_into_netboot_iso(
     netboot_iso: Path,
     answer_toml: Path,
-) -> bool:
-    """Ajoute ``auto-installer-mode.toml`` et ``answer.toml`` à la racine de l’ISO (7z)."""
+) -> None:
+    """Ajoute ``auto-installer-mode.toml`` et ``answer.toml`` à la racine de l’ISO (xorriso)."""
     if not netboot_iso.is_file():
-        logger.warning("Proxmox autoinstall : ISO netboot absente %s", netboot_iso)
-        return False
+        raise FileNotFoundError(f"ISO netboot absente : {netboot_iso}")
     if not answer_toml.is_file():
-        logger.warning("Proxmox autoinstall : answer.toml absent %s", answer_toml)
-        return False
-    seven_z = shutil.which("7z") or shutil.which("7za")
-    if not seven_z:
-        logger.error(
-            "Proxmox autoinstall : 7z/7za requis (apt install p7zip-full)."
+        raise FileNotFoundError(f"answer.toml absent : {answer_toml}")
+    xorriso = shutil.which("xorriso")
+    if not xorriso:
+        raise RuntimeError(
+            "xorriso introuvable sur le serveur (apt install xorriso)."
         )
-        return False
 
     with tempfile.TemporaryDirectory(prefix="pve-ais-") as tmp:
         tmp_dir = Path(tmp)
@@ -98,23 +144,16 @@ def inject_proxmox_autoinstall_into_netboot_iso(
         answer_copy = tmp_dir / "answer.toml"
         answer_copy.write_bytes(answer_toml.read_bytes())
 
-        proc = subprocess.run(
-            [seven_z, "a", "-y", str(netboot_iso), str(mode_file), str(answer_copy)],
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "").strip()
+        ok, err = _inject_with_xorriso(xorriso, netboot_iso, mode_file, answer_copy)
+        if not ok:
             logger.error(
-                "Proxmox autoinstall : échec 7z sur %s : %s",
+                "Proxmox autoinstall : échec xorriso sur %s : %s",
                 netboot_iso.name,
-                err[:2000],
+                err,
             )
-            return False
+            raise RuntimeError(f"Échec xorriso sur proxmox-netboot.iso : {err}")
 
     logger.info("Proxmox autoinstall : answer.toml injecté dans %s", netboot_iso)
-    return True
 
 
 def inject_active_proxmox_autoinstall(
@@ -136,8 +175,7 @@ def inject_active_proxmox_autoinstall(
         raise FileNotFoundError(
             "proxmox-netboot.iso absent — extraire l’ISO Proxmox sur cette version d’abord."
         )
-    if not inject_proxmox_autoinstall_into_netboot_iso(netboot, answer_p):
-        raise RuntimeError("Échec injection answer.toml dans proxmox-netboot.iso (voir les logs).")
+    inject_proxmox_autoinstall_into_netboot_iso(netboot, answer_p)
 
 
 def activate_proxmox_config(db: Session, version: IsoVersion, cfg: AutoConfig) -> None:
