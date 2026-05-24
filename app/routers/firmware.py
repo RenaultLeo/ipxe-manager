@@ -41,6 +41,11 @@ def _firmware_status() -> dict:
     embed_path = src / "src" / "embed.ipxe"
     embed_content = embed_path.read_text(encoding="utf-8") if embed_path.exists() else ""
 
+    ca = settings.tls_ca_cert_path
+    tls_ready = ca.is_file()
+    base = resolve_server_base_url()
+    tls_https_url = base.startswith("https://")
+
     return {
         "undionly":     file_info(tftp / "undionly.kpxe"),
         "efi":          file_info(tftp / "ipxe.efi"),
@@ -49,6 +54,9 @@ def _firmware_status() -> dict:
         "src_cloned":   (src / ".git").exists(),
         "tftp_dir":     str(tftp),
         "build_dir":    settings.build_dir,
+        "tls_ca_path":  str(ca),
+        "tls_ready":    tls_ready,
+        "tls_https_url": tls_https_url,
     }
 
 

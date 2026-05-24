@@ -26,7 +26,7 @@ echo "======================================================"
 echo "[1/15] Installation des paquets système…"
 apt-get update -qq
 apt-get install -y -qq \
-    sudo git curl wget unzip rsync ca-certificates \
+    sudo git curl wget unzip rsync ca-certificates openssl \
     iproute2 procps \
     nginx tftpd-hpa redis-server \
     python3 python3-venv python3-pip nodejs \

@@ -54,6 +54,49 @@ def _patch_ipxe_graphical_console_headers(src_dir: Path, logs: list[str]) -> Non
         )
 
 
+def _patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
+    """Active DOWNLOAD_PROTO_HTTPS dans config/general.h (boot HTTPS)."""
+    general = src_dir / "src" / "config" / "general.h"
+    if not general.is_file():
+        raise RuntimeError(f"Sources iPXE incomplètes : {general}")
+
+    g = general.read_text(encoding="utf-8", errors="replace")
+    if re.search(r"^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE):
+        logs.append("config/general.h : DOWNLOAD_PROTO_HTTPS déjà activé.")
+        return
+
+    g_new, n = re.subn(
+        r"^[ \t]*#undef[ \t]+DOWNLOAD_PROTO_HTTPS[^\n]*\n",
+        "#define DOWNLOAD_PROTO_HTTPS\t\t/* Secure Hypertext Transfer Protocol */\n",
+        g,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if n == 0:
+        raise RuntimeError(
+            "config/general.h : ligne #undef DOWNLOAD_PROTO_HTTPS introuvable — "
+            "sources iPXE inattendues."
+        )
+    general.write_text(g_new, encoding="utf-8")
+    logs.append(
+        "config/general.h : #undef DOWNLOAD_PROTO_HTTPS → #define DOWNLOAD_PROTO_HTTPS."
+    )
+
+
+def _ipxe_tls_make_args() -> list[str]:
+    """
+    CERT= et TRUST= pour make iPXE (doivent être en dernier dans la ligne make).
+    Utilise la CA auto-signée /srv/ipxe/ssl/ca.crt si présente.
+    """
+    from app.config import settings
+
+    ca = settings.tls_ca_cert_path
+    if not ca.is_file():
+        return []
+    ca_s = str(ca.resolve())
+    return [f"CERT={ca_s}", f"TRUST={ca_s}"]
+
+
 @celery.task(bind=True, name="extract_iso")
 def extract_iso_task(self, iso_version_id: int, upload_id: int):
     db = SessionLocal()
@@ -600,13 +643,35 @@ def compile_ipxe_task(self, menu_url: str):
         _patch_ipxe_graphical_console_headers(src_dir, logs)
         completed_steps.append("patch_ipxe_config")
 
+        tls_args = _ipxe_tls_make_args()
+        if tls_args:
+            logs.append("Patch config iPXE (HTTPS + certificat CA local)…")
+            self.update_state(
+                state="PROGRESS",
+                meta={
+                    "step": "patch_ipxe_https",
+                    "completed_steps": list(completed_steps),
+                    "logs": logs,
+                },
+            )
+            _patch_ipxe_https_support(src_dir, logs)
+            logs.append(
+                f"Compilation avec {' '.join(tls_args)} (CERT/TRUST en fin de ligne make)."
+            )
+            completed_steps.append("patch_ipxe_https")
+        else:
+            logs.append(
+                "Pas de /srv/ipxe/ssl/ca.crt — compilation sans TRUST custom "
+                "(HTTP ou HTTPS public CA uniquement). Lancez deploy/enable-https.sh pour TLS local."
+            )
+
         # ── 4. Compiler undionly.kpxe (BIOS) ────────────────────────────────
         logs.append("Compilation undionly.kpxe (BIOS)…")
         self.update_state(
             state="PROGRESS",
             meta={"step": "compile_bios", "completed_steps": list(completed_steps), "logs": logs},
         )
-        run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe"], cwd=make_dir)
+        run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *tls_args], cwd=make_dir)
         completed_steps.append("compile_bios")
 
         # ── 5a. Compiler snponly.efi (UEFI — utilise drivers réseau EFI de la VM) ─
@@ -617,11 +682,11 @@ def compile_ipxe_task(self, menu_url: str):
             state="PROGRESS",
             meta={"step": "compile_efi", "completed_steps": list(completed_steps), "logs": logs},
         )
-        run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe"], cwd=make_dir)
+        run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *tls_args], cwd=make_dir)
 
         # ── 5b. Compiler ipxe.efi (UEFI — drivers NIC intégrés, physique/bare-metal) ─
         logs.append("Compilation ipxe.efi (UEFI drivers intégrés — bare-metal)…")
-        run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe"], cwd=make_dir)
+        run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *tls_args], cwd=make_dir)
         completed_steps.append("compile_efi")
 
         # ── 6. Copier les binaires en TFTP ───────────────────────────────────

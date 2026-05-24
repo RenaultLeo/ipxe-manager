@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     # Évite tout chevauchement avec les routes web « /isos » de l’application.
     iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
+    ssl_dir: str = "/srv/ipxe/ssl"       # CA + cert serveur (HTTPS / TRUST iPXE)
 
     upload_min_free_bytes: int = 268_435_456  # 256 Mo — garde fou avant uploads (multipart + fichiers boot)
 
@@ -162,6 +163,11 @@ class Settings(BaseSettings):
     @property
     def boot_dir(self) -> Path:
         return Path(self.http_root) / "boot"
+
+    @property
+    def tls_ca_cert_path(self) -> Path:
+        """CA racine PEM — passée à iPXE en TRUST= (et CERT=)."""
+        return Path(self.ssl_dir) / "ca.crt"
 
     @property
     def configs_dir(self) -> Path:
