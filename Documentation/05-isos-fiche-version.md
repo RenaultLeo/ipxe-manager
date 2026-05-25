@@ -182,18 +182,6 @@ Boutons **Publier sur la version** / **Retirer config active** pour Ubuntu (copi
 
 ---
 
-## Rapport d’extraction (basename)
-
-Après extraction, liste des **fichiers recherchés** selon la config du type d’OS et chemins trouvés dans l’arborescence.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/05-iso-detail-basename-report.png`
->
-> **Description de la photo :** Section rapport avec tableau ou liste de chemins relatifs trouvés.
->
-> **Éléments à cadrer :** Titre « Fichiers recherchés », au moins deux chemins exemple.
-
----
 
 ## Voir aussi
 
