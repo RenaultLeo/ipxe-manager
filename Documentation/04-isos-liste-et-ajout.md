@@ -63,7 +63,6 @@ Bouton depuis la liste ISOs ou le tableau de bord.
 - Texte d’aide : l’extraction des fichiers de boot pourra être lancée **depuis la fiche version** (pas forcément pendant l’upload).
 - **Doublon** : si même type + libellé + nom de fichier ISO → badge avertissement avant envoi.
 
-**Fedora** : case à cocher **ISO Fedora Live (Workstation)** — change le mode de boot (squashfs Live vs inst.stage2 netinst).
 
 > ### 📷 Emplacement capture
 > **Fichier suggéré :** `Documentation/images/04-isos-upload-iso-section.png`
