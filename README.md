@@ -1,20 +1,22 @@
 # iPXE Manager
 
-# ⚠️ Avertissement : Version Beta & Sécurité
+# ⚠️ Avertissement : version beta & sécurité
 
-Ce projet est actuellement en phase de développement (**Beta**) et est partagé exclusivement à des fins de test, de démonstration et d'apprentissage.
+Ce projet est en phase de développement (**beta**) et est partagé à des fins de **test**, de **démonstration** et d’**apprentissage** sur un réseau de confiance (labo, LAN).
 
-**Veuillez prendre note des points suivants :**
-* 🛑 **Non destiné à la production :** Ce logiciel n'est pas conçu pour être déployé dans un environnement de production ou critique.
-* 🔒 **Sécurité incomplète :** Les standards et organes de sécurité essentiels (tels que le chiffrement HTTPS, la gestion sécurisée et chiffrée des secrets/mots de passe, ou le durcissement des accès) ne sont pas encore implémentés.
-* 🌐 **Risques réseau :** L'utilisation ou l'exposition de ce code sur un réseau public ou non sécurisé se fait à vos risques et périls uniques.
-* 🛠️ **Évolution constante :** L'architecture et le code peuvent subir des modifications majeures sans préavis.
+**À garder en tête :**
 
-Conformément à la **Licence MIT**, ce logiciel est fourni "tel quel", sans aucune garantie d'aucune sorte.
+* 🛑 **Pas pour la production critique :** pas de garantie de disponibilité, de support ni de durcissement « entreprise ».
+* 🔒 **HTTPS interne uniquement :** l’UI et Nginx peuvent tourner en **HTTPS avec certificat auto-signé** (`deploy/enable-https.sh`, renouvellement depuis **Paramètres**). Ce n’est **pas** une PKI publique : le navigateur affichera « Non sécurisé » tant que la CA n’est pas importée ; les clients **iPXE** doivent être **recompilés** après activation ou renouvellement TLS (page **Firmware**). Les mots de passe applicatifs ne sont pas chiffrés au repos ; pas de gestion avancée des secrets (Vault, etc.).
+* 👤 **Authentification simple :** comptes locaux (admin / utilisateur), sessions cookie — pas de SSO, MFA ni politique de mot de passe centralisée.
+* 🌐 **Exposition réseau :** déployer sur Internet ou un VLAN non maîtrisé sans pare-feu, TLS public et revue de sécurité est **déconseillé**.
+* 🛠️ **Évolution rapide :** schéma, API et scripts de déploiement peuvent changer entre les versions.
 
-**iPXE Manager** est une interface web (FastAPI) pour administrer un petit **datacenter PXE** depuis une machine Debian : tu centralises les ISOs, les noyaux/initrd, les menus iPXE et les fichiers d’installation automatique (preseed, kickstart, cloud-init, etc.), sans retoucher à la main tous les scripts à chaque nouvelle version.
+Conformément à la **licence MIT**, le logiciel est fourni **« tel quel »**, sans garantie d’aucune sorte.
 
-En pratique, la machine joue le rôle de **serveur TFTP** pour le premier chargement (iPXE BIOS/UEFI), puis sert le reste en **HTTP** (menus, fichiers de boot, configs). Les opérations longues (extraction d’ISO, compilation du firmware iPXE) passent par **Celery**, pour que l’interface reste réactive.
+**iPXE Manager** est une interface web (**FastAPI**) pour administrer un petit **datacenter PXE** depuis une machine **Debian** : tu centralises les ISOs, les noyaux/initrd, les menus iPXE et les fichiers d’installation automatique (preseed, kickstart, cloud-init, answer.toml Proxmox, etc.), sans retoucher à la main tous les scripts à chaque nouvelle version.
+
+En pratique, la machine est **serveur TFTP** au premier boot (firmware iPXE BIOS/UEFI), puis sert le reste en **HTTP ou HTTPS** (menus, fichiers de boot, configs). Les tâches longues (extraction d’ISO, compilation firmware, régénération des menus) passent par **Celery** pour garder l’interface réactive. La page **Supervision** (admin) regroupe l’état des services, des chemins et des contrôles d’intégrité. Guide d’utilisation du site : dossier [`Documentation/`](Documentation/README.md) (installation détaillée : ci-dessous).
 
 ---
 
