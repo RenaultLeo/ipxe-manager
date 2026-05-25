@@ -1,7 +1,6 @@
 (function () {
   var charts = {};
   var lastSnapshot = null;
-  var SUPERVISION_PATH = "/admin/supervision";
   var i18n = {
     active: "active",
     openPorts: "open ports",
@@ -196,13 +195,30 @@
 
   function syncSupervisionUrl(tab) {
     if (!window.history || !window.history.replaceState) return;
-    var path = window.location.pathname;
-    if (path !== SUPERVISION_PATH && !path.endsWith("/admin/supervision")) return;
-    var url = SUPERVISION_PATH;
-    if (tab === "integrity") {
-      url += "#integrity";
-    }
+    if (window.location.pathname.indexOf("/admin/supervision") === -1) return;
+    var path = window.location.pathname.replace(/\/$/, "") || "/admin/supervision";
+    var url = tab === "integrity" ? path + "#integrity" : path;
     history.replaceState(null, "", url);
+  }
+
+  function tabTriggerFromEvent(ev) {
+    if (!ev || !ev.target || !ev.target.closest) return null;
+    return ev.target.closest("[data-bs-toggle='tab']");
+  }
+
+  function onHealthTabActivated() {
+    syncSupervisionUrl("health");
+    if (lastSnapshot) {
+      window.requestAnimationFrame(function () {
+        renderCharts(lastSnapshot);
+      });
+    } else {
+      resizeCharts();
+    }
+  }
+
+  function onIntegrityTabActivated() {
+    syncSupervisionUrl("integrity");
   }
 
   function resizeCharts() {
@@ -345,20 +361,30 @@
 
   function bindSupervisionTabs() {
     var tabList = document.querySelector(".super-tabs");
-    if (!tabList) return;
-    tabList.addEventListener("shown.bs.tab", function (ev) {
-      var target = ev.target.getAttribute("data-bs-target");
-      if (target === "#tab-integrity") {
-        syncSupervisionUrl("integrity");
-      } else if (target === "#tab-health") {
-        syncSupervisionUrl("health");
-        if (lastSnapshot) {
-          renderCharts(lastSnapshot);
-        } else {
-          resizeCharts();
+    if (tabList) {
+      tabList.addEventListener("shown.bs.tab", function (ev) {
+        var trigger = tabTriggerFromEvent(ev);
+        if (!trigger) return;
+        var target = trigger.getAttribute("data-bs-target");
+        if (target === "#tab-integrity") {
+          onIntegrityTabActivated();
+        } else if (target === "#tab-health") {
+          onHealthTabActivated();
         }
-      }
-    });
+      });
+    }
+    var btnHealth = el("tab-btn-health");
+    var btnIntegrity = el("tab-btn-integrity");
+    if (btnHealth) {
+      btnHealth.addEventListener("click", function () {
+        window.setTimeout(onHealthTabActivated, 0);
+      });
+    }
+    if (btnIntegrity) {
+      btnIntegrity.addEventListener("click", function () {
+        window.setTimeout(onIntegrityTabActivated, 0);
+      });
+    }
   }
 
   var snapshotPollTimer = null;
@@ -380,8 +406,8 @@
     var tabBtn = document.querySelector('[data-bs-target="#tab-integrity"]');
     if (tabBtn && window.bootstrap) {
       new bootstrap.Tab(tabBtn).show();
-      syncSupervisionUrl("integrity");
     }
+    syncSupervisionUrl("integrity");
   } else {
     syncSupervisionUrl("health");
   }

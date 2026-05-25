@@ -30,6 +30,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin")
 
+_SESSION_FLASH_MSG = "supervision_flash_msg"
+
+
+def _pop_supervision_flash(request: Request, query_msg: str = "") -> str:
+    """Message one-shot après redirect (évite ?msg=… dans l’URL)."""
+    flash = (request.session.pop(_SESSION_FLASH_MSG, None) or "").strip()
+    q = (query_msg or "").strip()
+    return flash or q
+
+
+def _redirect_supervision_integrity(request: Request, msg: str) -> RedirectResponse:
+    request.session[_SESSION_FLASH_MSG] = msg
+    return RedirectResponse("/admin/supervision#integrity", status_code=302)
+
 def _safe_return_url(raw: str | None, default: str = "/admin/supervision") -> str:
     """Chemin interne uniquement (évite open redirect)."""
     if not raw or not str(raw).strip():
@@ -66,13 +80,14 @@ async def supervision_page(request: Request, db: Session = Depends(get_db), msg:
     if redir:
         return redir
     last_ver = get_last_verification()
+    display_msg = _pop_supervision_flash(request, msg)
     return templates.TemplateResponse(
         "admin/supervision.html",
         template_context(
             request,
             snapshot={"loading": True},
             last_verification=last_ver,
-            msg=msg,
+            msg=display_msg,
         ),
     )
 
@@ -123,7 +138,7 @@ async def supervision_quick_verify(request: Request):
             "super.verify_quick_fail",
             n=result.get("failures", 0),
         )
-    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
+    return _redirect_supervision_integrity(request, msg)
 
 
 @router.post("/supervision/verification/full")
@@ -150,7 +165,7 @@ async def supervision_full_verify(request: Request):
         msg = translate(lang, "super.verify_full_ok", sec=result.get("duration_sec", 0))
     else:
         msg = translate(lang, "super.verify_full_fail", sec=result.get("duration_sec", 0))
-    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
+    return _redirect_supervision_integrity(request, msg)
 
 
 @router.post("/supervision/database/sync")
@@ -171,7 +186,7 @@ async def supervision_sync_database(request: Request, db: Session = Depends(get_
     except Exception as exc:
         logger.exception("sync database")
         msg = translate(lang, "super.sync_db_fail", detail=str(exc)[:200])
-    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
+    return _redirect_supervision_integrity(request, msg)
 
 
 @router.get("/supervision/services/restarting", response_class=HTMLResponse)
