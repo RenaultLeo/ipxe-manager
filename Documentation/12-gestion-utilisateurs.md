@@ -16,12 +16,9 @@ Page en **deux colonnes** :
 | Gauche (étroite) | Formulaire **Ajouter un utilisateur** |
 | Droite (large) | **Liste** des comptes existants |
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-page-layout.png`
->
-> **Description de la photo :** Page Utilisateurs complète : carte création à gauche, liste à droite avec badge nombre d’utilisateurs.
->
-> **Éléments à cadrer :** Titre « Gestion des utilisateurs », sous-titre, badge « 2 » (ou plus) sur la liste.
+
+![Page Utilisateurs complète : carte création à gauche, liste à droite avec badge nombre d’utilisateurs.](images/12-users-page-layout.png)
+
 
 ---
 
@@ -37,19 +34,13 @@ Champs du formulaire :
 
 Bouton **Créer** : enregistre et affiche un message flash en haut si succès ou erreur (identifiant déjà pris, etc.).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-create-form-filled.png`
->
-> **Description de la photo :** Formulaire gauche rempli (ex. identifiant `tech1`, rôle Utilisateur) avant clic Créer.
->
-> **Éléments à cadrer :** Les trois champs, texte d’aide sous l’identifiant, bouton bleu pleine largeur.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-create-success-alert.png`
->
-> **Description de la photo :** Alerte bleue/verte en haut après création réussie ; nouvelle ligne visible dans la liste à droite.
->
-> **Éléments à cadrer :** Message flash + ligne `tech1` avec badge Utilisateur.
+![Formulaire gauche rempli (ex. identifiant `tech1`, rôle Utilisateur) avant clic Créer.](images/12-users-create-form-filled.png)
+
+
+
+![Alerte bleue/verte en haut après création réussie ; nouvelle ligne visible dans la liste à droite.](images/12-users-create-success-alert.png)
+
 
 ---
 
@@ -81,12 +72,9 @@ Cela ne change **pas** votre propre session : c’est le mot de passe du compte 
 - **Impossible** de supprimer le compte avec lequel vous êtes connecté (pas de bouton sur votre propre ligne).
 - **Confirmation** modale avant suppression définitive.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-delete-confirm-modal.png`
->
-> **Description de la photo :** Modale « Supprimer cet utilisateur ? » (variante danger, bouton rouge).
->
-> **Éléments à cadrer :** Texte avec nom d’utilisateur, boutons Annuler / Confirmer.
+
+![Modale « Supprimer cet utilisateur ? » (variante danger, bouton rouge).](images/12-users-delete-confirm-modal.png)
+
 
 ---
 

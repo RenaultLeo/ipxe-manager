@@ -40,13 +40,7 @@ Pour l’**installation**, le déploiement serveur et l’architecture technique
 
 ## Captures d’écran
 
-Chaque chapitre contient des blocs **📷 Emplacement capture** :
-
-- un **chemin de fichier** suggéré sous `Documentation/images/…`
-- une **description précise** de ce qu’il faut photographier
-- les **éléments UI** à cadrer (boutons, badges, onglets)
-
-Créez le dossier `images/` au fur et à mesure ; les fichiers peuvent être en `.png` ou `.webp`.
+Les illustrations sont dans le dossier [`images/`](images/README.md) (fichiers `.png`). Chaque chapitre les affiche en contexte avec des chemins relatifs du type `images/nom.png`.
 
 ---
 

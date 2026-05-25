@@ -79,12 +79,9 @@ Le client affiche le **menu graphique** iPXE (fond bleu, entrées par OS, logo e
 
 Contenu généré par iPXE Manager : onglet **Menus générés** → `menu.ipxe`.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-client-ipxe-menu-on-screen.png`
->
-> **Description de la photo :** Photo de l’écran du PC client montrant le menu iPXE (plusieurs entrées Debian/Ubuntu/Windows…).
->
-> **Éléments à cadrer :** Titre du menu, au moins 2 entrées, logo personnalisé si configuré.
+
+![Photo de l’écran du PC client montrant le menu iPXE (plusieurs entrées Debian/Ubuntu/Windows…).](images/15-client-ipxe-menu-on-screen.png)
+
 
 ---
 

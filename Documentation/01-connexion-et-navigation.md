@@ -29,19 +29,13 @@ Si vous n’êtes pas connecté, toute URL renvoie vers **`/login`**.
 
 Identifiants par défaut après installation : **`admin`** / **`admin`** — à changer immédiatement dans **Paramètres**.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/01-login-form-empty.png`
->
-> **Description de la photo :** Page de connexion complète, formulaire vide, logo « iPXE Manager » visible.
->
-> **Éléments à cadrer :** Champs Identifiant / Mot de passe, bouton de connexion, fond sombre de l’application.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/01-login-error-message.png`
->
-> **Description de la photo :** Tentative avec mauvais mot de passe : message d’erreur affiché sous le formulaire.
->
-> **Éléments à cadrer :** Bandeau ou texte d’erreur « Identifiant ou mot de passe incorrect » (libellé selon la langue).
+![Page de connexion complète, formulaire vide, logo « iPXE Manager » visible.](images/01-login-form-empty.png)
+
+
+
+![Tentative avec mauvais mot de passe : message d’erreur affiché sous le formulaire.](images/01-login-error-message.png)
+
 
 ---
 
@@ -68,26 +62,17 @@ Barre **sticky** en haut de toutes les pages :
 | **Utilisateurs** | Comptes, mots de passe |
 | **Paramètres** | URL, TLS, types d’OS, logo menu |
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/01-navbar-admin-full.png`
->
-> **Description de la photo :** Barre de navigation avec un compte **admin** connecté : tous les menus visibles, un onglet actif (ex. Tableau de bord) surligné.
->
-> **Éléments à cadrer :** Logo « iPXE Manager » à gauche ; liens Exploitation + Administration ; à droite le sélecteur de langue et le bouton Déconnexion.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/01-navbar-user-limited.png`
->
-> **Description de la photo :** Même barre avec un compte **utilisateur** : pas de Firmware, Supervision, Utilisateurs, Paramètres.
->
-> **Éléments à cadrer :** Contraste avec la capture admin (idéalement même résolution).
+![Barre de navigation avec un compte **admin** connecté : tous les menus visibles, un onglet actif (ex. Tableau de bord…](images/01-navbar-admin-full.png)
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/01-navbar-mobile-collapsed.png`
->
-> **Description de la photo :** Fenêtre étroite (ou F12 mode mobile) : menu hamburger ouvert montrant les entrées empilées.
->
-> **Éléments à cadrer :** Bouton « Menu » (trois traits), liste déroulante des liens.
+
+
+![Même barre avec un compte **utilisateur** : pas de Firmware, Supervision, Utilisateurs, Paramètres.](images/01-navbar-user-limited.png)
+
+
+
+![Fenêtre étroite (ou F12 mode mobile) : menu hamburger ouvert montrant les entrées empilées.](images/01-navbar-mobile-collapsed.png)
+
 
 ---
 
@@ -98,12 +83,9 @@ En haut à droite : bouton du type **FR** / **EN** avec icône traduction.
 - Cliquez → liste : Français, English, Deutsch, Español, Italiano, Português.
 - La page se recharge dans la langue choisie (cookie `lang`).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/01-language-dropdown-open.png`
->
-> **Description de la photo :** Menu déroulant des langues ouvert, une langue surlignée au survol.
->
-> **Éléments à cadrer :** Bouton langue actif + liste des 6 langues, sans masquer le reste de la page.
+
+![Menu déroulant des langues ouvert, une langue surlignée au survol.](images/01-language-dropdown-open.png)
+
 
 ---
 

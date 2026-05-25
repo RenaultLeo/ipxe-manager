@@ -23,12 +23,9 @@ Produire les fichiers que le **DHCP/TFTP** envoie au tout premier boot :
 
 Trois cartes : présent / absent, taille en Ko, chemin sur disque.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-three-cards-present.png`
->
-> **Description de la photo :** Trois cartes avec badge vert « Présent » et tailles en Ko.
->
-> **Éléments à cadrer :** Badges VMs / bare-metal sur snponly et ipxe.efi, chemins en petit texte.
+
+![Trois cartes avec badge vert « Présent » et tailles en Ko.](images/09-firmware-three-cards-present.png)
+
 
 ---
 
@@ -43,26 +40,17 @@ Pendant la compilation :
 - Logs défilants
 - Bouton **Annuler** (confirmation) — les sources restent sur disque pour accélérer la prochaine compile
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-build-steps-green.png`
->
-> **Description de la photo :** Compilation en cours : badges étapes (les premiers verts, étape courante en bleu/animé).
->
-> **Éléments à cadrer :** Titre carte « Compilation en cours », rangée de 7 badges, zone logs.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-build-success.png`
->
-> **Description de la photo :** Alerte verte succès + cartes firmware toutes « Présent ».
->
-> **Éléments à cadrer :** Message succès avec chemin TFTP, badges verts sur toutes les étapes.
+![Compilation en cours : badges étapes (les premiers verts, étape courante en bleu/animé).](images/09-firmware-build-steps-green.png)
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-cancel-confirm.png`
->
-> **Description de la photo :** Modale annulation compilation : avertissement que les sources restent sur disque.
->
-> **Éléments à cadrer :** Texte modale, boutons Annuler compilation / Retour.
+
+
+![Alerte verte succès + cartes firmware toutes « Présent ».](images/09-firmware-build-success.png)
+
+
+
+![Modale annulation compilation : avertissement que les sources restent sur disque.](images/09-firmware-cancel-confirm.png)
+
 
 ---
 
@@ -73,12 +61,9 @@ Affichage :
 - **TFTP** : racine tftpboot
 - **Sources** : clone iPXE — cloné / non cloné
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-dirs-card.png`
->
-> **Description de la photo :** Carte « Répertoires » avec chemins TFTP et sources + badge cloné.
->
-> **Éléments à cadrer :** Chemins complets, badge état clone.
+
+![Carte « Répertoires » avec chemins TFTP et sources + badge cloné.](images/09-firmware-dirs-card.png)
+
 
 ---
 
@@ -90,12 +75,9 @@ Section **script intégré** dans le firmware :
 - Bouton **Personnaliser** : champ URL chainload, aperçu du `#!ipxe` généré (dhcp + chain)
 - **Compiler avec cette URL**
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-embed-customize.png`
->
-> **Description de la photo :** Formulaire embed ouvert : champ URL, aperçu code embed.ipxe, bouton compiler avec URL.
->
-> **Éléments à cadrer :** Champ URL, bloc code généré, bouton bleu/primary compiler.
+
+![Formulaire embed ouvert : champ URL, aperçu code embed.ipxe, bouton compiler avec URL.](images/09-firmware-embed-customize.png)
+
 
 ---
 
@@ -106,12 +88,9 @@ Si le site est en HTTPS :
 - Bandeau rappel de recompiler après changement de certificat / activation HTTPS
 - Nécessité d’embarquer la CA dans le firmware (`CERT/TRUST`)
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-https-banner.png`
->
-> **Description de la photo :** Alerte bleue en haut page Firmware mentionnant HTTPS et recompilation.
->
-> **Éléments à cadrer :** Texte HTTPS actif, chemin ca.crt si affiché.
+
+![Alerte bleue en haut page Firmware mentionnant HTTPS et recompilation.](images/09-firmware-https-banner.png)
+
 
 ---
 
@@ -122,12 +101,9 @@ Carte en bas : exemple de configuration **DHCP** (pfSense / options) :
 - next-server, fichier boot BIOS vs UEFI VM
 - user-class **iPXE** pour servir l’URL HTTP du menu directement
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-dhcp-help-card.png`
->
-> **Description de la photo :** Carte configuration DHCP avec extrait de config et flux DHCP → TFTP → HTTP.
->
-> **Éléments à cadrer :** Bloc code DHCP, texte explicatif snponly vs ipxe.efi.
+
+![Carte configuration DHCP avec extrait de config et flux DHCP → TFTP → HTTP.](images/09-firmware-dhcp-help-card.png)
+
 
 ---
 

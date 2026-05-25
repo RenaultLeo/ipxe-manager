@@ -20,19 +20,13 @@ Sur une fiche en lecture seule, un bandeau gris s’affiche :
 
 Les boutons d’action (extraire, supprimer, upload) sont absents ou désactivés.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/02-readonly-banner-iso-detail.png`
->
-> **Description de la photo :** Fiche d’une version ISO appartenant à **un autre** utilisateur, connecté en compte **user** : bandeau « lecture seule » sous le titre.
->
-> **Éléments à cadrer :** Titre OS + version, badge statut (Prêt), bandeau alerte gris, absence du bouton « Extraire » ou zone grisée.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/02-own-version-editable.png`
->
-> **Description de la photo :** Même type de fiche mais version **créée par l’utilisateur connecté** : pas de bandeau, barre d’outils avec « Extraire depuis l’ISO » visible.
->
-> **Éléments à cadrer :** Boutons d’action dans la carte « Fichiers de boot ».
+![Fiche d’une version ISO appartenant à **un autre** utilisateur, connecté en compte **user** : bandeau « lecture seule…](images/02-readonly-banner-iso-detail.png)
+
+
+
+![Même type de fiche mais version **créée par l’utilisateur connecté** : pas de bandeau, barre d’outils avec « Extraire…](images/02-own-version-editable.png)
+
 
 ---
 

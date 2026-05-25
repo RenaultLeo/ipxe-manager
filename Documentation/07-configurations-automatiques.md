@@ -11,12 +11,9 @@ Gestion des fichiers d’**installation automatique** liés à une **version ISO
 
 Tableau : OS / version, **type** de config, libellé, fichier, date, actions (éditer, supprimer).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/07-configs-list.png`
->
-> **Description de la photo :** Page liste configs avec plusieurs lignes (Debian preseed, Ubuntu user-data, etc.).
->
-> **Éléments à cadrer :** Bouton « Nouvelle config » / « Scanner », colonnes Type et Version.
+
+![Page liste configs avec plusieurs lignes (Debian preseed, Ubuntu user-data, etc.).](images/07-configs-list.png)
+
 
 ---
 
@@ -24,12 +21,9 @@ Tableau : OS / version, **type** de config, libellé, fichier, date, actions (é
 
 Comme pour boot/ : importe les fichiers déjà présents sous `configs/` sur le disque mais non enregistrés en base.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/07-configs-scan-button.png`
->
-> **Description de la photo :** Bouton « Scanner fichiers » et message de résultat (N importés, M ignorés).
->
-> **Éléments à cadrer :** Bouton + alerte résultat.
+
+![Bouton « Scanner fichiers » et message de résultat (N importés, M ignorés).](images/07-configs-scan-button.png)
+
 
 ---
 
@@ -47,12 +41,9 @@ Comme pour boot/ : importe les fichiers déjà présents sous `configs/` sur le 
 
 Les types **imposés** par le seed pour les OS intégrés (ex. Debian → preseed) : le type est verrouillé à la création.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/07-configs-new-form.png`
->
-> **Description de la photo :** Formulaire nouvelle config : version sélectionnée, type preseed, nom de dossier.
->
-> **Éléments à cadrer :** Liste déroulante type, champ contenu ou lien vers éditeur.
+
+![Formulaire nouvelle config : version sélectionnée, type preseed, nom de dossier.](images/07-configs-new-form.png)
+
 
 ---
 
@@ -63,19 +54,13 @@ Page d’édition avec **éditeur de code** (coloration selon le type : shell, X
 - Boutons **Modèles** : insère un template vide (preseed, kickstart, unattended, cloud-init, etc.)
 - Variables documentées dans l’aide (hostname, miroir, etc.)
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/07-configs-editor-codemirror.png`
->
-> **Description de la photo :** Éditeur plein écran avec coloration syntaxique (thème sombre Dracula).
->
-> **Éléments à cadrer :** Zone CodeMirror, boutons Modèles / Enregistrer, liste des variables disponibles sur le côté ou en dessous.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/07-configs-templates-dropdown.png`
->
-> **Description de la photo :** Menu ou boutons « Modèles » avec choix Preseed / Kickstart / Unattend visibles.
->
-> **Éléments à cadrer :** Libellés des templates, un template en surbrillance.
+![Éditeur plein écran avec coloration syntaxique (thème sombre Dracula).](images/07-configs-editor-codemirror.png)
+
+
+
+![Menu ou boutons « Modèles » avec choix Preseed / Kickstart / Unattend visibles.](images/07-configs-templates-dropdown.png)
+
 
 ---
 

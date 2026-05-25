@@ -25,12 +25,9 @@ Souvent organisée par **type d’OS**, puis **version**, avec pour chaque entr�
 | Chemin relatif | Sous `boot/<os>/<version>/` |
 | Actions | Upload, édition args kernel |
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/06-boot-files-page-overview.png`
->
-> **Description de la photo :** Page Fichiers Boot entière avec plusieurs versions groupées par OS.
->
-> **Éléments à cadrer :** Titre page, bouton « Scanner boot/ », au moins un groupe OS déplié.
+
+![Page Fichiers Boot entière avec plusieurs versions groupées par OS.](images/06-boot-files-page-overview.png)
+
 
 ---
 
@@ -44,12 +41,9 @@ Bouton du type **Scanner boot/** :
 
 Utile après une copie manuelle SSH/rsync.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/06-boot-files-scan-result.png`
->
-> **Description de la photo :** Message flash ou alerte après scan : « Scan terminé — N version(s) mises à jour ».
->
-> **Éléments à cadrer :** Bouton scanner + message de résultat (alerte verte ou info).
+
+![Message flash ou alerte après scan : « Scan terminé — N version(s) mises à jour ».](images/06-boot-files-scan-result.png)
+
 
 ---
 
@@ -65,12 +59,9 @@ Pour une version donnée, remplacement ciblé :
 
 Les libellés reflètent les **vrais noms** sur disque (ex. `vmlinuz-lts`).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/06-boot-files-upload-row.png`
->
-> **Description de la photo :** Une ligne version avec bouton « Téléverser » ou formulaire fichier pour un rôle précis (ex. initrd).
->
-> **Éléments à cadrer :** Nom du rôle, input fichier, bouton envoyer.
+
+![Une ligne version avec bouton « Téléverser » ou formulaire fichier pour un rôle précis (ex. initrd).](images/06-boot-files-upload-row.png)
+
 
 ---
 
@@ -80,12 +71,9 @@ Champ pour modifier les **paramètres kernel** passés au boot iPXE (quiet, cons
 
 Enregistrement → régénération des menus recommandée (**Menus iPXE → Régénérer tous**).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/06-boot-files-kernel-args.png`
->
-> **Description de la photo :** Zone texte « Arguments noyau » remplie + bouton sauvegarder.
->
-> **Éléments à cadrer :** Champ multiligne, bouton enregistrer.
+
+![Zone texte « Arguments noyau » remplie + bouton sauvegarder.](images/06-boot-files-kernel-args.png)
+
 
 ---
 

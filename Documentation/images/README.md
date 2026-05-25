@@ -1,6 +1,6 @@
 # Dossier des captures d’écran
 
-Placez ici les images référencées dans la documentation.
+Images intégrées dans les chapitres (`![…](images/nom.png)` depuis les fichiers `.md` à la racine de `Documentation/`).
 
 ## Convention de nommage
 
