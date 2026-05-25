@@ -29,6 +29,8 @@ Le firmware TFTP est **petit** ; une fois iPXE lancé, tout le reste passe par *
 >
 > **Éléments à cadrer :** Flèches « DHCP », « TFTP », « HTTP », IP du serveur iPXE Manager.
 
+![Architecture PXE — TFTP puis HTTP](images/00-architecture-schema.png)
+
 ---
 
 ## Ce que vous faites dans l’interface (ordre logique)
