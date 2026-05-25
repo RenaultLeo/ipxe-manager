@@ -153,13 +153,6 @@ Après **Relancer les services** :
 - Redirection ou fragment d’URL avec indicateur de redémarrage en cours
 - Les services peuvent être **indisponibles** quelques secondes — ne pas fermer le navigateur pendant l’opération
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/11-supervision-services-restarting.png`
->
-> **Description de la photo :** Bandeau ou page intermédiaire indiquant que les services redémarrent (si affiché par l’application).
->
-> **Éléments à cadrer :** Message « redémarrage en cours », spinner éventuel.
-
 ---
 
 ## Quand utiliser cette page ?
