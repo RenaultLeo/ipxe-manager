@@ -95,6 +95,14 @@ def _cookie_header_from_response(resp: http.client.HTTPResponse) -> str:
     return "; ".join(parts)
 
 
+def _cookie_from_set_cookie_header(hdrs: dict[str, str]) -> str:
+    """Premier cookie « name=value » renvoyé par Set-Cookie (session vidée après logout)."""
+    sc = hdrs.get("set-cookie", "")
+    if not sc:
+        return ""
+    return sc.split(";", 1)[0].strip()
+
+
 def http_request(
     base: str,
     path: str,
@@ -563,13 +571,15 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
         code_lo in LOGIN_REDIRECT_CODES and _is_login_location(loc_lo),
         f"GET /logout → {code_lo} Location={loc_lo!r}",
     )
+    # Comme le navigateur : ne plus réutiliser l’ancien cookie signé (sinon session encore valide)
+    audit.cookie = _cookie_from_set_cookie_header(hdrs_lo)
 
     code_gone, hdrs_gone, _ = http_request(
         audit.base,
         "/settings",
         timeout=audit.timeout,
         insecure=audit.insecure,
-        headers=audit._hdr(True),
+        headers=audit._hdr(bool(audit.cookie)),
     )
     loc_gone = hdrs_gone.get("location", "") or ""
     audit.ok(

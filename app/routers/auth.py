@@ -37,4 +37,7 @@ async def login_submit(
 @router.get("/logout")
 async def logout(request: Request):
     logout_user(request)
-    return RedirectResponse("/login", status_code=302)
+    response = RedirectResponse("/login", status_code=302)
+    # Invalide aussi l’ancien cookie signé si le client ne remplace pas Set-Cookie
+    response.delete_cookie("session", path="/")
+    return response
