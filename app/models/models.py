@@ -171,6 +171,7 @@ class Upload(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    iso_version_id = Column(Integer, ForeignKey("iso_versions.id"), nullable=True, index=True)
     filename = Column(String(256))
     file_type = Column(String(32))   # iso|kernel|initrd|boot_wim|ipxe|config|other
     size = Column(BigInteger, default=0)

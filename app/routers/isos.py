@@ -1083,6 +1083,7 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
         size=version.iso_size,
         status="pending",
         owner_user_id=owner.id if owner else version.owner_user_id,
+        iso_version_id=version_id,
     )
     db.add(upload_log)
     db.commit()

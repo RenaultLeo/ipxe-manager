@@ -128,6 +128,7 @@ def _migrate_columns():
     _backfill_builtin_extract_full_iso()
     _add_column_if_missing("iso_versions", "owner_user_id", "INTEGER")
     _add_column_if_missing("uploads", "owner_user_id", "INTEGER")
+    _add_column_if_missing("uploads", "iso_version_id", "INTEGER")
     # remote_chains table est créée via Base.metadata.create_all — pas besoin d'ALTER
 
 

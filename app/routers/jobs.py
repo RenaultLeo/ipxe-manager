@@ -2,7 +2,7 @@
 Gestion des tâches Celery en cours : liste, kill individuel, kill-all.
 """
 import logging
-from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import RedirectResponse
@@ -33,22 +33,32 @@ def _revoke(task_id: str):
         logger.exception("Impossible de révoquer la tâche %s", task_id)
 
 
+def _resolve_version_for_upload(upload: Upload, db: Session) -> IsoVersion | None:
+    """Retrouve la version ISO liée à un job d'extraction (upload)."""
+    if upload.iso_version_id:
+        return db.query(IsoVersion).filter(IsoVersion.id == upload.iso_version_id).first()
+    if upload.file_type != "extraction":
+        return None
+    fname = (upload.filename or "").strip()
+    extracting = db.query(IsoVersion).filter(IsoVersion.status == "extracting").all()
+    if not extracting:
+        return None
+    if fname:
+        for v in extracting:
+            if v.iso_path and Path(v.iso_path).name == fname:
+                return v
+    if len(extracting) == 1:
+        return extracting[0]
+    return None
+
+
 def _mark_error(upload: Upload, db: Session, msg: str = "Annulé manuellement"):
     upload.status = "error"
     upload.error_msg = msg
-    # Marquer aussi la version ISO en erreur si elle est en cours
-    if upload.task_id:
-        version = (
-            db.query(IsoVersion)
-            .filter(IsoVersion.status.in_(["extracting", "uploaded"]))
-            .first()
-        )
-        # On cherche via le task_id stocké dans l'upload
-        for v in db.query(IsoVersion).filter(IsoVersion.status == "extracting").all():
-            if v.boot_entry is None:
-                pass
-            # On ne peut pas faire le lien direct sans stocker le version_id dans Upload
-            # → on laisse la version en "extracting", l'utilisateur peut la corriger manuellement
+    version = _resolve_version_for_upload(upload, db)
+    if version and version.status in ("extracting", "uploaded"):
+        version.status = "error"
+        logger.info("Version %s marquée en erreur (job %s annulé)", version.id, upload.id)
 
 
 @router.post("/{upload_id}/kill")
@@ -92,13 +102,17 @@ async def kill_all_jobs(request: Request, db: Session = Depends(get_db)):
         _mark_error(upload, db)
         count += 1
 
-    # Marquer aussi les IsoVersion bloquées en "extracting"
+    # Versions encore en extracting sans upload actif (sécurité)
     stuck_versions = db.query(IsoVersion).filter(IsoVersion.status == "extracting").all()
     for v in stuck_versions:
         v.status = "error"
         logger.info("Version %s marquée en erreur (kill-all)", v.id)
 
     db.commit()
-    logger.info("kill-all : %d upload(s) annulé(s), %d version(s) reset", count, len(stuck_versions))
+    logger.info(
+        "kill-all : %d upload(s) annulé(s), %d version(s) en erreur",
+        count,
+        len(stuck_versions),
+    )
 
     return RedirectResponse("/?killed=all", status_code=302)
