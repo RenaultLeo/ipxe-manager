@@ -1,7 +1,6 @@
 """Contrôles d'intégrité (HTTP + audit exhaustif) pour la page Supervision."""
 from __future__ import annotations
 
-import http.client
 import json
 import logging
 import subprocess
@@ -9,7 +8,6 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlparse
 
 from fastapi import Request
 
@@ -25,6 +23,7 @@ from app.services.server_diagnostics import (
     check_port_open,
     check_redis,
     http_probe,
+    http_raw_get,
     systemctl_is_active,
     DEFAULT_SYSTEMD_UNITS,
 )
@@ -101,41 +100,6 @@ def _base_url_for_request(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-def _http_get(
-    base: str,
-    path: str,
-    *,
-    cookie: str = "",
-    timeout: float = 20.0,
-) -> tuple[int, bytes]:
-    p = urlparse(base)
-    if not p.scheme or not p.hostname:
-        return -1, b""
-    port = p.port or (443 if p.scheme == "https" else 80)
-    headers = {"User-Agent": "ipxe-supervision/1.0"}
-    if cookie:
-        headers["Cookie"] = cookie
-    try:
-        if p.scheme == "https":
-            import ssl
-
-            # Sonde locale : certificat auto-signé (TLS interne) accepté
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            conn = http.client.HTTPSConnection(p.hostname, port, timeout=timeout, context=ctx)
-        else:
-            conn = http.client.HTTPConnection(p.hostname, port, timeout=timeout)
-        conn.request("GET", path, headers=headers)
-        resp = conn.getresponse()
-        body = resp.read()
-        code = resp.status
-        conn.close()
-        return code, body
-    except Exception:
-        return -1, b""
-
-
 def run_quick_verification(request: Request) -> dict[str, Any]:
     """Vérification rapide : services, ports, chemins, pages clés avec session."""
     started = time.time()
@@ -174,7 +138,8 @@ def run_quick_verification(request: Request) -> dict[str, Any]:
     for p in check_paths()[:5]:
         add("Fichiers", p["label"], p["status"] == "ok", p["path"])
 
-    login = http_probe(base, "/login")
+    # Même sonde TLS que les requêtes avec session (certificat interne auto-signé)
+    login = http_probe(base, "/login", insecure_tls=True)
     add("HTTP", "GET /login", login.get("ok"), login.get("detail", ""))
 
     if cookie:
@@ -184,7 +149,9 @@ def run_quick_verification(request: Request) -> dict[str, Any]:
             ("/admin/supervision", "Supervision"),
             ("/settings", "Paramètres"),
         ):
-            code, body = _http_get(base, path, cookie=cookie)
+            code, body = http_raw_get(
+                base, path, cookie=cookie, timeout=20.0, insecure_tls=True
+            )
             ok = code == 200 and b"<html" in body.lower()
             add("HTTP (session)", title, ok, f"HTTP {code}")
     else:

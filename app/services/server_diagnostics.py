@@ -479,7 +479,7 @@ def remote_server_reachability(base_url: str, *, probe: bool = True, timeout: fl
             "online": None,
             "status": "unknown",
         }
-    probe_result = http_probe(url, "/login", timeout=timeout)
+    probe_result = http_probe(url, "/login", timeout=timeout, insecure_tls=True)
     online = bool(probe_result.get("ok"))
     return {
         "name": name,
@@ -749,28 +749,72 @@ def probe_urls_parallel(urls: list[tuple[int, str]], timeout: float = 3.0) -> di
     return out
 
 
-def http_probe(base_url: str, path: str = "/login", timeout: float = 8.0) -> dict[str, Any]:
+def _https_ssl_context(*, insecure_tls: bool):
+    import ssl
+
+    ctx = ssl.create_default_context()
+    if insecure_tls:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def http_raw_get(
+    base_url: str,
+    path: str,
+    *,
+    cookie: str = "",
+    timeout: float = 8.0,
+    insecure_tls: bool = False,
+) -> tuple[int, bytes]:
+    """GET HTTP(S) brut ; retourne (code, corps). code -1 si connexion impossible."""
     import http.client
-    from urllib.parse import urlparse
 
     p = urlparse(base_url)
     if not p.scheme or not p.hostname:
-        return {"ok": False, "status": -1, "detail": "URL invalide"}
+        return -1, b""
     port = p.port or (443 if p.scheme == "https" else 80)
+    headers = {"User-Agent": "ipxe-supervision/1.0"}
+    if cookie:
+        headers["Cookie"] = cookie
     try:
         if p.scheme == "https":
-            import ssl
-
-            ctx = ssl.create_default_context()
-            conn = http.client.HTTPSConnection(p.hostname, port, timeout=timeout, context=ctx)
+            conn = http.client.HTTPSConnection(
+                p.hostname,
+                port,
+                timeout=timeout,
+                context=_https_ssl_context(insecure_tls=insecure_tls),
+            )
         else:
             conn = http.client.HTTPConnection(p.hostname, port, timeout=timeout)
-        conn.request("GET", path, headers={"User-Agent": "ipxe-supervision/1.0"})
+        conn.request("GET", path, headers=headers)
         resp = conn.getresponse()
-        resp.read()
+        body = resp.read()
         code = resp.status
         conn.close()
-        ok = code in (200, 301, 302, 303, 307, 308)
-        return {"ok": ok, "status": code, "detail": f"HTTP {code}"}
-    except Exception as exc:
-        return {"ok": False, "status": -1, "detail": str(exc)[:200]}
+        return code, body
+    except Exception:
+        return -1, b""
+
+
+def http_probe(
+    base_url: str,
+    path: str = "/login",
+    timeout: float = 8.0,
+    *,
+    insecure_tls: bool = False,
+) -> dict[str, Any]:
+    code, _body = http_raw_get(
+        base_url,
+        path,
+        timeout=timeout,
+        insecure_tls=insecure_tls,
+    )
+    if code < 0:
+        return {
+            "ok": False,
+            "status": -1,
+            "detail": "Connexion impossible (réseau ou certificat TLS)",
+        }
+    ok = code in (200, 301, 302, 303, 307, 308)
+    return {"ok": ok, "status": code, "detail": f"HTTP {code}"}
