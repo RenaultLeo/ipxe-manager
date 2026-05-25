@@ -62,13 +62,6 @@ Bouton **Créer** : enregistre et affiche un message flash en haut si succès ou
 
 Détail complet : [02-roles-et-permissions.md](02-roles-et-permissions.md).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-list-mixed-roles.png`
->
-> **Description de la photo :** Liste avec au moins un admin (badge rouge) et un utilisateur (badge gris).
->
-> **Éléments à cadrer :** Noms d’utilisateurs, badges de rôle côte à côte.
-
 ---
 
 ## Changer le mot de passe d’un compte
@@ -80,13 +73,6 @@ Pour **chaque ligne** de la liste :
 
 Cela ne change **pas** votre propre session : c’est le mot de passe du compte ciblé.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-change-password-row.png`
->
-> **Description de la photo :** Une ligne utilisateur : champ mot de passe masqué rempli + bouton « Changer le mot de passe » mis en évidence.
->
-> **Éléments à cadrer :** Champ `new_password`, bouton outline primary avec icône clé.
-
 ---
 
 ## Supprimer un utilisateur
@@ -94,13 +80,6 @@ Cela ne change **pas** votre propre session : c’est le mot de passe du compte 
 - Bouton **poubelle** rouge à droite de la ligne.
 - **Impossible** de supprimer le compte avec lequel vous êtes connecté (pas de bouton sur votre propre ligne).
 - **Confirmation** modale avant suppression définitive.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/12-users-delete-no-self.png`
->
-> **Description de la photo :** Liste où la ligne `admin` (utilisateur connecté) n’a **pas** de bouton poubelle, alors qu’une autre ligne l’a.
->
-> **Éléments à cadrer :** Contraste entre ligne courante et ligne supprimable.
 
 > ### 📷 Emplacement capture
 > **Fichier suggéré :** `Documentation/images/12-users-delete-confirm-modal.png`
