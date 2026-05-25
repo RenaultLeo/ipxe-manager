@@ -119,13 +119,6 @@ Après une vérification, une carte affiche :
 
 Sans audit encore lancé : message « Aucune vérification pour l’instant » (ou équivalent selon la langue).
 
-> ### 📷 Emplacement capture
-> **Fichier à déposer :** `Documentation/images/11-supervision-no-verification-yet.png`
->
-> **Description de la photo :** Onglet Intégrité **sans** carte de résultat : uniquement la barre d’actions en haut et le message gris invitant à lancer une vérification.
->
-> **Éléments à cadrer :** Message central « aucune vérification », pas de tableau de résultat en dessous.
-
 ---
 
 ## Relance des services
