@@ -139,13 +139,6 @@ Nom, **état** (LED joignable), URL, interrupteur **Actif**, supprimer.
 
 Si la régénération échoue : alerte rouge en haut avec extrait d’erreur.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/08-menus-regen-error.png`
->
-> **Description de la photo :** Alerte « Erreur lors de la régénération » avec bloc `<pre>` technique.
->
-> **Éléments à cadrer :** Message d’erreur lisible (premières lignes).
-
 ---
 
 ## Voir aussi
