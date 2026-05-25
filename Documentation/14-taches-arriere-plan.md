@@ -18,13 +18,6 @@ Tant qu’un job est actif :
 - Tableau avec durée mise à jour
 - Possibilité **Arrêter** (upload / extraction suivie) — avec confirmation
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/14-jobs-dashboard-badge.png`
->
-> **Description de la photo :** Tableau de bord avec badge jaune « N job(s) en cours » pendant une extraction.
->
-> **Éléments à cadrer :** Badge + au moins une ligne dans le tableau jobs.
-
 ---
 
 ## Types de tâches visibles dans l’UI
@@ -50,20 +43,6 @@ Les libellés exacts dépendent de la langue de l’interface.
 
 **Arrêter** : tente d’interrompre le worker ; l’ISO peut rester partiellement extraite — vérifier l’état sur la fiche.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/14-iso-extract-status-progress.png`
->
-> **Description de la photo :** Fiche version ISO : bandeau ou carte statut « Extraction en cours » avec pourcentage ou spinner.
->
-> **Éléments à cadrer :** Libellé statut, barre de progression si présente.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/14-iso-extract-complete.png`
->
-> **Description de la photo :** Même fiche après succès : statut « Prêt » / fichiers boot listés.
->
-> **Éléments à cadrer :** Badge vert prêt, liste fichiers boot non vide.
-
 ---
 
 ## Régénération des menus iPXE
@@ -75,13 +54,6 @@ Déclenchée automatiquement ou manuellement quand la structure des entrées de 
 
 Pendant la tâche : le site reste utilisable ; les clients PXE peuvent voir d’anciens menus jusqu’à la fin.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/14-menus-regenerate-click.png`
->
-> **Description de la photo :** Page Menus : bouton vert « Régénérer tous les menus » entouré ou surligné.
->
-> **Éléments à cadrer :** Bouton + message flash après clic (« régénération lancée »).
-
 ---
 
 ## Compilation firmware
@@ -91,13 +63,6 @@ Pendant la tâche : le site reste utilisable ; les clients PXE peuvent voir d’
 - **Annuler** : modale danger — les sources git restent pour accélérer la prochaine compile
 
 Détail : [09-firmware-ipxe.md](09-firmware-ipxe.md).
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/14-firmware-celery-progress-card.png`
->
-> **Description de la photo :** Carte compilation avec badges d’étapes et zone log défilante.
->
-> **Éléments à cadrer :** Étape courante en surbrillance, bouton Annuler désactivé ou actif selon l’état.
 
 ---
 
@@ -109,13 +74,6 @@ Détail : [09-firmware-ipxe.md](09-firmware-ipxe.md).
 | **Tout arrêter** | Tous les jobs suivis actifs |
 
 Les deux demandent une **confirmation** (variante danger).
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/14-kill-job-confirm.png`
->
-> **Description de la photo :** Modale confirmation « Arrêter ce job ? » depuis le tableau de bord.
->
-> **Éléments à cadrer :** Nom du fichier dans le message, bouton Confirmer rouge.
 
 ---
 
