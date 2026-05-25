@@ -1,0 +1,29 @@
+<div id="ipxe-confirm-defaults" hidden
+     data-title="{{ t('common.confirm_title')|e }}"
+     data-cancel="{{ t('common.cancel')|e }}"
+     data-confirm="{{ t('common.confirm_btn')|e }}"></div>
+<div class="modal fade" id="ipxeConfirmModal" tabindex="-1"
+     aria-labelledby="ipxeConfirmModalTitleText" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content panel-card border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="ipxeConfirmModalTitle">
+          <i class="bi bi-exclamation-triangle me-2 text-warning" id="ipxeConfirmModalIcon"></i>
+          <span id="ipxeConfirmModalTitleText"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"
+                aria-label="{{ t('common.cancel') }}"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0" id="ipxeConfirmModalBody"></p>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal"
+                id="ipxeConfirmModalCancel">{{ t('common.cancel') }}</button>
+        <button type="button" class="btn btn-primary btn-sm" id="ipxeConfirmModalConfirm">
+          <i class="bi bi-check-lg me-1"></i><span id="ipxeConfirmModalConfirmText">{{ t('common.confirm_btn') }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

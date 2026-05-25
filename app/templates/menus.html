@@ -441,9 +441,10 @@ function switchPanelMode(id, mode) {
   }
 }
 
-function confirmDelete(id, filename) {
+async function confirmDelete(id, filename) {
   const msg = MSG_DEL_SCRIPT.replace('{filename}', filename);
-  if (confirm(msg)) {
+  const ok = await window.IpxeConfirm.ask({ body: msg, variant: 'danger' });
+  if (ok) {
     document.getElementById('delete-form-' + id).submit();
   }
 }
@@ -647,7 +648,10 @@ async function chainFetch(url, init) {
 
     if (tDel) {
       const nm = tr.dataset.chainName || '';
-      if (!confirm(MSG_DEL_CHAIN.replace('{name}', nm))) return;
+      if (!(await window.IpxeConfirm.ask({
+        body: MSG_DEL_CHAIN.replace('{name}', nm),
+        variant: 'danger',
+      }))) return;
       const r = await chainFetch('/ipxe-menus/chains/' + encodeURIComponent(tr.dataset.chainId) + '/delete', {
         method: 'POST',
       });

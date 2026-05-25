@@ -169,7 +169,8 @@
       <span class="badge bg-secondary ms-2 small font-monospace">{{ task_id[:16] }}…</span>
     </span>
     <form method="post" action="/firmware/cancel/{{ task_id }}"
-          onsubmit="return confirm({{ t('fw.cancel_build_confirm')|tojson }})">
+          data-confirm="{{ t('fw.cancel_build_confirm')|e }}"
+          data-confirm-variant="danger">
       <button class="btn btn-outline-danger btn-sm">
         <i class="bi bi-stop-circle me-1"></i>{{ t('common.cancel') }}
       </button>

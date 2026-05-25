@@ -93,36 +93,15 @@
         <p class="small text-warning mb-3">{{ t('sett.tls_absent') }}</p>
         {% endif %}
         {% if tls.present %}
-        <form id="tls-renew-form" method="post" action="/settings/tls/renew">
-          <button type="button" class="btn btn-outline-info btn-sm"
-                  data-bs-toggle="modal" data-bs-target="#tlsRenewModal">
+        <form method="post" action="/settings/tls/renew"
+              data-confirm="{{ t('sett.tls_renew_modal_body')|e }}"
+              data-confirm-title="{{ t('sett.tls_renew_modal_title')|e }}"
+              data-confirm-btn="{{ t('sett.tls_renew_confirm_btn')|e }}"
+              data-confirm-variant="info">
+          <button type="submit" class="btn btn-outline-info btn-sm">
             <i class="bi bi-arrow-repeat me-1"></i>{{ t('sett.tls_renew') }}
           </button>
         </form>
-        <div class="modal fade" id="tlsRenewModal" tabindex="-1"
-             aria-labelledby="tlsRenewModalLabel" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content panel-card border-secondary">
-              <div class="modal-header border-secondary">
-                <h5 class="modal-title" id="tlsRenewModalLabel">
-                  <i class="bi bi-shield-exclamation me-2 text-warning"></i>{{ t('sett.tls_renew_modal_title') }}
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ t('common.cancel') }}"></button>
-              </div>
-              <div class="modal-body">
-                <p class="mb-0">{{ t('sett.tls_renew_modal_body') }}</p>
-              </div>
-              <div class="modal-footer border-secondary">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
-                  {{ t('common.cancel') }}
-                </button>
-                <button type="button" class="btn btn-info btn-sm" id="tls-renew-confirm-btn">
-                  <i class="bi bi-check-lg me-1"></i>{{ t('sett.tls_renew_confirm_btn') }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
         {% endif %}
       </div>
     </div>
@@ -166,7 +145,8 @@
     </form>
     {% if current.menu_logo_uploaded %}
     <form method="post" action="/settings/menu-logo/delete" class="mt-2"
-          onsubmit="return confirm({{ t('sett.menu_logo_confirm_remove')|tojson }})">
+          data-confirm="{{ t('sett.menu_logo_confirm_remove')|e }}"
+          data-confirm-variant="danger">
       <button type="submit" class="btn btn-outline-danger btn-sm">
         <i class="bi bi-trash me-1"></i>{{ t('sett.menu_logo_remove') }}
       </button>
@@ -236,7 +216,8 @@
                   <i class="bi bi-pencil-square"></i>
                 </a>
                 <form method="post" action="/settings/os-types/{{ ot.id }}/delete" class="d-inline"
-                      onsubmit="return confirm({{ t('sett.delete_os_confirm', name=ot.label)|tojson }})">
+                      data-confirm="{{ t('sett.delete_os_confirm', name=ot.label)|e }}"
+                      data-confirm-variant="danger">
                   <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
                 {% else %}
@@ -310,15 +291,6 @@
       }).catch(function () {});
     }
   });
-})();
-(function () {
-  var tlsConfirm = document.getElementById('tls-renew-confirm-btn');
-  var tlsForm = document.getElementById('tls-renew-form');
-  if (tlsConfirm && tlsForm) {
-    tlsConfirm.addEventListener('click', function () {
-      tlsForm.submit();
-    });
-  }
 })();
 (function () {
   var previewBtn = document.getElementById('menu-logo-preview-toggle');

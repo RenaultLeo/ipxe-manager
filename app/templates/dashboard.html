@@ -11,8 +11,8 @@
     </span>
     {% if show_kill_all %}
     <form method="post" action="/jobs/kill-all"
-          data-confirm-stop-all="{{ t('dash.kill_all_confirm')|e }}"
-          onsubmit="return confirm(this.dataset.confirmStopAll)">
+          data-confirm="{{ t('dash.kill_all_confirm')|e }}"
+          data-confirm-variant="danger">
       <button class="btn btn-danger btn-sm" type="submit">
         <i class="bi bi-stop-circle me-1"></i>{{ t('dash.stop_all') }}
       </button>
@@ -59,8 +59,8 @@
               data-start="{{ j.created_at.isoformat() }}Z">—</td>
           <td class="text-end">
             <form method="post" action="/jobs/{{ j.id }}/kill" class="d-inline"
-                  data-confirm-kill="{{ t('dash.kill_confirm')|e }}"
-                  onsubmit="return confirm(this.dataset.confirmKill)">
+                  data-confirm="{{ t('dash.kill_confirm')|e }}"
+                  data-confirm-variant="danger">
               <button class="btn btn-outline-danger btn-sm" type="submit">
                 <i class="bi bi-x-circle me-1"></i>{{ t('dash.kill') }}
               </button>

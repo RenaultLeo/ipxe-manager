@@ -170,19 +170,22 @@
           </button>
         </form>
         <form method="post" action="/admin/supervision/verification/full" class="m-0"
-              onsubmit="return confirm({{ t('super.run_full')|tojson }} + ' ?');">
+              data-confirm="{{ t('super.run_full')|e }} ?"
+              data-confirm-variant="warning">
           <button type="submit" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-search me-1"></i>{{ t('super.run_full') }}
           </button>
         </form>
         <form method="post" action="/admin/supervision/database/sync" class="m-0"
-              onsubmit="return confirm({{ t('super.sync_db_confirm')|tojson }});">
+              data-confirm="{{ t('super.sync_db_confirm')|e }}"
+              data-confirm-variant="warning">
           <button type="submit" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-database-check me-1"></i>{{ t('super.sync_db') }}
           </button>
         </form>
         <form method="post" action="/admin/supervision/services/restart" class="m-0 ms-lg-auto"
-              onsubmit="return confirm({{ t('admin.restart_confirm')|tojson }});">
+              data-confirm="{{ t('admin.restart_confirm')|e }}"
+              data-confirm-variant="warning">
           <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}{% if request.url.fragment %}#{{ request.url.fragment }}{% endif %}">
           <button type="submit" class="btn btn-outline-warning btn-sm">
             <i class="bi bi-arrow-repeat me-1"></i>{{ t('super.restart_services') }}

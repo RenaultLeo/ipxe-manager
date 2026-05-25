@@ -76,7 +76,8 @@
               </button>
               {% if current_user and u.id != current_user.id %}
               <form method="post" action="/admin/users/{{ u.id }}/delete" class="user-card-delete-form m-0"
-                    onsubmit="return confirm('{{ t('admin.delete_confirm')|e }}');">
+                    data-confirm="{{ t('admin.delete_confirm')|e }}"
+                    data-confirm-variant="danger">
                 <button type="submit" class="btn btn-sm btn-outline-danger" title="{{ t('admin.delete_confirm') }}">
                   <i class="bi bi-trash"></i>
                 </button>

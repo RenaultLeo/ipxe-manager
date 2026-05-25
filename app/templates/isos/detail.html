@@ -91,8 +91,8 @@
           <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
             <form method="post" action="/isos/{{ version.id }}/extract" class="m-0"
                   {% if version.iso_was_extracted %}
-                  data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
-                  onsubmit="return confirm(this.dataset.confirmReextract)"
+                  data-confirm="{{ t('iso.extract_again_confirm')|e }}"
+                  data-confirm-variant="warning"
                   {% endif %}>
               <button class="btn btn-outline-warning btn-sm"
                       {% if not iso_file_exists %}type="button" disabled title="{{ t('iso.extract_missing_iso') }}"{% else %}type="submit"{% endif %}>
@@ -419,7 +419,9 @@
                 <td class="text-end">
                   {% if can_modify %}
                   <form method="post" action="/isos/{{ version.id }}/winpe-installs/{{ wi.id }}/delete"
-                        class="d-inline" onsubmit="return confirm('Supprimer installs/{{ wi.slug }} ?');">
+                        class="d-inline"
+                        data-confirm="{{ t('iso.winpe_install_delete_confirm', slug=wi.slug)|e }}"
+                        data-confirm-variant="danger">
                     <button type="submit" class="btn btn-outline-danger btn-sm">{{ t('iso.winpe_install_delete') }}</button>
                   </form>
                   {% endif %}
@@ -782,7 +784,8 @@
                   <i class="bi bi-pencil"></i>
                 </a>
                 <form method="post" action="/ipxe-configs/{{ ac.id }}/delete" class="d-inline"
-                      onsubmit="return confirm('Supprimer cette config ?')">
+                      data-confirm="{{ t('iso.delete_config_confirm')|e }}"
+                      data-confirm-variant="danger">
                   <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
                 {% else %}
@@ -805,7 +808,9 @@
 <!-- Delete -->
 <div class="mt-4 pt-3 border-top border-secondary">
   <form method="post" action="/isos/{{ version.id }}/delete"
-        onsubmit="return confirm('Supprimer {{ version.os_type.label }} {{ version.version_label }} et tous ses fichiers ?')">
+        data-confirm="{{ t('iso.delete_version_confirm', os=version.os_type.label, version=version.version_label)|e }}"
+        data-confirm-title="{{ t('iso.delete_title')|e }}"
+        data-confirm-variant="danger">
     <button class="btn btn-outline-danger">
       <i class="bi bi-trash me-1"></i>Supprimer cette version
     </button>
@@ -924,7 +929,12 @@
       if (!await persist(false)) cb.checked = true;
       return;
     }
-    if (!window.confirm(confirmMsg)) {
+    var ok = await window.IpxeConfirm.ask({
+      body: confirmMsg,
+      title: document.getElementById('ipxe-confirm-defaults')?.dataset.title,
+      variant: 'warning',
+    });
+    if (!ok) {
       cb.checked = false;
       return;
     }

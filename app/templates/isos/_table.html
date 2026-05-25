@@ -45,8 +45,8 @@
           {% if v.iso_path and v.status != 'extracting' %}
           <form method="post" action="/isos/{{ v.id }}/extract" class="d-inline ms-1"
                 {% if v.iso_was_extracted %}
-                data-confirm-reextract="{{ t('iso.extract_again_confirm')|e }}"
-                onsubmit="return confirm(this.dataset.confirmReextract)"
+                data-confirm="{{ t('iso.extract_again_confirm')|e }}"
+                data-confirm-variant="warning"
                 {% endif %}>
             <button class="btn btn-sm btn-outline-warning" title="{{ t('iso.extract_title') }}">
               <i class="bi bi-box-arrow-in-down"></i>
@@ -54,7 +54,9 @@
           </form>
           {% endif %}
           <form method="post" action="/isos/{{ v.id }}/delete" class="d-inline ms-1"
-                onsubmit="return confirm({{ t('iso.delete_confirm')|tojson }})">
+                data-confirm="{{ t('iso.delete_confirm')|e }}"
+                data-confirm-title="{{ t('iso.delete_title')|e }}"
+                data-confirm-variant="danger">
             <button class="btn btn-sm btn-outline-danger" title="{{ t('iso.delete_title') }}">
               <i class="bi bi-trash"></i>
             </button>
