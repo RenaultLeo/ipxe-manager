@@ -29,13 +29,6 @@ Sous-onglets : **un fichier `.ipxe` par onglet** (menu.ipxe, debian.ipxe, window
 - Changer d’onglet `.ipxe` déclenche le chargement de ce fichier.
 
 > ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/08-menus-generated-loading.png`
->
-> **Description de la photo :** Onglet menu.ipxe actif, zone `<pre>` avec texte « Chargement du script… » (avant fin du fetch).
->
-> **Éléments à cadrer :** Sous-onglet actif, zone pré formatée sombre.
-
-> ### 📷 Emplacement capture
 > **Fichier suggéré :** `Documentation/images/08-menus-generated-script-loaded.png`
 >
 > **Description de la photo :** Même vue avec script iPXE affiché (#!ipxe, menu, items).
