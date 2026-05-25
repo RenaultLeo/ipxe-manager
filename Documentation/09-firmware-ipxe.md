@@ -30,13 +30,6 @@ Trois cartes : présent / absent, taille en Ko, chemin sur disque.
 >
 > **Éléments à cadrer :** Badges VMs / bare-metal sur snponly et ipxe.efi, chemins en petit texte.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/09-firmware-not-built.png`
->
-> **Description de la photo :** Page avant première compilation : cartes « Absent » / pas encore compilé.
->
-> **Éléments à cadrer :** Badge rouge Absent, texte « Pas encore compilé ».
-
 ---
 
 ## Bouton Compiler
