@@ -41,7 +41,29 @@ else
   exit 1
 fi
 
+# Vérifier que l'utilisateur ipxe peut lancer le renouvellement TLS sans mot de passe
 echo ""
-echo "Test (en tant qu'ipxe) :"
-echo "  sudo -u ipxe sudo -n /usr/local/sbin/ipxe-service-ctl restart ipxe-manager"
-echo "  (ne pas lancer en prod si vous ne voulez pas redémarrer tout de suite)"
+echo "Test sudo renouvellement TLS (utilisateur ipxe) :"
+set +e
+_sudo_tls_out=$(sudo -u ipxe sudo -n "$RENEW_DST" 2>&1)
+_sudo_tls_rc=$?
+set -e
+if echo "$_sudo_tls_out" | grep -qiE 'password|not allowed|sudoers'; then
+  echo "  [!!] Échec — l'UI « Renouveler le certificat » demandera un mot de passe."
+  echo "      Relancez : sudo bash $SCRIPT_DIR/install-service-sudo.sh"
+  echo "      Détail : $_sudo_tls_out"
+elif echo "$_sudo_tls_out" | grep -qiE 'IP/FQDN requis|IP requis|requis'; then
+  echo "  [OK] ipxe peut exécuter $RENEW_DST (NOPASSWD)"
+else
+  echo "  [OK] ipxe-renew-tls-cert invoqué (code $_sudo_tls_rc)"
+fi
+
+echo ""
+echo "Commandes utiles :"
+echo "  Renouveler le certificat (root) : sudo $RENEW_DST <IP_ou_FQDN>"
+echo "  Test (comme l'UI)             : sudo -u ipxe sudo -n $RENEW_DST <IP_ou_FQDN>"
+echo "  (sans l'extension .sh — binaire : $RENEW_DST)"
+echo ""
+echo "Test relance services (en tant qu'ipxe) :"
+echo "  sudo -u ipxe sudo -n $CTL_DST status ipxe-manager"
+echo "  (ne pas lancer restart en prod si vous ne voulez pas redémarrer tout de suite)"

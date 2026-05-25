@@ -400,8 +400,16 @@ systemctl enable --now ipxe-celery
 # tftpd-hpa peut avoir démarré pendant la mise à jour des fichiers ; redémarrer une fois tout écrit.
 systemctl restart tftpd-hpa
 
-# ── 16. Firmware iPXE HTTPS + menus ───────────────────────────────────────────
-echo "[16/16] Firmware iPXE (clone + compile HTTPS) + menus…"
+# Sudoers (Supervision + bouton « Renouveler certificat » dans Paramètres)
+echo "[16/17] Sudoers + script renouvellement TLS…"
+if [ -f "$APP_DIR/deploy/install-service-sudo.sh" ]; then
+    bash "$APP_DIR/deploy/install-service-sudo.sh"
+else
+    echo "  ! install-service-sudo.sh absent"
+fi
+
+# ── 17. Firmware iPXE HTTPS + menus ───────────────────────────────────────────
+echo "[17/17] Firmware iPXE (clone + compile HTTPS) + menus…"
 echo "  (10–25 min — patch DOWNLOAD_PROTO_HTTPS + CERT/TRUST=ca.crt)"
 if [ -f "$APP_DIR/deploy/bootstrap-https-firmware.sh" ]; then
     bash "$APP_DIR/deploy/bootstrap-https-firmware.sh" "$SERVER_IP" \

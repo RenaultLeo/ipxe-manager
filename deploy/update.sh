@@ -32,6 +32,12 @@ echo "==> Migrations base de données…"
 cd "$APP_DIR"
 "$VENV/bin/python" deploy/seed_db.py
 
+echo "==> Sudoers + renouvellement TLS (Paramètres / Supervision)…"
+if [ -f "$APP_DIR/deploy/install-service-sudo.sh" ]; then
+  bash "$APP_DIR/deploy/install-service-sudo.sh" \
+    || echo "  ! install-service-sudo.sh échoué — relancer : sudo bash $APP_DIR/deploy/install-service-sudo.sh"
+fi
+
 echo "==> Redémarrage des services applicatifs…"
 systemctl restart ipxe-manager ipxe-celery tftpd-hpa
 
