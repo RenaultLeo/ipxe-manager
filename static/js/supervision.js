@@ -1,5 +1,7 @@
 (function () {
   var charts = {};
+  var lastSnapshot = null;
+  var SUPERVISION_PATH = "/admin/supervision";
   var i18n = {
     active: "active",
     openPorts: "open ports",
@@ -75,6 +77,7 @@
 
   function renderSnapshot(snap) {
     if (!snap) return;
+    lastSnapshot = snap;
     var ss = snap.services_summary || {};
     var ps = snap.ports_summary || {};
     var host = snap.host || {};
@@ -178,9 +181,45 @@
         .join("");
     }
 
-    if (typeof Chart === "undefined") return;
+    if (typeof Chart === "undefined" || !isHealthTabVisible()) return;
+    renderCharts(snap);
+  }
 
-    var inactive = (ss.inactive || 0);
+  function isHealthTabVisible() {
+    var pane = el("tab-health");
+    return !!(pane && pane.classList.contains("active"));
+  }
+
+  function isIntegrityHash(hash) {
+    return hash === "#integrity" || hash === "#tab-integrity";
+  }
+
+  function syncSupervisionUrl(tab) {
+    if (!window.history || !window.history.replaceState) return;
+    var path = window.location.pathname;
+    if (path !== SUPERVISION_PATH && !path.endsWith("/admin/supervision")) return;
+    var url = SUPERVISION_PATH;
+    if (tab === "integrity") {
+      url += "#integrity";
+    }
+    history.replaceState(null, "", url);
+  }
+
+  function resizeCharts() {
+    Object.keys(charts).forEach(function (key) {
+      if (charts[key]) {
+        try {
+          charts[key].resize();
+        } catch (e) { /* ignore */ }
+      }
+    });
+  }
+
+  function renderCharts(snap) {
+    if (typeof Chart === "undefined" || !snap) return;
+    var ss = snap.services_summary || {};
+    var host = snap.host || {};
+    var inactive = ss.inactive || 0;
     var active = ss.active || 0;
     destroyChart("services");
     charts.services = new Chart(el("chart-services"), {
@@ -198,9 +237,6 @@
     });
 
     var ports = snap.ports || [];
-    var openP = ports.filter(function (p) {
-      return p.open === true;
-    }).length;
     destroyChart("ports");
     charts.ports = new Chart(el("chart-ports"), {
       type: "bar",
@@ -307,6 +343,24 @@
     });
   }
 
+  function bindSupervisionTabs() {
+    var tabList = document.querySelector(".super-tabs");
+    if (!tabList) return;
+    tabList.addEventListener("shown.bs.tab", function (ev) {
+      var target = ev.target.getAttribute("data-bs-target");
+      if (target === "#tab-integrity") {
+        syncSupervisionUrl("integrity");
+      } else if (target === "#tab-health") {
+        syncSupervisionUrl("health");
+        if (lastSnapshot) {
+          renderCharts(lastSnapshot);
+        } else {
+          resizeCharts();
+        }
+      }
+    });
+  }
+
   var snapshotPollTimer = null;
 
   function scheduleSnapshotPoll() {
@@ -320,6 +374,18 @@
     }, 90000);
   }
 
+  bindSupervisionTabs();
+
+  if (isIntegrityHash(window.location.hash)) {
+    var tabBtn = document.querySelector('[data-bs-target="#tab-integrity"]');
+    if (tabBtn && window.bootstrap) {
+      new bootstrap.Tab(tabBtn).show();
+      syncSupervisionUrl("integrity");
+    }
+  } else {
+    syncSupervisionUrl("health");
+  }
+
   refreshSnapshot(false);
   scheduleSnapshotPoll();
   document.addEventListener("visibilitychange", function () {
@@ -331,11 +397,4 @@
       scheduleSnapshotPoll();
     }
   });
-
-  if (window.location.hash === "#integrity") {
-    var tabBtn = document.querySelector('[data-bs-target="#tab-integrity"]');
-    if (tabBtn && window.bootstrap) {
-      new bootstrap.Tab(tabBtn).show();
-    }
-  }
 })();
