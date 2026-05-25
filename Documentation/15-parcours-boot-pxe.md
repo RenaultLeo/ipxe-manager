@@ -22,13 +22,6 @@ sequenceDiagram
   PC->>PC: Menu ou installation auto
 ```
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-pxe-sequence-diagram.png`
->
-> **Description de la photo :** Export du schéma ci-dessus (Mermaid rendu ou dessin manuel) pour impression / wiki.
->
-> **Éléments à cadrer :** Les 4 acteurs et les flèches TFTP puis HTTP.
-
 ---
 
 ## Étape 1 — BIOS ou UEFI choisit le réseau
@@ -37,13 +30,6 @@ Sur le PC :
 
 1. Entrer dans le menu boot (souvent F12, F11, Esc).
 2. Choisir **LAN / PXE / IPv4 Network**.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-client-bios-pxe-menu.png`
->
-> **Description de la photo :** Photo ou capture du menu boot **firmware du PC** (pas l’UI web) avec l’entrée « Network boot » sélectionnée.
->
-> **Éléments à cadrer :** Ligne PXE/Network surlignée.
 
 ---
 
@@ -63,13 +49,6 @@ Le serveur DHCP (pfSense, ISC, Windows Server, etc.) doit fournir :
 
 Ces fichiers sont produits par **Firmware** dans l’UI. Aide DHCP en bas de [09-firmware-ipxe.md](09-firmware-ipxe.md).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-dhcp-pfsense-options.png`
->
-> **Description de la photo :** Capture de l’écran DHCP de votre routeur montrant next-server et filename (masquer IP publiques si besoin).
->
-> **Éléments à cadrer :** Champs filename et TFTP server, pas l’UI iPXE Manager.
-
 ---
 
 ## Étape 3 — TFTP charge le petit firmware
@@ -81,13 +60,6 @@ Si échec ici :
 - Fichier absent → page **Firmware** : cartes « Absent »
 - Mauvais fichier UEFI → essayer `snponly.efi` vs `ipxe.efi`
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-client-ipxe-initial-tftp.png`
->
-> **Description de la photo :** Écran noir/console du PC au tout début du chain iPXE (lignes « iPXE initializing… » ou équivalent).
->
-> **Éléments à cadrer :** Mention iPXE et éventuellement le nom du fichier chargé.
-
 ---
 
 ## Étape 4 — Chain HTTP vers le menu
@@ -98,13 +70,6 @@ Le firmware compilé contient un **embed** qui fait :
 - `chain` vers l’URL du menu, ex. `http://192.168.x.x/menus/menu.ipxe`
 
 L’URL vient de **Paramètres → URL du serveur** et de la compilation **Firmware**.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-firmware-embed-url-match.png`
->
-> **Description de la photo :** Côte à côte : champ URL dans Paramètres + section embed Firmware montrant la **même** URL de menu.
->
-> **Éléments à cadrer :** Les deux URL identiques (schéma composite accepté).
 
 ---
 
@@ -121,13 +86,6 @@ Contenu généré par iPXE Manager : onglet **Menus générés** → `menu.ipxe`
 >
 > **Éléments à cadrer :** Titre du menu, au moins 2 entrées, logo personnalisé si configuré.
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-menus-generated-matches-client.png`
->
-> **Description de la photo :** Composite : capture navigateur du script `menu.ipxe` (UI) + même entrées visibles sur le client PXE.
->
-> **Éléments à cadrer :** Correspondance des libellés d’entrées entre UI et client.
-
 ---
 
 ## Étape 6 — Choix d’une entrée → boot d’une version
@@ -143,13 +101,6 @@ Configuration côté UI :
 - Version prête : [05-isos-fiche-version.md](05-isos-fiche-version.md)
 - Config active : [07-configurations-automatiques.md](07-configurations-automatiques.md)
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-client-linux-boot-http.png`
->
-> **Description de la photo :** Console client pendant téléchargement du noyau (lignes « Loading vmlinuz… » ou barre de progression iPXE).
->
-> **Éléments à cadrer :** URL HTTP du serveur visible dans les messages.
-
 ---
 
 ## Cas HTTPS
@@ -162,13 +113,6 @@ Si le site est en **HTTPS** :
 
 Sinon : erreurs TLS sur le client iPXE. Workflow : [10-parametres.md](10-parametres.md) + [09-firmware-ipxe.md](09-firmware-ipxe.md).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-client-https-chain-error.png`
->
-> **Description de la photo :** (Optionnel, pour doc dépannage) Écran client avec erreur certificat / impossible de charger menu.
->
-> **Éléments à cadrer :** Message d’erreur TLS lisible.
-
 ---
 
 ## User-class iPXE (DHCP avancé)
@@ -176,13 +120,6 @@ Sinon : erreurs TLS sur le client iPXE. Workflow : [10-parametres.md](10-paramet
 Quand le client **est déjà** iPXE (après le premier TFTP), le DHCP peut renvoyer directement l’**URL HTTP** du menu au lieu du fichier TFTP — évite un second TFTP inutile.
 
 La carte d’aide **DHCP** sur la page Firmware résume cette option.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-dhcp-user-class-ipxe.png`
->
-> **Description de la photo :** Extrait de config DHCP montrant la section user-class `iPXE` avec option filename = URL HTTP du menu.
->
-> **Éléments à cadrer :** Bloc user-class et URL `http(s)://…/menus/menu.ipxe`.
 
 ---
 
@@ -196,13 +133,6 @@ La carte d’aide **DHCP** sur la page Firmware résume cette option.
 | 4 | **Menus** régénérés récemment |
 | 5 | **DHCP** configuré (hors UI) |
 | 6 | Client sur le **même VLAN** que le serveur |
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/15-checklist-dashboard-all-green.png`
->
-> **Description de la photo :** Tableau de bord avec cartes OS montrant versions prêtes + pas d’alerte TLS rouge + aucun job bloqué.
->
-> **Éléments à cadrer :** Compteurs « prêtes », disque pas plein à 100 %.
 
 ---
 
