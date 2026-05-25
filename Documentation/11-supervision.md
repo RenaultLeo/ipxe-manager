@@ -135,13 +135,6 @@ Après **Relancer les services** (bouton de l’onglet Intégrité) :
 - Redirection ou fragment d’URL avec indicateur de redémarrage en cours
 - Les services peuvent être **indisponibles** quelques secondes — ne pas fermer le navigateur pendant l’opération
 
-> ### 📷 Emplacement capture *(optionnel)*
-> **Fichier à déposer :** `Documentation/images/11-supervision-services-restarting.png`
->
-> **Description de la photo :** Bandeau ou page intermédiaire indiquant que les services redémarrent (spinner + message), juste après confirmation de la modale.
->
-> **Éléments à cadrer :** Texte « redémarrage en cours » ou équivalent, indicateur de chargement.
-
 ---
 
 ## Quand utiliser cette page ?
