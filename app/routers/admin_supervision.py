@@ -12,7 +12,12 @@ from app.auth import auth_redirect_admin
 from app.config import sync_settings_server_base_url_from_db
 from app.database import get_db, init_db
 from app.i18n import translate
-from app.services.server_diagnostics import collect_snapshot, http_probe, systemctl_restart
+from app.services.server_diagnostics import (
+    collect_snapshot_cached,
+    http_probe,
+    invalidate_snapshot_cache,
+    systemctl_restart,
+)
 from app.services.server_verification import (
     get_last_verification,
     run_full_exhaustive,
@@ -59,13 +64,12 @@ async def supervision_page(request: Request, db: Session = Depends(get_db), msg:
     redir = auth_redirect_admin(request)
     if redir:
         return redir
-    snap = collect_snapshot(db)
     last_ver = get_last_verification()
     return templates.TemplateResponse(
         "admin/supervision.html",
         template_context(
             request,
-            snapshot=snap,
+            snapshot={"loading": True},
             last_verification=last_ver,
             msg=msg,
         ),
@@ -73,13 +77,18 @@ async def supervision_page(request: Request, db: Session = Depends(get_db), msg:
 
 
 @router.get("/supervision/api/snapshot")
-async def supervision_snapshot_api(request: Request, db: Session = Depends(get_db)):
+async def supervision_snapshot_api(
+    request: Request,
+    db: Session = Depends(get_db),
+    full: bool = False,
+):
     redir = auth_redirect_admin(request)
     if redir:
         return JSONResponse({"error": "forbidden"}, status_code=403)
-    snap = collect_snapshot(db)
-    base = snap.get("application", {}).get("server_base_url", "")
-    snap["http_probe"] = http_probe(base or str(request.base_url).rstrip("/"), "/login")
+    snap = collect_snapshot_cached(db, force=full, quick=not full)
+    if full:
+        base = snap.get("application", {}).get("server_base_url", "")
+        snap["http_probe"] = http_probe(base or str(request.base_url).rstrip("/"), "/login", timeout=5.0)
     return JSONResponse(snap)
 
 
@@ -88,6 +97,7 @@ async def supervision_quick_verify(request: Request):
     redir = auth_redirect_admin(request)
     if redir:
         return redir
+    invalidate_snapshot_cache()
     result = run_quick_verification(request)
     lang = getattr(request.state, "locale", "fr")
     if result.get("ok"):
@@ -106,6 +116,7 @@ async def supervision_full_verify(request: Request):
     redir = auth_redirect_admin(request)
     if redir:
         return redir
+    invalidate_snapshot_cache()
     result = run_full_exhaustive(request)
     lang = getattr(request.state, "locale", "fr")
     if result.get("ok"):
@@ -122,6 +133,7 @@ async def supervision_sync_database(request: Request, db: Session = Depends(get_
         return redir
     lang = getattr(request.state, "locale", "fr")
     try:
+        invalidate_snapshot_cache()
         init_db()
         sync_settings_server_base_url_from_db()
         from app.models.models import OsType, User

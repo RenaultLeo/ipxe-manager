@@ -260,10 +260,19 @@
     });
   }
 
-  function refreshSnapshot() {
+  function setLoading(show) {
+    var box = el("supervision-loading");
+    if (!box) return;
+    box.classList.toggle("d-none", !show);
+  }
+
+  function refreshSnapshot(full) {
     var btn = el("btn-refresh-snapshot");
     if (btn) btn.disabled = true;
-    fetch("/admin/supervision/api/snapshot", {
+    setLoading(true);
+    var url = "/admin/supervision/api/snapshot";
+    if (full) url += "?full=1";
+    fetch(url, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
     })
@@ -276,17 +285,22 @@
       })
       .catch(function () {})
       .finally(function () {
+        setLoading(false);
         if (btn) btn.disabled = false;
       });
   }
 
-  var snap = parseSnapshot();
-  renderSnapshot(snap);
-
   var refreshBtn = el("btn-refresh-snapshot");
-  if (refreshBtn) refreshBtn.addEventListener("click", refreshSnapshot);
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", function () {
+      refreshSnapshot(true);
+    });
+  }
 
-  setInterval(refreshSnapshot, 45000);
+  refreshSnapshot(false);
+  setInterval(function () {
+    refreshSnapshot(false);
+  }, 45000);
 
   if (window.location.hash === "#integrity") {
     var tabBtn = document.querySelector('[data-bs-target="#tab-integrity"]');

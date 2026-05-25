@@ -2,10 +2,11 @@
 Router /firmware — compilation et gestion des firmwares iPXE.
 """
 import logging
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,9 +18,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/firmware")
 
+_EMBED_PREVIEW_MAX = 4000
+_FW_STATUS_CACHE: tuple[float, dict] | None = None
+_FW_STATUS_TTL = 15.0
+
 
 def _auth(request: Request):
     return auth_redirect_admin(request)
+
+
+def _read_embed_preview(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read(_EMBED_PREVIEW_MAX)
+    except OSError:
+        logger.exception("lecture embed.ipxe")
+        return ""
 
 
 def _firmware_status() -> dict:
@@ -37,9 +53,8 @@ def _firmware_status() -> dict:
             "mtime":   st.st_mtime,
         }
 
-    # Lire l'embed actuel s'il existe
     embed_path = src / "src" / "embed.ipxe"
-    embed_content = embed_path.read_text(encoding="utf-8") if embed_path.exists() else ""
+    embed_content = _read_embed_preview(embed_path)
 
     ca = settings.tls_ca_cert_path
     tls_ready = ca.is_file()
@@ -60,12 +75,21 @@ def _firmware_status() -> dict:
     }
 
 
-def _active_build() -> dict | None:
+def _firmware_status_cached() -> dict:
+    global _FW_STATUS_CACHE
+    now = time.monotonic()
+    if _FW_STATUS_CACHE and now - _FW_STATUS_CACHE[0] < _FW_STATUS_TTL:
+        return _FW_STATUS_CACHE[1]
+    status = _firmware_status()
+    _FW_STATUS_CACHE = (now, status)
+    return status
+
+
+def _active_build(timeout: float = 0.6) -> dict | None:
     """Retourne le job compile_ipxe en cours s'il existe."""
     try:
-        from celery.app.control import Inspect
         from app.tasks.celery_app import celery
-        insp = celery.control.inspect(timeout=1)
+        insp = celery.control.inspect(timeout=timeout)
         active = insp.active() or {}
         for worker_tasks in active.values():
             for t in worker_tasks:
@@ -74,6 +98,20 @@ def _active_build() -> dict | None:
     except Exception:
         pass
     return None
+
+
+@router.get("/api/status")
+async def firmware_api_status(request: Request):
+    """État léger (Celery) sans bloquer le rendu de la page."""
+    redir = _auth(request)
+    if redir:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    return JSONResponse(
+        {
+            "building": _active_build(timeout=0.6) is not None,
+            "status": _firmware_status_cached(),
+        }
+    )
 
 
 def _build_result(task_id: str) -> dict | None:
@@ -94,8 +132,8 @@ async def firmware_index(request: Request, task_id: str = "", db: Session = Depe
     if redir:
         return redir
 
-    status   = _firmware_status()
-    building = _active_build()
+    status   = _firmware_status_cached()
+    building = _active_build(timeout=0.6) if task_id else None
     result   = _build_result(task_id) if task_id else None
     base = resolve_server_base_url(db)
     menu_url = f"{base}/menus/menu.ipxe"
@@ -129,6 +167,8 @@ async def firmware_build(
 
     try:
         from app.tasks.jobs import compile_ipxe_task
+        global _FW_STATUS_CACHE
+        _FW_STATUS_CACHE = None
         task = compile_ipxe_task.delay(menu_url)
         return RedirectResponse(f"/firmware?task_id={task.id}", status_code=302)
     except Exception as exc:

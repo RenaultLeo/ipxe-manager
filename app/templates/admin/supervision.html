@@ -36,6 +36,10 @@
 
 <div class="tab-content">
   <div class="tab-pane fade show active" id="tab-health">
+  <div id="supervision-loading" class="alert alert-secondary py-2 small mb-3 d-flex align-items-center">
+    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+    {{ t('super.loading') }}
+  </div>
   <div class="row g-3 mb-3">
     <div class="col-md-3 col-6">
       <div class="card panel-card super-stat h-100">
@@ -156,7 +160,7 @@
   </div>
 
   <p class="text-muted small mt-3 mb-0">
-    <i class="bi bi-clock me-1"></i>{{ t('super.last_update') }} : <span id="last-update">{{ snapshot.generated_at }}</span>
+    <i class="bi bi-clock me-1"></i>{{ t('super.last_update') }} : <span id="last-update">—</span>
     <span class="ms-2" id="sudo-hint"></span>
   </p>
   </div>

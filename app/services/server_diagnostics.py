@@ -8,7 +8,9 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,14 @@ from app.services.disk_info import get_disk_usage, get_dir_size, fmt_size
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+_SNAPSHOT_CACHE: tuple[float, dict[str, Any]] | None = None
+_SNAPSHOT_LOCK = threading.Lock()
+_SNAPSHOT_TTL_SEC = 20.0
+
+_DIR_SIZE_CACHE: dict[str, tuple[float, int]] = {}
+_DIR_SIZE_LOCK = threading.Lock()
+_DIR_SIZE_TTL_SEC = 300.0
 SERVICE_CTL = Path("/usr/local/sbin/ipxe-service-ctl")
 
 
@@ -100,7 +110,7 @@ def systemctl_is_active(unit: str) -> dict[str, Any]:
     detail = ""
     used_sudo = False
     for cmd in _systemctl_argv("is-active", unit):
-        code, out, err = _run_cmd(cmd, timeout=8)
+        code, out, err = _run_cmd(cmd, timeout=4)
         if code == 127:
             return {
                 "unit": unit,
@@ -208,7 +218,7 @@ def check_port_open(proto: str, port: int, host: str = "127.0.0.1") -> bool | No
     try:
         if proto == "udp":
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(1.5)
+            s.settimeout(1.0)
             try:
                 s.connect((host, port))
                 return True
@@ -217,7 +227,7 @@ def check_port_open(proto: str, port: int, host: str = "127.0.0.1") -> bool | No
             finally:
                 s.close()
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(2.0)
+        s.settimeout(1.0)
         try:
             return s.connect_ex((host, port)) == 0
         finally:
@@ -237,7 +247,12 @@ def check_redis() -> dict[str, Any]:
     return {"ok": None, "detail": "redis-cli introuvable", "status": "unknown"}
 
 
-def check_celery(app_dir: Path | None = None, venv: Path | None = None) -> dict[str, Any]:
+def check_celery(
+    app_dir: Path | None = None,
+    venv: Path | None = None,
+    *,
+    timeout: float = 25,
+) -> dict[str, Any]:
     app_dir = app_dir or PROJECT_ROOT
     venv = venv or _detect_venv()
     celery_bin = venv / "bin" / "celery"
@@ -245,7 +260,7 @@ def check_celery(app_dir: Path | None = None, venv: Path | None = None) -> dict[
         return {"ok": None, "detail": f"Celery absent : {celery_bin}", "status": "unknown"}
     code, out, err = _run_cmd(
         [str(celery_bin), "-A", "app.tasks.celery_app", "inspect", "ping"],
-        timeout=25,
+        timeout=timeout,
         cwd=app_dir,
     )
     txt = (out or "") + (err or "")
@@ -267,13 +282,20 @@ def _detect_venv() -> Path:
     return Path("/srv/ipxe/venv")
 
 
-def check_database() -> dict[str, Any]:
+def check_database(*, quick: bool = False) -> dict[str, Any]:
     url = settings.database_url
     if url.startswith("sqlite"):
         path = url.split("///", 1)[-1] if "///" in url else url.replace("sqlite:///", "")
         p = Path(path)
         if not p.is_file():
             return {"ok": False, "engine": "sqlite", "detail": f"fichier absent : {p}", "status": "error"}
+        if quick:
+            return {
+                "ok": True,
+                "engine": "sqlite",
+                "detail": "fichier présent",
+                "status": "ok",
+            }
         try:
             con = sqlite3.connect(str(p), timeout=5)
             try:
@@ -306,7 +328,25 @@ def check_database() -> dict[str, Any]:
     }
 
 
-def check_paths() -> list[dict[str, Any]]:
+def get_dir_size_cached(path: str | Path) -> int | None:
+    """Taille répertoire avec cache (évite rglob à chaque chargement Supervision)."""
+    key = str(path)
+    now = time.monotonic()
+    with _DIR_SIZE_LOCK:
+        hit = _DIR_SIZE_CACHE.get(key)
+        if hit and now - hit[0] < _DIR_SIZE_TTL_SEC:
+            return hit[1]
+    try:
+        size = get_dir_size(path)
+    except OSError:
+        logger.exception("get_dir_size_cached %s", key)
+        return None
+    with _DIR_SIZE_LOCK:
+        _DIR_SIZE_CACHE[key] = (now, size)
+    return size
+
+
+def check_paths(*, probe_writes: bool = True) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     for label, raw in (
         ("TFTP", settings.tftp_root),
@@ -320,7 +360,7 @@ def check_paths() -> list[dict[str, Any]]:
         p = Path(raw)
         exists = p.exists()
         writable = False
-        if exists:
+        if exists and probe_writes:
             try:
                 test = p / ".write_probe"
                 test.touch()
@@ -328,6 +368,8 @@ def check_paths() -> list[dict[str, Any]]:
                 writable = True
             except OSError:
                 writable = False
+        elif exists:
+            writable = True
         checks.append(
             {
                 "label": label,
@@ -350,10 +392,10 @@ def check_paths() -> list[dict[str, Any]]:
     return checks
 
 
-def host_metrics() -> dict[str, Any]:
+def host_metrics(*, cpu_interval: float = 0.15) -> dict[str, Any]:
     try:
         vm = psutil.virtual_memory()
-        cpu = psutil.cpu_percent(interval=0.3)
+        cpu = psutil.cpu_percent(interval=cpu_interval)
         boot = psutil.boot_time()
         uptime_s = int(time.time() - boot)
     except Exception as exc:
@@ -421,7 +463,7 @@ def _fmt_uptime(seconds: int) -> str:
     return " ".join(parts)
 
 
-def remote_server_reachability(base_url: str) -> dict[str, Any]:
+def remote_server_reachability(base_url: str, *, probe: bool = True, timeout: float = 4.0) -> dict[str, Any]:
     """Joignabilité HTTP du serveur PXE (URL publique configurée)."""
     from urllib.parse import urlparse
 
@@ -430,8 +472,15 @@ def remote_server_reachability(base_url: str) -> dict[str, Any]:
     name = p.hostname or url or "—"
     if p.port and p.port not in (80, 443):
         name = f"{name}:{p.port}"
-    probe = http_probe(url, "/login") if url else {"ok": False}
-    online = bool(probe.get("ok"))
+    if not probe or not url:
+        return {
+            "name": name,
+            "url": url,
+            "online": None,
+            "status": "unknown",
+        }
+    probe_result = http_probe(url, "/login", timeout=timeout)
+    online = bool(probe_result.get("ok"))
     return {
         "name": name,
         "url": url,
@@ -440,9 +489,13 @@ def remote_server_reachability(base_url: str) -> dict[str, Any]:
     }
 
 
-def build_machines_list(host: dict[str, Any], server_base_url: str) -> list[dict[str, Any]]:
+def build_machines_list(
+    host: dict[str, Any],
+    server_base_url: str,
+    remote: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     local_name = (host.get("hostname") or "localhost").strip()
-    remote = remote_server_reachability(server_base_url)
+    remote = remote or remote_server_reachability(server_base_url)
     return [
         {
             "id": "local",
@@ -462,7 +515,7 @@ def build_machines_list(host: dict[str, Any], server_base_url: str) -> list[dict
     ]
 
 
-def application_stats(db: Session) -> dict[str, Any]:
+def application_stats(db: Session, *, include_dir_sizes: bool = True) -> dict[str, Any]:
     from app.models.models import IsoVersion, Upload, User
 
     users = db.query(User).count()
@@ -470,8 +523,8 @@ def application_stats(db: Session) -> dict[str, Any]:
     uploads_pending = db.query(Upload).filter(Upload.status.in_(["pending", "processing"])).count()
     extracting = db.query(IsoVersion).filter(IsoVersion.status == "extracting").count()
     http_disk = get_disk_usage()
-    iso_bytes = get_dir_size(settings.iso_root)
-    http_bytes = get_dir_size(settings.http_root)
+    iso_bytes = get_dir_size_cached(settings.iso_root) if include_dir_sizes else None
+    http_bytes = get_dir_size_cached(settings.http_root) if include_dir_sizes else None
     base = settings.server_base_url.rstrip("/")
     return {
         "users": users,
@@ -480,57 +533,113 @@ def application_stats(db: Session) -> dict[str, Any]:
         "iso_extracting": extracting,
         "server_base_url": base,
         "http_disk": http_disk,
-        "iso_dir_size": fmt_size(iso_bytes),
-        "http_dir_size": fmt_size(http_bytes),
+        "iso_dir_size": fmt_size(iso_bytes) if iso_bytes is not None else None,
+        "http_dir_size": fmt_size(http_bytes) if http_bytes is not None else None,
     }
 
 
-def collect_snapshot(db: Session, *, extended_units: bool = True) -> dict[str, Any]:
+def _collect_services(extended_units: bool) -> list[dict[str, Any]]:
     units = EXTENDED_SYSTEMD_UNITS if extended_units else DEFAULT_SYSTEMD_UNITS
     seen: set[str] = set()
-    services: list[dict[str, Any]] = []
+    unique: list[str] = []
     for unit in units:
-        if unit in seen:
-            continue
-        seen.add(unit)
+        if unit not in seen:
+            seen.add(unit)
+            unique.append(unit)
+
+    def _one(unit: str) -> dict[str, Any] | None:
         info = systemctl_is_active(unit)
         if info["state"] == "unavailable" and unit.startswith("nfs-kernel"):
-            continue
-        services.append(info)
+            return None
+        return info
 
-    ports: list[dict[str, Any]] = []
-    for proto, port, label in MONITORED_PORTS:
+    workers = min(8, max(1, len(unique)))
+    out: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_one, u): u for u in unique}
+        for fut in as_completed(futures):
+            try:
+                row = fut.result()
+                if row:
+                    out.append(row)
+            except Exception:
+                logger.exception("systemctl %s", futures[fut])
+    out.sort(key=lambda s: s.get("unit", ""))
+    return out
+
+
+def _collect_ports() -> list[dict[str, Any]]:
+    def _one(item: tuple[str, int, str]) -> dict[str, Any]:
+        proto, port, label = item
         open_ = check_port_open(proto, port)
-        ports.append(
-            {
-                "proto": proto,
-                "port": port,
-                "label": label,
-                "open": open_,
-                "status": _status_from_bool(open_, warn_if_false=True),
-            }
-        )
+        return {
+            "proto": proto,
+            "port": port,
+            "label": label,
+            "open": open_,
+            "status": _status_from_bool(open_, warn_if_false=True),
+        }
 
+    with ThreadPoolExecutor(max_workers=min(8, len(MONITORED_PORTS))) as pool:
+        return list(pool.map(_one, MONITORED_PORTS))
+
+
+def collect_snapshot(
+    db: Session,
+    *,
+    extended_units: bool = True,
+    quick: bool = False,
+    probe_remote: bool = True,
+    include_dir_sizes: bool = True,
+) -> dict[str, Any]:
     venv = _detect_venv()
-    paths = check_paths()
-    checks = [
-        {"id": "redis", "label": "Redis", **check_redis()},
-        {"id": "celery", "label": "Celery", **check_celery(PROJECT_ROOT, venv)},
-        {"id": "database", "label": "Base de données", **check_database()},
-    ]
+    celery_timeout = 4.0 if quick else 12.0
+
+    def _checks() -> list[dict[str, Any]]:
+        def _redis() -> dict[str, Any]:
+            return {"id": "redis", "label": "Redis", **check_redis()}
+
+        def _celery() -> dict[str, Any]:
+            return {
+                "id": "celery",
+                "label": "Celery",
+                **check_celery(PROJECT_ROOT, venv, timeout=celery_timeout),
+            }
+
+        def _db() -> dict[str, Any]:
+            return {
+                "id": "database",
+                "label": "Base de données",
+                **check_database(quick=quick),
+            }
+
+        fns = [_redis, _celery, _db]
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            return list(pool.map(lambda fn: fn(), fns))
+
+    services = _collect_services(extended_units)
+    ports = _collect_ports()
+    paths = check_paths(probe_writes=not quick)
+    checks = _checks()
 
     svc_active = sum(1 for s in services if s.get("active"))
     svc_total = len(services)
     port_open = sum(1 for p in ports if p.get("open"))
-    host = host_metrics()
-    app = application_stats(db)
-    remote_probe = remote_server_reachability(app.get("server_base_url", ""))
+    host = host_metrics(cpu_interval=0.1 if quick else 0.2)
+    app = application_stats(db, include_dir_sizes=include_dir_sizes)
+    base_url = app.get("server_base_url", "")
+    remote_probe = remote_server_reachability(
+        base_url,
+        probe=probe_remote,
+        timeout=3.0 if quick else 5.0,
+    )
+    machines = build_machines_list(host, base_url, remote_probe)
 
     return {
         "generated_at": _utc_now(),
         "host": host,
         "application": app,
-        "machines": build_machines_list(host, app.get("server_base_url", "")),
+        "machines": machines,
         "remote_server": remote_probe,
         "services": services,
         "services_summary": {"active": svc_active, "total": svc_total, "inactive": svc_total - svc_active},
@@ -544,6 +653,39 @@ def collect_snapshot(db: Session, *, extended_units: bool = True) -> dict[str, A
         "project_root": str(PROJECT_ROOT),
         "venv": str(venv),
     }
+
+
+def collect_snapshot_cached(
+    db: Session,
+    *,
+    force: bool = False,
+    quick: bool = False,
+) -> dict[str, Any]:
+    """Snapshot avec cache court (évite de bloquer chaque refresh Supervision)."""
+    global _SNAPSHOT_CACHE
+    now = time.monotonic()
+    with _SNAPSHOT_LOCK:
+        if (
+            not force
+            and _SNAPSHOT_CACHE
+            and now - _SNAPSHOT_CACHE[0] < _SNAPSHOT_TTL_SEC
+        ):
+            return _SNAPSHOT_CACHE[1]
+    snap = collect_snapshot(
+        db,
+        quick=quick,
+        probe_remote=not quick,
+        include_dir_sizes=not quick,
+    )
+    with _SNAPSHOT_LOCK:
+        _SNAPSHOT_CACHE = (now, snap)
+    return snap
+
+
+def invalidate_snapshot_cache() -> None:
+    global _SNAPSHOT_CACHE
+    with _SNAPSHOT_LOCK:
+        _SNAPSHOT_CACHE = None
 
 
 def _probe_sudo_systemctl() -> bool:

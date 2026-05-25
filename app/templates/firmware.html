@@ -8,9 +8,12 @@
   </h2>
   <form method="post" action="/firmware/build" id="build-form">
     <input type="hidden" name="menu_url" id="build-menu-url" value="{{ menu_url }}">
-    <button class="btn btn-primary" {% if building %}disabled{% endif %}>
-      <i class="bi bi-hammer me-1"></i>
-      {% if building %}{{ t('fw.building') }}{% else %}{{ t('fw.build') }}{% endif %}
+    <button class="btn btn-primary" type="submit" id="fw-build-btn"
+            data-label-build="{{ t('fw.build')|e }}"
+            data-label-building="{{ t('fw.building')|e }}"
+            {% if building %}disabled{% endif %}>
+      <i class="bi bi-hammer me-1{% if building %} spin{% endif %}"></i>
+      <span id="fw-build-btn-text">{% if building %}{{ t('fw.building') }}{% else %}{{ t('fw.build') }}{% endif %}</span>
     </button>
   </form>
 </div>
@@ -255,6 +258,22 @@ if exists user-class and ( option user-class = "iPXE" ) {
 
 {% block scripts %}
 <script>
+(function () {
+  var btn = document.getElementById('fw-build-btn');
+  if (!btn || btn.disabled) return;
+  fetch('/firmware/api/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.building) return;
+      btn.disabled = true;
+      var icon = btn.querySelector('i');
+      if (icon) icon.classList.add('spin');
+      var span = document.getElementById('fw-build-btn-text');
+      if (span) span.textContent = btn.getAttribute('data-label-building') || span.textContent;
+    })
+    .catch(function () {});
+})();
+
 function onStatusUpdate() {
   const statusDiv = document.getElementById('build-status');
   if (!statusDiv) return;
