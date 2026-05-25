@@ -22,7 +22,14 @@
 {% elif request.query_params.get('msg') == 'tls_renew_ok' %}
 <div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle me-2"></i>{{ t('sett.tls_renew_ok') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'tls_renew_fail' %}
-<div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_fail') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+<div class="alert alert-danger alert-dismissible fade show">
+  <i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_fail') }}
+  {% if request.query_params.get('detail') %}
+  <p class="small mb-1 mt-2 font-monospace">{{ t('sett.tls_renew_fail_detail', detail=request.query_params.get('detail')) }}</p>
+  {% endif %}
+  <p class="small mb-0 text-muted">{{ t('sett.tls_renew_fail_hint') }}</p>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
 {% elif request.query_params.get('msg') == 'tls_renew_sudo' %}
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.tls_renew_sudo') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'tls_renew_script' %}

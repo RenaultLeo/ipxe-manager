@@ -3,6 +3,8 @@ import re
 import io
 from pathlib import Path, PurePosixPath
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
@@ -314,7 +316,8 @@ async def renew_tls_cert(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/settings?msg=tls_renew_sudo", status_code=302)
     if detail == "script_missing":
         return RedirectResponse("/settings?msg=tls_renew_script", status_code=302)
-    return RedirectResponse("/settings?msg=tls_renew_fail", status_code=302)
+    err = quote(detail[:400], safe="")
+    return RedirectResponse(f"/settings?msg=tls_renew_fail&detail={err}", status_code=302)
 
 
 @router.post("/password")

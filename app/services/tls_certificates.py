@@ -142,18 +142,12 @@ def renew_tls_certificate(server_base_url: str) -> tuple[bool, str]:
     host = host_for_tls_renewal(server_base_url)
     script = _RENEW_SCRIPT
     if not script.is_file():
-        fallback = (
-            Path(settings.ssl_dir).parent.parent
-            / "app"
-            / "deploy"
-            / "ipxe-renew-tls-cert.sh"
-        )
-        if fallback.is_file():
-            script = fallback
-        else:
-            return False, "script_missing"
+        logger.error("renew_tls_certificate: %s absent", script)
+        return False, "script_missing"
 
-    cmd = ["sudo", "-n", "bash", str(script), host]
+    # Sudoers autorise ce binaire exact (install-service-sudo.sh), pas bash + chemin deploy.
+    cmd = ["sudo", "-n", str(script), host]
+    logger.info("renew_tls_certificate: %s", " ".join(cmd))
     try:
         proc = subprocess.run(
             cmd,
@@ -168,8 +162,17 @@ def renew_tls_certificate(server_base_url: str) -> tuple[bool, str]:
 
     out = ((proc.stdout or "") + (proc.stderr or "")).strip()
     if proc.returncode != 0:
-        if "password is required" in out.lower() or "a password is required" in out.lower():
+        low = out.lower()
+        if (
+            "password is required" in low
+            or "a password is required" in low
+            or "not allowed to execute" in low
+            or "is not in the sudoers file" in low
+            or "no new privileges" in low
+        ):
+            logger.warning("renew_tls_certificate sudo_denied: %s", out)
             return False, "sudo_denied"
+        logger.error("renew_tls_certificate failed (%s): %s", proc.returncode, out)
         return False, out[-500:] if out else f"exit {proc.returncode}"
 
     return True, out
