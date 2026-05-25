@@ -163,12 +163,15 @@
 </div>
 
 {% if task_id %}
-<div class="card border-warning mb-4" id="build-card">
+<div class="card border-warning mb-4" id="build-card"
+     data-title-running="{{ t('fw.build_running_short')|e }}"
+     data-title-done="{{ t('fw.build_done_short')|e }}"
+     data-title-fail="{{ t('fw.build_failed_short')|e }}">
   <div class="card-header d-flex align-items-center justify-content-between">
-    <span>
+    <span id="build-card-title-wrap">
       <span class="spinner-border spinner-border-sm text-warning me-2" id="build-spinner"></span>
-      <i class="bi bi-gear-wide-connected me-1 text-warning"></i>
-      {{ t('fw.build_running_short') }}
+      <i class="bi bi-gear-wide-connected me-1 text-warning" id="build-card-icon"></i>
+      <span id="build-card-title">{{ t('fw.build_running_short') }}</span>
       <span class="badge bg-secondary ms-2 small font-monospace">{{ task_id[:16] }}…</span>
     </span>
     <form method="post" action="/firmware/cancel/{{ task_id }}"
@@ -181,7 +184,7 @@
   </div>
   <div class="card-body p-0"
        hx-get="/firmware/status/{{ task_id }}"
-       hx-trigger="every 4s"
+       hx-trigger="every 3s"
        hx-swap="innerHTML"
        hx-on::after-swap="onStatusUpdate()"
        id="build-status">
@@ -277,16 +280,29 @@ if exists user-class and ( option user-class = "iPXE" ) {
 function onStatusUpdate() {
   const statusDiv = document.getElementById('build-status');
   if (!statusDiv) return;
-  const isDone = statusDiv.querySelector('.alert-success, .alert-danger');
-  if (isDone) {
+  const ok = statusDiv.querySelector('.alert-success');
+  const fail = statusDiv.querySelector('.alert-danger');
+  const card = document.getElementById('build-card');
+  const titleEl = document.getElementById('build-card-title');
+  const iconEl = document.getElementById('build-card-icon');
+  if (ok || fail) {
     statusDiv.removeAttribute('hx-trigger');
     if (window.htmx) htmx.process(statusDiv);
     const spinner = document.getElementById('build-spinner');
     if (spinner) spinner.classList.add('d-none');
-    const card = document.getElementById('build-card');
     if (card) {
       card.classList.remove('border-warning');
-      card.classList.add('border-secondary');
+      card.classList.add(ok ? 'border-success' : 'border-danger');
+      if (titleEl) {
+        titleEl.textContent = ok
+          ? (card.getAttribute('data-title-done') || titleEl.textContent)
+          : (card.getAttribute('data-title-fail') || titleEl.textContent);
+      }
+      if (iconEl) {
+        iconEl.className = ok
+          ? 'bi bi-check-circle me-1 text-success'
+          : 'bi bi-x-circle me-1 text-danger';
+      }
     }
   }
 }

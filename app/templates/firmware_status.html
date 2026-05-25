@@ -1,3 +1,42 @@
+{% macro step_badge(step_id, status) %}
+  {% if status == 'done' %}
+  <span class="badge bg-success">
+    <i class="bi bi-check2 me-1"></i>
+    {% if step_id == 'git_clone' %}{{ t('fw.status_step_clone') }}
+    {% elif step_id == 'git_pull' %}{{ t('fw.status_step_pull') }}
+    {% elif step_id == 'embed' %}{{ t('fw.status_step_embed') }}
+    {% elif step_id == 'patch_ipxe_config' %}{{ t('fw.status_step_patch') }}
+    {% elif step_id == 'compile_bios' %}{{ t('fw.status_step_bios') }}
+    {% elif step_id == 'compile_efi' %}{{ t('fw.status_step_efi') }}
+    {% elif step_id == 'copy' %}{{ t('fw.status_step_copy') }}
+    {% endif %}
+  </span>
+  {% elif status == 'active' %}
+  <span class="badge bg-warning text-dark">
+    <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
+    {% if step_id == 'git_clone' %}{{ t('fw.status_step_clone') }}
+    {% elif step_id == 'git_pull' %}{{ t('fw.status_step_pull') }}
+    {% elif step_id == 'embed' %}{{ t('fw.status_step_embed') }}
+    {% elif step_id == 'patch_ipxe_config' %}{{ t('fw.status_step_patch') }}
+    {% elif step_id == 'compile_bios' %}{{ t('fw.status_step_bios') }}
+    {% elif step_id == 'compile_efi' %}{{ t('fw.status_step_efi') }}
+    {% elif step_id == 'copy' %}{{ t('fw.status_step_copy') }}
+    {% endif %}
+  </span>
+  {% else %}
+  <span class="badge bg-secondary text-muted">
+    {% if step_id == 'git_clone' %}{{ t('fw.status_step_clone') }}
+    {% elif step_id == 'git_pull' %}{{ t('fw.status_step_pull') }}
+    {% elif step_id == 'embed' %}{{ t('fw.status_step_embed') }}
+    {% elif step_id == 'patch_ipxe_config' %}{{ t('fw.status_step_patch') }}
+    {% elif step_id == 'compile_bios' %}{{ t('fw.status_step_bios') }}
+    {% elif step_id == 'compile_efi' %}{{ t('fw.status_step_efi') }}
+    {% elif step_id == 'copy' %}{{ t('fw.status_step_copy') }}
+    {% endif %}
+  </span>
+  {% endif %}
+{% endmacro %}
+
 {% if done is defined and done %}
   {% if success %}
   <div class="alert alert-success rounded-0 mb-0">
@@ -6,85 +45,36 @@
     {{ t('fw.status_poll_paths') }} <code>{{ tftp_root if tftp_root is defined else '/srv/ipxe/tftpboot' }}</code>.
     <a href="/firmware" class="alert-link ms-2">{{ t('fw.refresh_page') }}</a>
   </div>
-  <div class="p-3 border-top border-success border-opacity-25 bg-dark">
-    {% set cs = completed_steps if completed_steps is defined else [] %}
-    {% set git_ok = ('git_clone' in cs) or ('git_pull' in cs) %}
-    {% set step_labels_ok = [
-      ("git_clone",    t('fw.status_step_clone')),
-      ("git_pull",     t('fw.status_step_pull')),
-      ("embed",        t('fw.status_step_embed')),
-      ("patch_ipxe_config", t('fw.status_step_patch')),
-      ("compile_bios", t('fw.status_step_bios')),
-      ("compile_efi",  t('fw.status_step_efi')),
-      ("copy",         t('fw.status_step_copy')),
-    ] %}
-    <div class="d-flex gap-2 flex-wrap">
-      {% for key, label in step_labels_ok %}
-        {% if key in ('git_clone', 'git_pull') and git_ok %}
-        <span class="badge bg-success">
-          <i class="bi bi-check2 me-1"></i>{{ label }}
-        </span>
-        {% elif key in cs %}
-        <span class="badge bg-success">
-          <i class="bi bi-check2 me-1"></i>{{ label }}
-        </span>
-        {% else %}
-        <span class="badge bg-secondary" title="{{ t('fw.status_step_unreached') }}">{{ label }}</span>
-        {% endif %}
-      {% endfor %}
-    </div>
-  </div>
   {% else %}
   <div class="alert alert-danger rounded-0 mb-0">
     <i class="bi bi-x-circle me-2"></i>
     <strong>{{ t('fw.failure_title') }}</strong> {{ error }}
   </div>
   {% endif %}
+  {% if step_badges is defined and step_badges %}
+  <div class="p-3 border-top border-secondary border-opacity-25 bg-dark">
+    <div class="d-flex gap-2 flex-wrap">
+      {% for b in step_badges %}
+        {{ step_badge(b.id, b.status) }}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 {% else %}
 <div class="p-3">
-  {% set cs = completed_steps if completed_steps is defined else [] %}
-  {% set git_ok = ('git_clone' in cs) or ('git_pull' in cs) %}
-  {% set step_labels = [
-    ("git_clone",    t('fw.status_step_clone')),
-    ("git_pull",     t('fw.status_step_pull')),
-    ("embed",        t('fw.status_step_embed')),
-    ("patch_ipxe_config", t('fw.status_step_patch')),
-    ("compile_bios", t('fw.status_step_bios')),
-    ("compile_efi",  t('fw.status_step_efi')),
-    ("copy",         t('fw.status_step_copy')),
-  ] %}
-
+  {% if step_badges is defined and step_badges %}
   <div class="d-flex gap-2 flex-wrap mb-3">
-    {% for key, label in step_labels %}
-      {% if key in ('git_clone', 'git_pull') and git_ok %}
-      <span class="badge bg-success">
-        <i class="bi bi-check2 me-1"></i>{{ label }}
-      </span>
-      {% elif key in cs %}
-      <span class="badge bg-success">
-        <i class="bi bi-check2 me-1"></i>{{ label }}
-      </span>
-      {% elif step is defined and step == key %}
-      <span class="badge bg-warning text-dark">
-        <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
-        {{ label }}
-      </span>
-      {% elif key == 'git_clone' and step is defined and step == 'git_pull' %}
-      <span class="badge bg-warning text-dark">
-        <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem"></span>
-        {{ label }}
-      </span>
-      {% else %}
-      <span class="badge bg-secondary">{{ label }}</span>
-      {% endif %}
+    {% for b in step_badges %}
+      {{ step_badge(b.id, b.status) }}
     {% endfor %}
   </div>
+  {% endif %}
 
   {% if logs is defined and logs %}
   <pre class="bg-dark text-light p-2 rounded small mb-0"
        style="max-height:220px;overflow-y:auto;white-space:pre-wrap;font-size:0.75rem">{% for line in logs %}{{ line }}
 {% endfor %}</pre>
-  {% else %}
+  {% elif not step_badges %}
   <div class="text-secondary small">
     <span class="spinner-border spinner-border-sm me-2" style="width:.75rem;height:.75rem"></span>
     {{ t('fw.wait_celery_short') }}

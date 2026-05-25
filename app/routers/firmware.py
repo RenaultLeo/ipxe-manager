@@ -203,20 +203,27 @@ async def firmware_task_status(task_id: str, request: Request):
 
     try:
         from celery.result import AsyncResult
+        from app.services.firmware_build_ui import build_step_badges, extract_progress_meta
+
         r = AsyncResult(task_id)
-        state  = r.state
-        meta   = r.info or {}
-        step   = meta.get("step", "") if isinstance(meta, dict) else ""
-        logs   = meta.get("logs", []) if isinstance(meta, dict) else []
-        completed_steps = meta.get("completed_steps", []) if isinstance(meta, dict) else []
-        done   = r.ready()
+        state = r.state
+        meta = r.info
+        done = r.ready()
         success = r.successful() if done else False
-        result  = r.result if (done and success) else None
-        error   = str(r.result) if (done and not success) else None
-    except Exception as exc:
-        state, step, logs, completed_steps, done, success, result, error = (
-            "UNKNOWN", "", [], [], False, False, None, str(exc),
+        result = r.result if (done and success) else None
+        error = str(r.result) if (done and not success) else None
+        step, completed_steps, logs = extract_progress_meta(
+            state=state,
+            meta=meta,
+            result=result,
+            done=done,
+            success=success,
         )
+        step_badges = build_step_badges(completed_steps, step)
+    except Exception as exc:
+        state, step, logs, completed_steps = "UNKNOWN", "", [], []
+        step_badges = []
+        done, success, result, error = False, False, None, str(exc)
 
     return templates.TemplateResponse(
         "firmware_status.html",
@@ -226,7 +233,7 @@ async def firmware_task_status(task_id: str, request: Request):
             state=state,
             step=step,
             logs=logs,
-            completed_steps=completed_steps,
+            step_badges=step_badges,
             done=done,
             success=success,
             result=result,

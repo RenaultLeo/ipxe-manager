@@ -113,30 +113,6 @@ def build_embed_ipxe(menu_url: str) -> str:
     )
 
 
-def ensure_ipxe_sources(
-    src_dir: Path,
-    logs: list[str],
-    run: Callable[[list[str], Path | None], str],
-) -> None:
-    build_dir = Path(settings.build_dir)
-    build_dir.mkdir(parents=True, exist_ok=True)
-    if (src_dir / ".git").exists():
-        logs.append("Sources iPXE déjà présentes — git pull")
-        run(["git", "pull", "--ff-only"], src_dir)
-    else:
-        logs.append("Clonage du dépôt iPXE (peut prendre quelques minutes)…")
-        run(
-            [
-                "git",
-                "clone",
-                "--depth=1",
-                "https://github.com/ipxe/ipxe.git",
-                str(src_dir),
-            ],
-            None,
-        )
-
-
 def compile_ipxe_firmware(
     menu_url: str,
     *,
@@ -173,13 +149,29 @@ def compile_ipxe_firmware(
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"Timeout dépassé pour : {' '.join(cmd)}") from exc
 
-    progress("init", completed_steps, logs)
     build_dir.mkdir(parents=True, exist_ok=True)
     tftp_dir.mkdir(parents=True, exist_ok=True)
 
-    progress("git", completed_steps, logs)
-    ensure_ipxe_sources(src_dir, logs, run)
-    completed_steps.append("git")
+    if (src_dir / ".git").exists():
+        progress("git_pull", completed_steps, logs)
+        logs.append("Sources iPXE déjà présentes — git pull")
+        run(["git", "pull", "--ff-only"], src_dir)
+        completed_steps.append("git_clone")
+        completed_steps.append("git_pull")
+    else:
+        progress("git_clone", completed_steps, logs)
+        logs.append("Clonage du dépôt iPXE (peut prendre quelques minutes)…")
+        run(
+            [
+                "git",
+                "clone",
+                "--depth=1",
+                "https://github.com/ipxe/ipxe.git",
+                str(src_dir),
+            ],
+            None,
+        )
+        completed_steps.append("git_clone")
 
     embed_content = build_embed_ipxe(menu_url)
     embed_path = src_dir / "src" / "embed.ipxe"
