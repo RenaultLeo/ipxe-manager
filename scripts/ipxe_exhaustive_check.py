@@ -45,9 +45,11 @@ LOGIN_REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 
 # Tables attendues pour alignement avec app/models/models.py (+ alembic éventuelle)
 _EXPECTED_SQLITE_TABLES = frozenset({
+    "users",
     "os_types",
     "iso_versions",
     "boot_entries",
+    "winpe_installs",
     "autoconfigs",
     "uploads",
     "app_settings",
@@ -420,7 +422,23 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
         print("=== Session admin (cookie fourni — interface Supervision) ===")
         audit.set_category("HTTP — Session admin")
         audit.cookie = cookie_in if "=" in cookie_in else f"session={cookie_in}"
-        audit.ok(True, "Cookie de session navigateur réutilisé")
+        code_sess, _, body_sess = http_request(
+            audit.base,
+            "/admin/supervision",
+            timeout=audit.timeout,
+            insecure=audit.insecure,
+            headers=audit._hdr(True),
+        )
+        sess_ok = code_sess == 200 and b"<html" in body_sess.lower()
+        if not sess_ok:
+            audit.ok(
+                False,
+                f"Cookie session invalide ou expiré → GET /admin/supervision HTTP {code_sess} "
+                "(reconnectez-vous à l’UI puis relancez l’audit)",
+            )
+            print()
+            return False
+        audit.ok(True, "Cookie de session navigateur valide (GET /admin/supervision → 200)")
     elif not password:
         print(
             "=== Pages authentifiées — saut (fournissez --password, --session-cookie ou la variable "
@@ -456,6 +474,27 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
     for path, title in html_paths:
         audit.check_get(path, (200,), auth=True, name=f"HTML — {title} [{path}]", substring=b"<html")
 
+    code_snap, _, snap_body = http_request(
+        audit.base,
+        "/admin/supervision/api/snapshot",
+        timeout=max(audit.timeout, 45.0),
+        insecure=audit.insecure,
+        headers={
+            **audit._hdr(True),
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    )
+    snap_ok = False
+    snap_hint = f"HTTP {code_snap}"
+    if code_snap == 200:
+        try:
+            payload = json.loads(snap_body.decode("utf-8"))
+            snap_ok = isinstance(payload, dict) and "services" in payload and "host" in payload
+            snap_hint = "JSON snapshot valide"
+        except json.JSONDecodeError:
+            snap_hint = "corps non JSON"
+    audit.ok(snap_ok, f"GET /admin/supervision/api/snapshot → {snap_hint}")
+
     audit.check_get(
         "/settings/bundled-menu-logo.png",
         (200,),
@@ -469,7 +508,10 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
         "/isos/upload/precheck?total_bytes=0",
         timeout=audit.timeout,
         insecure=audit.insecure,
-        headers=audit._hdr(True),
+        headers={
+            **audit._hdr(True),
+            "X-Requested-With": "XMLHttpRequest",
+        },
     )
     pre_summary = ""
     ok_pre = False
@@ -493,7 +535,10 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
         "/ipxe-menus/menu.ipxe/raw",
         timeout=audit.timeout,
         insecure=audit.insecure,
-        headers=audit._hdr(True),
+        headers={
+            **audit._hdr(True),
+            "X-Requested-With": "XMLHttpRequest",
+        },
     )
     if code_raw == 200:
         has_shebang = raw_body.lstrip().startswith(b"#!ipxe")
@@ -952,7 +997,12 @@ def main() -> int:
     p.add_argument(
         "--insecure",
         action="store_true",
-        help="HTTPS : ne pas valider le certificat TLS",
+        help="HTTPS : ne pas valider le certificat TLS (auto activé si --base-url est https)",
+    )
+    p.add_argument(
+        "--strict-tls",
+        action="store_true",
+        help="HTTPS : exiger un certificat TLS valide (désactive l’acceptation auto-signé par défaut)",
     )
     p.add_argument("--password", default="", help="Mot de passe admin (sinon env IPXE_AUDIT_PASSWORD)")
     p.add_argument(
@@ -1076,16 +1126,26 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    use_insecure = bool(args.insecure) or (
+        parsed.scheme == "https" and not args.strict_tls
+    )
+    if parsed.scheme == "https" and use_insecure and not args.insecure:
+        print(
+            "Note : HTTPS — vérification TLS assouplie (certificat auto-signé / interne).\n"
+            "       Utilisez --strict-tls pour exiger une CA valide.\n",
+            file=sys.stderr,
+        )
+
     audit = Audit(
         base,
         timeout=args.timeout,
-        insecure=args.insecure,
+        insecure=use_insecure,
         strict_menus=args.strict_menus,
         skip_menus=args.skip_menus,
         include_openapi=args.include_openapi,
     )
 
-    print(f"Cible HTTP : {base}\n")
+    print(f"Cible HTTP : {base}" + (" (TLS assoupli)" if use_insecure else "") + "\n")
 
     run_public_phase(audit)
     run_menu_phase(audit)

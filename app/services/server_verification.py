@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import Request
 
@@ -27,6 +29,11 @@ from app.services.server_diagnostics import (
     systemctl_is_active,
     DEFAULT_SYSTEMD_UNITS,
 )
+
+
+def _https_insecure_probe(base: str) -> bool:
+    return urlparse(base).scheme.lower() == "https"
+
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +101,22 @@ def _session_cookie_from_request(request: Request) -> str:
 
 
 def _base_url_for_request(request: Request) -> str:
-    base = settings.server_base_url.rstrip("/")
-    if base and not base.startswith("http://127.0.0.1"):
-        return base
-    return str(request.base_url).rstrip("/")
+    """URL pour les sondes HTTP / script exhaustif (aligne le schéma HTTPS avec la requête courante)."""
+    configured = (settings.server_base_url or "").strip().rstrip("/")
+    req = str(request.base_url).rstrip("/")
+    if not configured or configured.startswith(("http://127.0.0.1", "http://localhost")):
+        return req
+    cfg = urlparse(configured)
+    reqp = urlparse(req)
+    if (
+        cfg.hostname
+        and reqp.hostname
+        and cfg.hostname.lower() == reqp.hostname.lower()
+        and reqp.scheme
+        and cfg.scheme != reqp.scheme
+    ):
+        return f"{reqp.scheme}://{cfg.netloc}".rstrip("/")
+    return configured
 
 
 def run_quick_verification(request: Request) -> dict[str, Any]:
@@ -139,7 +158,7 @@ def run_quick_verification(request: Request) -> dict[str, Any]:
         add("Fichiers", p["label"], p["status"] == "ok", p["path"])
 
     # Même sonde TLS que les requêtes avec session (certificat interne auto-signé)
-    login = http_probe(base, "/login", insecure_tls=True)
+    login = http_probe(base, "/login", insecure_tls=_https_insecure_probe(base))
     add("HTTP", "GET /login", login.get("ok"), login.get("detail", ""))
 
     if cookie:
@@ -150,7 +169,11 @@ def run_quick_verification(request: Request) -> dict[str, Any]:
             ("/settings", "Paramètres"),
         ):
             code, body = http_raw_get(
-                base, path, cookie=cookie, timeout=20.0, insecure_tls=True
+                base,
+                path,
+                cookie=cookie,
+                timeout=20.0,
+                insecure_tls=_https_insecure_probe(base),
             )
             ok = code == 200 and b"<html" in body.lower()
             add("HTTP (session)", title, ok, f"HTTP {code}")
@@ -207,6 +230,30 @@ def run_full_exhaustive(request: Request) -> dict[str, Any]:
         persist_last_verification(result)
         return result
 
+    insecure = _https_insecure_probe(base)
+    code_sess, body_sess = http_raw_get(
+        base,
+        "/admin/supervision",
+        cookie=cookie,
+        timeout=25.0,
+        insecure_tls=insecure,
+    )
+    if code_sess != 200 or b"<html" not in body_sess.lower():
+        result = {
+            "mode": "full",
+            "ok": False,
+            "failures": 1,
+            "log": (
+                f"Cookie de session invalide ou expiré (GET /admin/supervision → HTTP {code_sess}).\n"
+                "Reconnectez-vous à l’interface puis relancez l’audit exhaustif."
+            ),
+            "checks": [],
+            "duration_sec": round(time.time() - started, 2),
+            "base_url": base,
+        }
+        persist_last_verification(result)
+        return result
+
     cmd = [
         sys.executable,
         str(script),
@@ -224,27 +271,42 @@ def run_full_exhaustive(request: Request) -> dict[str, Any]:
         "--venv",
         str(venv),
     ]
+    if insecure:
+        cmd.append("--insecure")
+
     exit_code = -1
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=600,
             cwd=str(PROJECT_ROOT),
+            env={
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+            },
         )
         exit_code = proc.returncode
         log = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+        if not log.strip():
+            log = f"(aucune sortie script, code {exit_code})"
         ok = proc.returncode == 0
-        failures = 0 if ok else max(1, proc.returncode)
-    except subprocess.TimeoutExpired:
-        log = "Audit interrompu (timeout 10 min)."
+        failures = 0 if ok else max(1, abs(proc.returncode))
+    except subprocess.TimeoutExpired as exc:
+        log = "Audit interrompu (timeout 10 min).\n" + (exc.stdout or "") + (exc.stderr or "")
         ok = False
         failures = 1
     except Exception as exc:
-        log = str(exc)
+        logger.exception("run_full_exhaustive")
+        log = f"Échec lancement audit : {exc}"
         ok = False
         failures = 1
+
+    if exit_code == 2 and "impossible d'obtenir une session" in log.lower():
+        failures = max(failures, 1)
 
     result = {
         "mode": "full",
@@ -262,10 +324,12 @@ def run_full_exhaustive(request: Request) -> dict[str, Any]:
 
 
 def _parse_log_categories(log: str) -> list[dict[str, Any]]:
-    """Extrait un résumé par catégorie depuis la sortie du script."""
+    """Extrait un résumé depuis la sortie du script (lignes ✓ ✗ ⚠)."""
     items: list[dict[str, Any]] = []
     for line in log.splitlines():
         line = line.strip()
+        if line.startswith("▸ "):
+            continue
         if line.startswith("✗ ") or line.startswith("✓ ") or line.startswith("⚠ "):
             ok = line.startswith("✓")
             warn = line.startswith("⚠")
