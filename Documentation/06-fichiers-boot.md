@@ -89,32 +89,6 @@ Enregistrement → régénération des menus recommandée (**Menus iPXE → Rég
 
 ---
 
-## Alpine — dépôt APK
-
-Pour les versions Alpine : choix entre CDN public ou **URL miroir APK** personnalisée (paramètre `alpine_repo=` dans le menu).
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/06-boot-files-alpine-repo.png`
->
-> **Description de la photo :** Options dépôt APK : switch « dépôt personnalisé » + champ URL.
->
-> **Éléments à cadrer :** Switch, champ URL miroir, texte d’aide.
-
----
-
-## Fedora — mode Live
-
-Bascule **Live boot (squashfs)** : même logique que à l’upload (Live vs netinst).
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/06-boot-files-fedora-live.png`
->
-> **Description de la photo :** Interrupteur Live sur une version Fedora dans Fichiers Boot.
->
-> **Éléments à cadrer :** Libellé Live, état coché/décoché.
-
----
-
 ## Permissions
 
 Même règles que les ISOs : modification uniquement sur **vos** versions (utilisateur) ou toutes (admin).
