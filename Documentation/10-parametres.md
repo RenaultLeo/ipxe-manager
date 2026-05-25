@@ -137,13 +137,6 @@ Fiche dédiée (`/settings/os-types/new` ou `/edit/{id}`) :
 
 Après actions : alertes vertes/rouges en haut (mot de passe OK, image enregistrée, échec TLS, etc.).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/10-settings-success-alert.png`
->
-> **Description de la photo :** Alerte verte « Image enregistrée. Menus en cours de régénération » en haut de Paramètres.
->
-> **Éléments à cadrer :** Bandeau succès dismissible.
-
 ---
 
 ## Voir aussi
