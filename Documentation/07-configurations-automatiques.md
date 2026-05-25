@@ -92,19 +92,6 @@ Page d’édition avec **éditeur de code** (coloration selon le type : shell, X
 
 ---
 
-## Config active (Ubuntu)
-
-Sur la fiche ISO Ubuntu : **Publier sur la version** copie user-data et meta-data vers `boot/ubuntu/<version>/` et les définit comme **actives** pour le menu iPXE (`ds=nocloud`).
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/07-configs-ubuntu-publish-active.png`
->
-> **Description de la photo :** Fiche ISO Ubuntu OU liste configs avec badge « Active » et bouton Publier.
->
-> **Éléments à cadrer :** Badge Actif, bouton « Publier sur la version ».
-
----
-
 ## Proxmox
 
 `answer.toml` publié ; si config active, tâche Celery peut préparer `proxmox-netboot-autoinstall.iso` (assistant Proxmox).
