@@ -84,12 +84,7 @@ Actions administratives (souvent avec **modale de confirmation** — voir [13-di
 | **Synchroniser la base** | Réaligner la BDD avec le disque (versions, fichiers) — confirmation |
 | **Relancer les services** | Redémarrage stack iPXE (Nginx, workers, etc.) — confirmation |
 
-> ### 📷 Emplacement capture
-> **Fichier à déposer :** `Documentation/images/11-supervision-integrity-toolbar.png`
->
-> **Description de la photo :** Onglet **Intégrité** actif : barre avec les quatre boutons (vérification rapide, complète, sync BDD, relancer services) et le texte d’aide en pied de carte si visible.
->
-> **Éléments à cadrer :** Les quatre boutons sur une ligne, onglet « Intégrité » sélectionné dans les onglets du haut.
+![Onglet Intégrité : barre d’actions (vérification rapide, audit exhaustif, sync BDD, relancer les services) et texte d’aide en pied de carte.](images/11-supervision-integrity-toolbar.png)
 
 ### Résultat du dernier audit
 
@@ -101,23 +96,15 @@ Après une vérification, une carte affiche :
 - Tableau des **items** (catégorie, nom, icône succès / avertissement / échec)
 - Bloc **log** texte (extrait des dernières lignes)
 
-> ### 📷 Emplacement capture
-> **Fichier à déposer :** `Documentation/images/11-supervision-verification-ok.png`
->
-> **Description de la photo :** Carte résultat après **vérification complète** ou **rapide** réussie : titre « OK » en vert, durée en secondes, tableau d’items avec icônes vertes.
->
-> **Éléments à cadrer :** En-tête de la carte (mode rapide/complète + OK), au moins 5 lignes du tableau de contrôles.
+Exemple après une vérification **réussie** (tous les contrôles passent ou échecs mineurs affichés en tableau) :
 
-> ### 📷 Emplacement capture
-> **Fichier à déposer :** `Documentation/images/11-supervision-verification-ko-log.png`
->
-> **Description de la photo :** Même zone après un audit en échec : statut **KO** rouge, tableau avec au moins une croix rouge, zone **log** en bas (`<pre>`) avec message d’erreur lisible.
->
-> **Éléments à cadrer :** Titre KO, extrait du log (3 à 5 dernières lignes utiles).
+![Carte résultat : vérification rapide ou complète — statut OK, durée, tableau des contrôles.](images/11-supervision-verification-ok.png)
 
-### État vide
+Exemple après un audit avec **échecs** (statut KO, lignes en erreur, log en bas si audit exhaustif) :
 
-Sans audit encore lancé : message « Aucune vérification pour l’instant » (ou équivalent selon la langue).
+![Carte résultat : statut KO, tableau avec croix rouges, extrait de log.](images/11-supervision-verification-ko-log.png)
+
+Sans audit encore lancé, seul le bandeau d’actions est visible (pas de carte résultat) jusqu’à la première **Vérification rapide** ou **Audit exhaustif**.
 
 ---
 
