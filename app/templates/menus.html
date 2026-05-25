@@ -401,21 +401,67 @@ const CHAIN_UI = {
   titleDisable: {{ t('menu.toggle_disable')|tojson }},
   btnDeleteTitle: {{ t('menu.btn_delete')|tojson }},
 };
+const MENU_LOAD_MSG = {
+  loading: {{ t('menu.loading_content')|tojson }},
+  failed: {{ t('menu.load_failed')|tojson }},
+  timeout: {{ t('menu.load_timeout')|tojson }},
+};
+const MENU_FETCH_TIMEOUT_MS = 20000;
+const menuFetchInflight = new Map();
 
 async function loadMenuFileContent(rawUrl, preEl, taEl) {
-  if (!rawUrl || (preEl && preEl.dataset.loaded === '1')) return;
-  try {
-    var r = await fetch(rawUrl, { credentials: 'same-origin' });
-    if (!r.ok) throw new Error('fetch');
-    var text = await r.text();
-    if (preEl) {
-      preEl.textContent = text;
-      preEl.dataset.loaded = '1';
-    }
-    if (taEl && !taEl.value) taEl.value = text;
-  } catch (e) {
-    if (preEl) preEl.textContent = '—';
+  if (!rawUrl) return;
+  if (preEl && preEl.dataset.loaded === '1') return;
+  if (menuFetchInflight.has(rawUrl)) {
+    await menuFetchInflight.get(rawUrl);
+    return;
   }
+  var job = (async function () {
+    if (preEl) preEl.textContent = MENU_LOAD_MSG.loading;
+    var ctrl = new AbortController();
+    var tid = setTimeout(function () { ctrl.abort(); }, MENU_FETCH_TIMEOUT_MS);
+    try {
+      var r = await fetch(rawUrl, {
+        credentials: 'same-origin',
+        signal: ctrl.signal,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'text/plain, */*',
+        },
+      });
+      if (r.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      if (!r.ok) throw new Error('http');
+      var text = await r.text();
+      if (preEl) {
+        preEl.textContent = text;
+        preEl.dataset.loaded = '1';
+      }
+      if (taEl && !taEl.value) taEl.value = text;
+    } catch (e) {
+      if (preEl) {
+        preEl.textContent = (e && e.name === 'AbortError')
+          ? MENU_LOAD_MSG.timeout
+          : MENU_LOAD_MSG.failed;
+      }
+    } finally {
+      clearTimeout(tid);
+      menuFetchInflight.delete(rawUrl);
+    }
+  })();
+  menuFetchInflight.set(rawUrl, job);
+  await job;
+}
+
+function loadLazyMenusInPane(paneEl) {
+  if (!paneEl) return;
+  paneEl.querySelectorAll('.menu-lazy-pre').forEach(function (pre) {
+    var card = pre.closest('.card') || pre.closest('td');
+    var ta = card ? card.querySelector('.menu-lazy-textarea') : null;
+    loadMenuFileContent(pre.dataset.rawUrl, pre, ta);
+  });
 }
 
 function toggleEdit(editId, viewId) {
@@ -445,20 +491,7 @@ async function loadScriptContent(id) {
   var pre = document.getElementById('view-pre-' + id);
   var ta = document.getElementById('edit-ta-' + id);
   var url = (pre && pre.dataset.rawUrl) || (ta && ta.dataset.rawUrl);
-  if (!url) return;
-  if (pre && pre.dataset.loaded === '1') return;
-  try {
-    var r = await fetch(url, { credentials: 'same-origin' });
-    if (!r.ok) throw new Error('fetch');
-    var text = await r.text();
-    if (pre) {
-      pre.textContent = text;
-      pre.dataset.loaded = '1';
-    }
-    if (ta && !ta.value) ta.value = text;
-  } catch (e) {
-    if (pre) pre.textContent = '—';
-  }
+  await loadMenuFileContent(url, pre, ta);
 }
 
 function openScriptPanel(id) {
@@ -489,11 +522,13 @@ function switchPanelMode(id, mode) {
     edit.classList.add('d-none');
     btnV.classList.add('active');
     btnE.classList.remove('active');
+    loadScriptContent(id);
   } else {
     view.classList.add('d-none');
     edit.classList.remove('d-none');
     btnV.classList.remove('active');
     btnE.classList.add('active');
+    loadScriptContent(id);
   }
 }
 
@@ -758,6 +793,31 @@ async function chainFetch(url, init) {
       refreshChainStatuses();
     });
   }
+})();
+
+// Chargement différé des scripts iPXE (onglet actif uniquement)
+(function menuLazyLoadInit() {
+  var paneGenerated = document.getElementById('pane-generated');
+  var menuTabList = document.getElementById('menuTab');
+  function refreshGeneratedMenus() {
+    if (!paneGenerated || !paneGenerated.classList.contains('active')) return;
+    var activeInner = paneGenerated.querySelector('.tab-content > .tab-pane.active');
+    if (activeInner) loadLazyMenusInPane(activeInner);
+  }
+  if (menuTabList) {
+    menuTabList.addEventListener('shown.bs.tab', function (ev) {
+      var sel = ev.target && ev.target.getAttribute('data-bs-target');
+      if (sel) {
+        var pane = document.querySelector(sel);
+        if (pane) loadLazyMenusInPane(pane);
+      }
+    });
+  }
+  var tabGenerated = document.getElementById('tab-generated');
+  if (tabGenerated) {
+    tabGenerated.addEventListener('shown.bs.tab', refreshGeneratedMenus);
+  }
+  refreshGeneratedMenus();
 })();
 
 // Ré-ouvrir le bon onglet selon ?tab= dans l'URL

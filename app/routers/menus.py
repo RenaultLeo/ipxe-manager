@@ -3,11 +3,18 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.auth import ROLE_ADMIN, auth_redirect_admin, auth_redirect_login, get_session_user, is_admin
+from app.auth import (
+    ROLE_ADMIN,
+    auth_redirect_admin,
+    auth_redirect_login,
+    get_session_user,
+    is_admin,
+    is_authenticated,
+)
 from app.services.ownership import filter_iso_versions, get_boot_entry
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.os_type_order import sort_os_types_for_ui
@@ -21,6 +28,30 @@ router = APIRouter(prefix="/ipxe-menus")
 
 def _auth(request: Request):
     return auth_redirect_login(request)
+
+
+def _auth_raw_script(request: Request):
+    """Fetch AJAX : 401 si non connecté (évite une page HTML login dans le <pre>)."""
+    if is_authenticated(request):
+        return None
+    if _wants_json(request) or (request.headers.get("x-requested-with") or "").lower() == "xmlhttprequest":
+        raise HTTPException(status_code=401, detail="unauthorized")
+    return auth_redirect_login(request)
+
+
+def _safe_menu_filename(filename: str) -> str:
+    name = Path(filename).name
+    if name != filename or not name.endswith(".ipxe"):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    return name
+
+
+def _is_under_root(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def _wants_json(request: Request) -> bool:
@@ -327,34 +358,37 @@ async def chain_toggle(
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
-@router.get("/custom/{entry_id}/raw", response_class=PlainTextResponse)
+@router.get("/custom/{entry_id}/raw")
 async def custom_script_raw(
     entry_id: int,
     request: Request,
     db: Session = Depends(get_db),
 ):
-    redir = _auth(request)
+    redir = _auth_raw_script(request)
     if redir:
         return redir
     user = get_session_user(request)
     entry = get_boot_entry(db, user, entry_id)
     if not entry or not entry.custom_ipxe_path:
         raise HTTPException(404)
-    path = Path(settings.http_root) / entry.custom_ipxe_path
-    if not path.is_file():
+    root = Path(settings.http_root).resolve()
+    path = (root / entry.custom_ipxe_path).resolve()
+    if not path.is_file() or not _is_under_root(path, root):
         raise HTTPException(404)
-    return path.read_text(encoding="utf-8", errors="replace")
+    return FileResponse(path, media_type="text/plain; charset=utf-8")
 
 
-@router.get("/{filename}/raw", response_class=PlainTextResponse)
+@router.get("/{filename}/raw")
 async def raw_menu(filename: str, request: Request):
-    redir = _auth(request)
+    redir = _auth_raw_script(request)
     if redir:
         return redir
-    f = settings.menus_dir / filename
-    if not f.exists() or not f.suffix == ".ipxe":
+    name = _safe_menu_filename(filename)
+    menus_root = settings.menus_dir.resolve()
+    f = (menus_root / name).resolve()
+    if not f.is_file() or not _is_under_root(f, menus_root):
         raise HTTPException(404)
-    return f.read_text(encoding="utf-8")
+    return FileResponse(f, media_type="text/plain; charset=utf-8")
 
 
 @router.post("/{filename}/save")
