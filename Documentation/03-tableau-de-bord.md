@@ -24,6 +24,7 @@ Si des tâches Celery tournent (extraction, compilation firmware, etc.) :
 
 Si le certificat HTTPS expire bientôt : alerte **orange** avec lien vers **Paramètres → Renouveler le certificat**.
 
+![Bandeau d’avertissement certificat TLS sur le tableau de bord : date d’expiration, jours restants, lien vers Paramètres.](images/03-dashboard-tls-renew.png)
 
 ---
 

@@ -84,6 +84,12 @@ Actions administratives (souvent avec **modale de confirmation** — voir [13-di
 | **Synchroniser la base** | Réaligner la BDD avec le disque (versions, fichiers) — confirmation |
 | **Relancer les services** | Redémarrage stack iPXE (Nginx, workers, etc.) — confirmation |
 
+> ### 📷 Emplacement capture
+> **Fichier à déposer :** `Documentation/images/11-supervision-integrity-toolbar.png`
+>
+> **Description de la photo :** Onglet **Intégrité** actif : barre avec les quatre boutons (vérification rapide, complète, sync BDD, relancer services) et le texte d’aide en pied de carte si visible.
+>
+> **Éléments à cadrer :** Les quatre boutons sur une ligne, onglet « Intégrité » sélectionné dans les onglets du haut.
 
 ### Résultat du dernier audit
 
@@ -95,21 +101,46 @@ Après une vérification, une carte affiche :
 - Tableau des **items** (catégorie, nom, icône succès / avertissement / échec)
 - Bloc **log** texte (extrait des dernières lignes)
 
+> ### 📷 Emplacement capture
+> **Fichier à déposer :** `Documentation/images/11-supervision-verification-ok.png`
+>
+> **Description de la photo :** Carte résultat après **vérification complète** ou **rapide** réussie : titre « OK » en vert, durée en secondes, tableau d’items avec icônes vertes.
+>
+> **Éléments à cadrer :** En-tête de la carte (mode rapide/complète + OK), au moins 5 lignes du tableau de contrôles.
 
+> ### 📷 Emplacement capture
+> **Fichier à déposer :** `Documentation/images/11-supervision-verification-ko-log.png`
+>
+> **Description de la photo :** Même zone après un audit en échec : statut **KO** rouge, tableau avec au moins une croix rouge, zone **log** en bas (`<pre>`) avec message d’erreur lisible.
+>
+> **Éléments à cadrer :** Titre KO, extrait du log (3 à 5 dernières lignes utiles).
 
 ### État vide
 
 Sans audit encore lancé : message « Aucune vérification pour l’instant » (ou équivalent selon la langue).
 
+> ### 📷 Emplacement capture
+> **Fichier à déposer :** `Documentation/images/11-supervision-no-verification-yet.png`
+>
+> **Description de la photo :** Onglet Intégrité **sans** carte de résultat : uniquement la barre d’actions en haut et le message gris invitant à lancer une vérification.
+>
+> **Éléments à cadrer :** Message central « aucune vérification », pas de tableau de résultat en dessous.
 
 ---
 
 ## Relance des services
 
-Après **Relancer les services** :
+Après **Relancer les services** (bouton de l’onglet Intégrité) :
 
 - Redirection ou fragment d’URL avec indicateur de redémarrage en cours
 - Les services peuvent être **indisponibles** quelques secondes — ne pas fermer le navigateur pendant l’opération
+
+> ### 📷 Emplacement capture *(optionnel)*
+> **Fichier à déposer :** `Documentation/images/11-supervision-services-restarting.png`
+>
+> **Description de la photo :** Bandeau ou page intermédiaire indiquant que les services redémarrent (spinner + message), juste après confirmation de la modale.
+>
+> **Éléments à cadrer :** Texte « redémarrage en cours » ou équivalent, indicateur de chargement.
 
 ---
 
