@@ -1,11 +1,21 @@
 (function () {
   var charts = {};
   var i18n = {
-    active: "actifs",
-    openPorts: "ports ouverts",
+    active: "active",
+    openPorts: "open ports",
     sudoOk: "sudo systemctl OK",
-    sudoNo: "sudo systemctl non configuré",
+    sudoNo: "sudo systemctl not configured",
   };
+  var i18nNode = document.getElementById("supervision-i18n");
+  if (i18nNode) {
+    try {
+      var parsed = JSON.parse(i18nNode.textContent || "{}");
+      if (parsed.active) i18n.active = parsed.active;
+      if (parsed.openPorts) i18n.openPorts = parsed.openPorts;
+      if (parsed.sudoOk) i18n.sudoOk = parsed.sudoOk;
+      if (parsed.sudoNo) i18n.sudoNo = parsed.sudoNo;
+    } catch (e) { /* keep defaults */ }
+  }
 
   function el(id) {
     return document.getElementById(id);

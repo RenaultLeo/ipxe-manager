@@ -24,6 +24,4 @@ const en = eval("(" + block + ")");
 const vals = Object.values(en);
 fs.mkdirSync("app/locale_values", { recursive: true });
 fs.writeFileSync("app/locale_values/_en.list.json", JSON.stringify(vals), "utf8");
-const uniq = [...new Set(vals)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-fs.writeFileSync("tools/_unique_en_strings.json", JSON.stringify(uniq), "utf8");
-console.log("values", vals.length, "unique", uniq.length);
+console.log("wrote app/locale_values/_en.list.json", vals.length, "values");

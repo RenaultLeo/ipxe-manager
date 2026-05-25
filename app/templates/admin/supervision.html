@@ -241,6 +241,12 @@
 </div>
 
 <script type="application/json" id="initial-snapshot">{{ snapshot | tojson }}</script>
+<script type="application/json" id="supervision-i18n">{{ {
+  'active': t('super.active'),
+  'openPorts': t('super.open_ports'),
+  'sudoOk': t('super.sudo_ok'),
+  'sudoNo': t('super.sudo_no')
+} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

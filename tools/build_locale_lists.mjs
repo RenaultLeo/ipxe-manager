@@ -3,7 +3,14 @@
  * et des paires [anglais, traduction]. Les clés sans traduction restent en anglais.
  */
 import fs from "fs";
+import {
+  SUPPLEMENT_DE,
+  SUPPLEMENT_ES,
+  SUPPLEMENT_IT,
+  SUPPLEMENT_PT,
+} from "./locale_pairs_supplement.mjs";
 
+// _en.list.json : node tools/extract_en_list.mjs (avant ce script)
 const enList = JSON.parse(fs.readFileSync("app/locale_values/_en.list.json", "utf8"));
 const uniq = [...new Set(enList)].sort((a, b) => a.localeCompare(b));
 
@@ -2515,7 +2522,7 @@ const PAIRS_PT = [
   ["Hide preview", "Ocultar pré-visualização"],
 ];
 
-writeLocale("de", PAIRS_DE);
-writeLocale("es", PAIRS_ES);
-writeLocale("it", PAIRS_IT);
-writeLocale("pt", PAIRS_PT);
+writeLocale("de", [...PAIRS_DE, ...SUPPLEMENT_DE]);
+writeLocale("es", [...PAIRS_ES, ...SUPPLEMENT_ES]);
+writeLocale("it", [...PAIRS_IT, ...SUPPLEMENT_IT]);
+writeLocale("pt", [...PAIRS_PT, ...SUPPLEMENT_PT]);

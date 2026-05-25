@@ -16,6 +16,16 @@ def _value_tuple(code: str) -> tuple[str, ...]:
     return tuple(str(x) for x in raw)
 
 
+def _key_overrides(code: str) -> dict[str, str]:
+    p = Path(__file__).resolve().parent / "locale_values" / f"{code}.keys.json"
+    if not p.is_file():
+        return {}
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise TypeError(f"{p}: expected JSON object")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
 def merge_extra_locales(messages: dict[str, dict[str, str]]) -> None:
     en = messages["en"]
     keys = list(en.keys())
@@ -45,4 +55,7 @@ def merge_extra_locales(messages: dict[str, dict[str, str]]) -> None:
         merged = dict(zip(keys, vals))
         if len(merged) != len(keys):
             raise RuntimeError(f"i18n {code}: duplicate key in zip")
+        overrides = _key_overrides(code)
+        if overrides:
+            merged.update(overrides)
         messages[code] = merged

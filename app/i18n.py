@@ -465,6 +465,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "sett.tls_renew_script": "Script de renouvellement absent. Mettez à jour le dépôt et relancez install-service-sudo.sh.",
         "dash.tls_expiring_soon": "Certificat HTTPS bientôt expiré",
         "dash.tls_expiring_body": "Il reste {n} jour(s) avant l'expiration du certificat TLS ({date}). Renouvelez-le depuis Paramètres → Certificat HTTPS.",
+        "sett.paths": "Chemins configurés",
         "sett.paths_help": "Ces chemins sont définis dans le fichier .env sur le serveur.",
         "sett.os_types": "Types d'OS",
         "sett.col_slug": "Slug",
