@@ -64,10 +64,10 @@ def _maybe_republish_active_ubuntu(db: Session, version: IsoVersion, cfg: AutoCo
         return
     try:
         from app.services.autoconfig_publish import publish_ubuntu_cloud_config
-        from app.services.menu_generator import regenerate_all
+        from app.services.menu_generator import queue_regenerate_all
 
         publish_ubuntu_cloud_config(version, cfg)
-        regenerate_all(db)
+        queue_regenerate_all()
     except Exception:
         logger.exception("Republication config courante Ubuntu (version %s)", version.id)
 
@@ -396,7 +396,7 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
     db.delete(cfg)
     db.commit()
     if was_active and ver:
-        from app.services.menu_generator import regenerate_all
+        from app.services.menu_generator import queue_regenerate_all
 
         if (ver.os_type.slug or "").lower() == "ubuntu":
             from app.services.autoconfig_publish import (
@@ -409,7 +409,7 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
             from app.services.autoconfig_publish import clear_proxmox_answer_from_boot
 
             clear_proxmox_answer_from_boot(ver)
-        regenerate_all(db)
+        queue_regenerate_all()
     return RedirectResponse("/ipxe-configs", status_code=302)
 
 

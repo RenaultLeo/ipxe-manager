@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,6 +20,24 @@ def _auth_redirect(request: Request):
     return auth_redirect_login(request)
 
 
+def _iso_stats_by_os_type(db: Session, os_type_ids: list[int]) -> dict[int, dict[str, int]]:
+    if not os_type_ids:
+        return {}
+    rows = (
+        db.query(IsoVersion.os_type_id, IsoVersion.status, func.count())
+        .filter(IsoVersion.os_type_id.in_(os_type_ids))
+        .group_by(IsoVersion.os_type_id, IsoVersion.status)
+        .all()
+    )
+    out: dict[int, dict[str, int]] = {oid: {"total": 0, "ready": 0} for oid in os_type_ids}
+    for os_type_id, status, count in rows:
+        bucket = out.setdefault(os_type_id, {"total": 0, "ready": 0})
+        bucket["total"] += count
+        if status == "ready":
+            bucket["ready"] += count
+    return out
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     redir = _auth_redirect(request)
@@ -32,12 +51,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         os_types = visible_on_dashboard(all_os_types)
         os_type_count = len(all_os_types)
 
+        counts = _iso_stats_by_os_type(db, [ot.id for ot in os_types])
         stats = []
         for ot in os_types:
-            base = db.query(IsoVersion).filter(IsoVersion.os_type_id == ot.id)
-            total = base.count()
-            ready = base.filter(IsoVersion.status == "ready").count()
-            stats.append({"os": ot, "total": total, "ready": ready})
+            c = counts.get(ot.id, {"total": 0, "ready": 0})
+            stats.append({"os": ot, "total": c["total"], "ready": c["ready"]})
 
         recent_uploads = (
             filter_uploads(db, user)

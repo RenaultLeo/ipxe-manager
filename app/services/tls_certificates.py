@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 _RENEW_SCRIPT = Path("/usr/local/sbin/ipxe-renew-tls-cert")
 _EXPIRY_SOON_DAYS = 7
+_TLS_CACHE: tuple[float, TlsCertStatus] | None = None
+_TLS_CACHE_TTL_SEC = 300.0
 _NOT_AFTER_RE = re.compile(
     r"notAfter\s*=\s*(?P<date>.+)", re.IGNORECASE
 )
@@ -60,7 +63,22 @@ def _parse_openssl_enddate(raw: str) -> datetime | None:
     return None
 
 
+def invalidate_tls_cert_cache() -> None:
+    global _TLS_CACHE
+    _TLS_CACHE = None
+
+
 def get_tls_cert_status() -> TlsCertStatus:
+    global _TLS_CACHE
+    now = time.monotonic()
+    if _TLS_CACHE and now - _TLS_CACHE[0] < _TLS_CACHE_TTL_SEC:
+        return _TLS_CACHE[1]
+    status = _load_tls_cert_status()
+    _TLS_CACHE = (now, status)
+    return status
+
+
+def _load_tls_cert_status() -> TlsCertStatus:
     cert = _server_cert_path()
     if not cert.is_file():
         return TlsCertStatus(
@@ -175,4 +193,5 @@ def renew_tls_certificate(server_base_url: str) -> tuple[bool, str]:
         logger.error("renew_tls_certificate failed (%s): %s", proc.returncode, out)
         return False, out[-500:] if out else f"exit {proc.returncode}"
 
+    invalidate_tls_cert_cache()
     return True, out

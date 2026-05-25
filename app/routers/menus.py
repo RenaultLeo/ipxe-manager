@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
@@ -50,9 +49,9 @@ def _collect_menu_files(db: Session | None = None) -> list[dict]:
         for f in sorted(settings.menus_dir.glob("*.ipxe")):
             files.append({
                 "name": f.name,
-                "content": f.read_text(encoding="utf-8"),
                 "url": f"{base}/menus/{f.name}",
                 "size": f.stat().st_size,
+                "raw_url": f"/ipxe-menus/{f.name}/raw",
             })
     return files
 
@@ -77,14 +76,7 @@ def _collect_custom_scripts(db: Session, request: Request) -> list[dict]:
     base = resolve_server_base_url(db)
     for e in entries:
         path = http_root / e.custom_ipxe_path
-        content = ""
-        size = 0
-        if path.exists():
-            try:
-                content = path.read_text(encoding="utf-8", errors="replace")
-                size = path.stat().st_size
-            except Exception:
-                pass
+        size = path.stat().st_size if path.is_file() else 0
         rel = str(e.custom_ipxe_path).replace("\\", "/").lstrip("/")
         scripts.append({
             "boot_entry_id": e.id,
@@ -95,7 +87,7 @@ def _collect_custom_scripts(db: Session, request: Request) -> list[dict]:
             "rel_path":      e.custom_ipxe_path,
             "url":           f"{base}/{rel}" if rel else base,
             "size":          size,
-            "content":       content,
+            "raw_url":       f"/ipxe-menus/custom/{e.id}/raw",
         })
     return scripts
 
@@ -147,48 +139,10 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
 
-    try:
-        from app.services.menu_generator import regenerate_all
-        written = regenerate_all(db)
-        logger.info("Menus régénérés : %s", written)
-    except Exception:
-        err = traceback.format_exc()
-        logger.error("Erreur régénération menus :\n%s", err)
-        os_types = sort_os_types_for_ui(db.query(OsType).all())
-        user = get_session_user(request)
-        iso_versions = (
-            filter_iso_versions(db, user)
-            .join(IsoVersion.os_type)
-            .options(joinedload(IsoVersion.os_type))
-            .order_by(OsType.label.asc(), IsoVersion.version_label.asc())
-            .all()
-        )
-        menu_files = _collect_menu_files(db)
-        return templates.TemplateResponse(
-            "menus.html",
-            template_context(
-                request,
-                menu_files=menu_files,
-                os_types=os_types,
-                iso_versions=iso_versions,
-                server_url=resolve_server_base_url(db),
-                error=err,
-                custom_scripts=[],
-                remote_chains=[],
-                active_tab="",
-                can_edit_global_menus=is_admin(request),
-                can_manage_chains=is_admin(request),
-            ),
-            status_code=500,
-        )
+    from app.services.menu_generator import queue_regenerate_all
 
-    # Also queue async in Celery if available
-    try:
-        from app.tasks.jobs import regenerate_menus_task
-        regenerate_menus_task.delay()
-    except Exception:
-        pass
-
+    queue_regenerate_all()
+    logger.info("Régénération menus planifiée (arrière-plan)")
     return RedirectResponse("/ipxe-menus", status_code=302)
 
 
@@ -214,13 +168,9 @@ async def custom_script_save(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
-    # Regénérer le menu _autres concerné
-    try:
-        from app.services.menu_generator import regenerate_all
-        regenerate_all(db)
-    except Exception:
-        logger.exception("Erreur régénération menus après save script")
+    from app.services.menu_generator import queue_regenerate_all
 
+    queue_regenerate_all()
     return RedirectResponse("/ipxe-menus?tab=custom", status_code=302)
 
 
@@ -251,13 +201,9 @@ async def custom_script_delete(
     entry.custom_ipxe_path = None
     db.commit()
 
-    # Regénérer les menus
-    try:
-        from app.services.menu_generator import regenerate_all
-        regenerate_all(db)
-    except Exception:
-        logger.exception("Erreur régénération menus après delete script")
+    from app.services.menu_generator import queue_regenerate_all
 
+    queue_regenerate_all()
     return RedirectResponse("/ipxe-menus?tab=custom", status_code=302)
 
 
@@ -268,25 +214,6 @@ def _normalize_chain_url(url: str) -> str:
     if u and "://" not in u:
         u = "http://" + u
     return u
-
-
-def _regenerate_menus_async() -> None:
-    import threading
-
-    from app.database import SessionLocal
-
-    def _run() -> None:
-        db = SessionLocal()
-        try:
-            from app.services.menu_generator import regenerate_all
-
-            regenerate_all(db)
-        except Exception:
-            logger.exception("Erreur régénération menus (arrière-plan)")
-        finally:
-            db.close()
-
-    threading.Thread(target=_run, daemon=True).start()
 
 
 def _probe_chains_status(chains: list[RemoteChain]) -> list[dict]:
@@ -324,7 +251,9 @@ async def chain_add(
     db.commit()
     db.refresh(chain)
     if _wants_json(request):
-        _regenerate_menus_async()
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
         return JSONResponse({
             "ok": True,
             "chain": {
@@ -334,12 +263,9 @@ async def chain_add(
                 "enabled": chain.enabled,
             },
         })
-    try:
-        from app.services.menu_generator import regenerate_all
+    from app.services.menu_generator import queue_regenerate_all
 
-        regenerate_all(db)
-    except Exception:
-        logger.exception("Erreur régénération menus après ajout chain")
+    queue_regenerate_all()
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
@@ -362,14 +288,13 @@ async def chain_delete(
     db.delete(chain)
     db.commit()
     if _wants_json(request):
-        _regenerate_menus_async()
-        return JSONResponse({"ok": True})
-    try:
-        from app.services.menu_generator import regenerate_all
+        from app.services.menu_generator import queue_regenerate_all
 
-        regenerate_all(db)
-    except Exception:
-        logger.exception("Erreur régénération menus après suppression chain")
+        queue_regenerate_all()
+        return JSONResponse({"ok": True})
+    from app.services.menu_generator import queue_regenerate_all
+
+    queue_regenerate_all()
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
 
 
@@ -392,15 +317,33 @@ async def chain_toggle(
     chain.enabled = not chain.enabled
     db.commit()
     if _wants_json(request):
-        _regenerate_menus_async()
-        return JSONResponse({"ok": True, "enabled": chain.enabled})
-    try:
-        from app.services.menu_generator import regenerate_all
+        from app.services.menu_generator import queue_regenerate_all
 
-        regenerate_all(db)
-    except Exception:
-        logger.exception("Erreur régénération menus après toggle chain")
+        queue_regenerate_all()
+        return JSONResponse({"ok": True, "enabled": chain.enabled})
+    from app.services.menu_generator import queue_regenerate_all
+
+    queue_regenerate_all()
     return RedirectResponse("/ipxe-menus?tab=chains", status_code=302)
+
+
+@router.get("/custom/{entry_id}/raw", response_class=PlainTextResponse)
+async def custom_script_raw(
+    entry_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    redir = _auth(request)
+    if redir:
+        return redir
+    user = get_session_user(request)
+    entry = get_boot_entry(db, user, entry_id)
+    if not entry or not entry.custom_ipxe_path:
+        raise HTTPException(404)
+    path = Path(settings.http_root) / entry.custom_ipxe_path
+    if not path.is_file():
+        raise HTTPException(404)
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 @router.get("/{filename}/raw", response_class=PlainTextResponse)
@@ -428,4 +371,7 @@ async def save_menu_override(
         raise HTTPException(400)
     settings.menus_dir.mkdir(parents=True, exist_ok=True)
     f.write_text(content, encoding="utf-8")
+    from app.services.menu_generator import queue_regenerate_all
+
+    queue_regenerate_all()
     return RedirectResponse("/ipxe-menus", status_code=302)

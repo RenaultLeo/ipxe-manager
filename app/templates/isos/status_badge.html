@@ -6,7 +6,7 @@
 {% elif status == 'extracting' %}
 <span class="badge bg-warning text-dark{{ bend }}"
       hx-get="/isos/{{ version_id }}/status-fragment{{ frag_qs }}"
-      hx-trigger="every 3s"
+      hx-trigger="every 8s"
       hx-swap="outerHTML">
   <i class="bi bi-arrow-repeat spin me-1"></i>{{ t('iso.status_extracting') }}
 </span>

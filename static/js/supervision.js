@@ -297,10 +297,30 @@
     });
   }
 
+  var snapshotPollTimer = null;
+
+  function scheduleSnapshotPoll() {
+    if (snapshotPollTimer) {
+      clearInterval(snapshotPollTimer);
+      snapshotPollTimer = null;
+    }
+    if (document.hidden) return;
+    snapshotPollTimer = setInterval(function () {
+      if (!document.hidden) refreshSnapshot(false);
+    }, 90000);
+  }
+
   refreshSnapshot(false);
-  setInterval(function () {
-    refreshSnapshot(false);
-  }, 45000);
+  scheduleSnapshotPoll();
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      if (snapshotPollTimer) clearInterval(snapshotPollTimer);
+      snapshotPollTimer = null;
+    } else {
+      refreshSnapshot(false);
+      scheduleSnapshotPoll();
+    }
+  });
 
   if (window.location.hash === "#integrity") {
     var tabBtn = document.querySelector('[data-bs-target="#tab-integrity"]');

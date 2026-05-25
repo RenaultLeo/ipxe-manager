@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from urllib.parse import quote
 
@@ -39,6 +39,7 @@ async def boot_list(request: Request, db: Session = Depends(get_db),
         return redir
     versions = (
         db.query(IsoVersion)
+        .options(joinedload(IsoVersion.os_type))
         .filter(IsoVersion.status.in_(["uploaded", "ready", "extracting", "error"]))
         .all()
     )
@@ -65,8 +66,9 @@ async def scan_boot_files(request: Request, db: Session = Depends(get_db)):
 
     # Régénérer les menus avec les nouveaux chemins
     try:
-        from app.services.menu_generator import regenerate_all
-        regenerate_all(db)
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
     except Exception:
         pass
 

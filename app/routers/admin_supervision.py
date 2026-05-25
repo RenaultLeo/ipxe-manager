@@ -1,6 +1,7 @@
 """Supervision serveur : état, graphiques, contrôles d'intégrité, relance services."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from urllib.parse import quote, urlparse
 
@@ -14,7 +15,6 @@ from app.database import get_db, init_db
 from app.i18n import translate
 from app.services.server_diagnostics import (
     collect_snapshot_cached,
-    http_probe,
     invalidate_snapshot_cache,
     systemctl_restart,
 )
@@ -85,10 +85,12 @@ async def supervision_snapshot_api(
     redir = auth_redirect_admin(request)
     if redir:
         return JSONResponse({"error": "forbidden"}, status_code=403)
-    snap = collect_snapshot_cached(db, force=full, quick=not full)
-    if full:
-        base = snap.get("application", {}).get("server_base_url", "")
-        snap["http_probe"] = http_probe(base or str(request.base_url).rstrip("/"), "/login", timeout=5.0)
+    snap = await asyncio.to_thread(
+        collect_snapshot_cached,
+        db,
+        force=full,
+        quick=not full,
+    )
     return JSONResponse(snap)
 
 

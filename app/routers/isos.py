@@ -17,7 +17,7 @@ from app.services.ownership import can_modify_iso_version, get_iso_version, get_
 from app.i18n import translate
 from app.models.models import OsType, IsoVersion, Upload, BootEntry, AutoConfig, WinpeInstall
 from app.services.disk_info import fmt_size
-from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC, regenerate_all
+from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
 from app.config import settings
@@ -110,6 +110,19 @@ def _get_version_view_or_404(db: Session, request: Request, version_id: int) -> 
     if not version:
         raise HTTPException(status_code=404)
     return version
+
+
+def _get_version_status_or_404(db: Session, request: Request, version_id: int) -> str:
+    """Statut seul (évite joinedload pour le polling HTMX)."""
+    from app.services.ownership import get_iso_version_view
+
+    user = get_session_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    version = get_iso_version_view(db, user, version_id)
+    if not version:
+        raise HTTPException(status_code=404)
+    return version.status
 
 
 def _get_version_or_404(db: Session, request: Request, version_id: int) -> IsoVersion:
@@ -632,7 +645,9 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         ) from exc
 
     if version.status == "ready":
-        regenerate_all(db)
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
 
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
 
@@ -840,7 +855,9 @@ async def iso_activate_config(
             from app.services.autoconfig_publish import activate_ubuntu_config
 
             activate_ubuntu_config(db, version, cfg)
-            regenerate_all(db)
+            from app.services.menu_generator import queue_regenerate_all
+
+            queue_regenerate_all()
         except FileNotFoundError as exc:
             raise HTTPException(400, detail=str(exc)) from exc
         except ValueError as exc:
@@ -900,7 +917,9 @@ async def iso_clear_active_config(
 
         clear_active_proxmox_publish(db, version)
     if version.status == "ready":
-        regenerate_all(db)
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
@@ -944,7 +963,9 @@ async def iso_alpine_repo_save(
     db.add(be)
     db.commit()
     if version.status == "ready":
-        regenerate_all(db)
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
@@ -983,7 +1004,9 @@ async def iso_fedora_live_save(
     db.add(be)
     db.commit()
     if version.status == "ready":
-        regenerate_all(db)
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 
@@ -1006,7 +1029,9 @@ async def set_ubuntu_nfs_boot(
     db.add(version)
     db.commit()
     if version.status == "ready":
-        regenerate_all(db)
+        from app.services.menu_generator import queue_regenerate_all
+
+        queue_regenerate_all()
     return JSONResponse({"ok": True, "enabled": version.ubuntu_nfs_boot})
 
 
@@ -1088,13 +1113,13 @@ async def iso_status_fragment(
     db: Session = Depends(get_db),
 ):
     """HTMX endpoint — retourne uniquement le badge de statut HTML."""
-    version = _get_version_view_or_404(db, request, version_id)
+    status = _get_version_status_or_404(db, request, version_id)
     pull_end = align == "end"
     return templates.TemplateResponse(
         "isos/status_badge.html",
         template_context(
             request,
-            status=version.status,
+            status=status,
             version_id=version_id,
             pull_end=pull_end,
         ),
@@ -1625,8 +1650,9 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
 
         # 5. Régénérer les menus
         try:
-            from app.services.menu_generator import regenerate_all
-            regenerate_all(db)
+            from app.services.menu_generator import queue_regenerate_all
+
+            queue_regenerate_all()
         except Exception:
             pass
 

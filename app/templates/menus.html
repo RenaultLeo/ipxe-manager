@@ -104,14 +104,15 @@
             </div>
           </div>
           <div id="gview-{{ loop.index }}" class="card-body p-0">
-            <pre class="p-3 mb-0 bg-dark text-light rounded-bottom font-monospace small"
-                 style="max-height:400px;overflow-y:auto">{{ mf.content }}</pre>
+            <pre class="p-3 mb-0 bg-dark text-light rounded-bottom font-monospace small menu-lazy-pre"
+                 style="max-height:400px;overflow-y:auto"
+                 data-raw-url="{{ mf.raw_url }}">{{ t('menu.loading_content') }}</pre>
           </div>
           {% if can_edit_global_menus %}
           <div id="gedit-{{ loop.index }}" class="card-body d-none">
             <form method="post" action="/ipxe-menus/{{ mf.name }}/save">
-              <textarea name="content" class="form-control font-monospace mb-2"
-                        rows="20" style="font-size:0.82rem">{{ mf.content }}</textarea>
+              <textarea name="content" class="form-control font-monospace mb-2 menu-lazy-textarea"
+                        rows="20" style="font-size:0.82rem" data-raw-url="{{ mf.raw_url }}"></textarea>
               <div class="d-flex gap-2">
                 <button class="btn btn-warning">
                   <i class="bi bi-floppy me-1"></i>{{ t('menu.save') }}
@@ -262,15 +263,16 @@
 
                 <!-- Aperçu lecture seule -->
                 <div id="view-{{ s.boot_entry_id }}" class="p-0">
-                  <pre class="p-3 mb-0 bg-dark text-light font-monospace small"
-                       style="max-height:380px;overflow-y:auto;white-space:pre-wrap">{{ s.content }}</pre>
+                  <pre id="view-pre-{{ s.boot_entry_id }}" class="p-3 mb-0 bg-dark text-light font-monospace small"
+                       style="max-height:380px;overflow-y:auto;white-space:pre-wrap"
+                       data-raw-url="{{ s.raw_url }}">{{ t('menu.loading_content') }}</pre>
                 </div>
 
                 <!-- Éditeur -->
                 <div id="edit-{{ s.boot_entry_id }}" class="p-3 d-none">
                   <form method="post" action="/ipxe-menus/custom/{{ s.boot_entry_id }}/save">
-                    <textarea name="content" class="form-control font-monospace mb-2"
-                              rows="18" style="font-size:0.82rem">{{ s.content }}</textarea>
+                    <textarea id="edit-ta-{{ s.boot_entry_id }}" name="content" class="form-control font-monospace mb-2"
+                              rows="18" style="font-size:0.82rem" data-raw-url="{{ s.raw_url }}"></textarea>
                     <div class="d-flex gap-2">
                       <button class="btn btn-warning btn-sm">
                         <i class="bi bi-floppy me-1"></i>{{ t('menu.save') }}
@@ -400,21 +402,76 @@ const CHAIN_UI = {
   btnDeleteTitle: {{ t('menu.btn_delete')|tojson }},
 };
 
+async function loadMenuFileContent(rawUrl, preEl, taEl) {
+  if (!rawUrl || (preEl && preEl.dataset.loaded === '1')) return;
+  try {
+    var r = await fetch(rawUrl, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('fetch');
+    var text = await r.text();
+    if (preEl) {
+      preEl.textContent = text;
+      preEl.dataset.loaded = '1';
+    }
+    if (taEl && !taEl.value) taEl.value = text;
+  } catch (e) {
+    if (preEl) preEl.textContent = '—';
+  }
+}
+
 function toggleEdit(editId, viewId) {
-  document.getElementById(editId).classList.toggle('d-none');
-  document.getElementById(viewId).classList.toggle('d-none');
+  var edit = document.getElementById(editId);
+  var view = document.getElementById(viewId);
+  if (!edit || !view) return;
+  var opening = edit.classList.contains('d-none');
+  edit.classList.toggle('d-none');
+  view.classList.toggle('d-none');
+  if (opening) {
+    var pre = view.querySelector('.menu-lazy-pre');
+    var ta = edit.querySelector('.menu-lazy-textarea');
+    var url = (pre && pre.dataset.rawUrl) || (ta && ta.dataset.rawUrl);
+    loadMenuFileContent(url, pre, ta);
+  } else if (!view.classList.contains('d-none')) {
+    var preShow = view.querySelector('.menu-lazy-pre');
+    var taShow = edit.querySelector('.menu-lazy-textarea');
+    loadMenuFileContent(
+      (preShow && preShow.dataset.rawUrl) || (taShow && taShow.dataset.rawUrl),
+      preShow,
+      taShow
+    );
+  }
+}
+
+async function loadScriptContent(id) {
+  var pre = document.getElementById('view-pre-' + id);
+  var ta = document.getElementById('edit-ta-' + id);
+  var url = (pre && pre.dataset.rawUrl) || (ta && ta.dataset.rawUrl);
+  if (!url) return;
+  if (pre && pre.dataset.loaded === '1') return;
+  try {
+    var r = await fetch(url, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('fetch');
+    var text = await r.text();
+    if (pre) {
+      pre.textContent = text;
+      pre.dataset.loaded = '1';
+    }
+    if (ta && !ta.value) ta.value = text;
+  } catch (e) {
+    if (pre) pre.textContent = '—';
+  }
 }
 
 function openScriptPanel(id) {
   document.getElementById('panel-' + id).classList.remove('d-none');
-  // vue par défaut
   switchPanelMode(id, 'view');
+  loadScriptContent(id);
   document.getElementById('panel-' + id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function openScriptEditor(id) {
   document.getElementById('panel-' + id).classList.remove('d-none');
   switchPanelMode(id, 'edit');
+  loadScriptContent(id);
   document.getElementById('panel-' + id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -589,9 +646,26 @@ async function chainFetch(url, init) {
 
   function scheduleChainStatusRefresh() {
     if (chainStatusTimer) clearInterval(chainStatusTimer);
+    chainStatusTimer = null;
+    if (document.hidden) return;
+    var tab = document.getElementById('tab-chains');
+    if (!tab || !tab.classList.contains('active')) return;
     refreshChainStatuses();
-    chainStatusTimer = setInterval(refreshChainStatuses, 45000);
+    chainStatusTimer = setInterval(function () {
+      if (!document.hidden && tab.classList.contains('active')) {
+        refreshChainStatuses();
+      }
+    }, 90000);
   }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && chainStatusTimer) {
+      clearInterval(chainStatusTimer);
+      chainStatusTimer = null;
+    } else if (document.getElementById('tab-chains')?.classList.contains('active')) {
+      scheduleChainStatusRefresh();
+    }
+  });
 
   if (addForm) {
     addForm.addEventListener('submit', async function(ev) {

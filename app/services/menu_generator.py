@@ -502,6 +502,32 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
                 logger.warning("ESXi %s non écrit %s : %s", fname, path, e)
 
 
+def queue_regenerate_all() -> None:
+    """Régénère les menus en arrière-plan (Celery, sinon thread daemon)."""
+    try:
+        from app.tasks.jobs import regenerate_menus_task
+
+        regenerate_menus_task.delay()
+        return
+    except Exception:
+        logger.debug("Celery indisponible — régénération menus en thread")
+
+    import threading
+
+    from app.database import SessionLocal
+
+    def _run() -> None:
+        db = SessionLocal()
+        try:
+            regenerate_all(db)
+        except Exception:
+            logger.exception("regenerate_all (arrière-plan)")
+        finally:
+            db.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
