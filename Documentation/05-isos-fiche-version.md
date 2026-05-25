@@ -121,6 +121,21 @@ Interrupteur **Boot NFS (casper)** :
 
 ---
 
+## Configurations automatiques liées
+
+Liens vers configs **Ubuntu** (user-data / meta-data), **Proxmox** (answer.toml), etc. selon l’OS.
+
+Boutons **Publier sur la version** / **Retirer config active** pour Ubuntu (copie vers `boot/ubuntu/<version>/`).
+
+> ### 📷 Emplacement capture
+> **Fichier suggéré :** `Documentation/images/05-iso-detail-ubuntu-autoconfig-active.png`
+>
+> **Description de la photo :** Bloc config Ubuntu avec badge « Config active » et chemins user-data / meta-data.
+>
+> **Éléments à cadrer :** Boutons publier / retirer, badge actif.
+
+---
+
 ## Windows / WinPE — section déploiement
 
 Pour les versions **Windows** avec WinPE :
@@ -167,20 +182,7 @@ Bouton **Mettre à jour les scripts WinPE et boot.wim** :
 
 ---
 
-## Configurations automatiques liées
 
-Liens vers configs **Ubuntu** (user-data / meta-data), **Proxmox** (answer.toml), etc. selon l’OS.
-
-Boutons **Publier sur la version** / **Retirer config active** pour Ubuntu (copie vers `boot/ubuntu/<version>/`).
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/05-iso-detail-ubuntu-autoconfig-active.png`
->
-> **Description de la photo :** Bloc config Ubuntu avec badge « Config active » et chemins user-data / meta-data.
->
-> **Éléments à cadrer :** Boutons publier / retirer, badge actif.
-
----
 
 
 ## Voir aussi
