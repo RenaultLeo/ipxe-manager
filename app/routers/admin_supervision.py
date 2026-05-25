@@ -16,10 +16,11 @@ from app.i18n import translate
 from app.services.server_diagnostics import (
     collect_snapshot_cached,
     invalidate_snapshot_cache,
-    systemctl_restart,
+    schedule_service_restarts,
 )
 from app.services.server_verification import (
     get_last_verification,
+    persist_last_verification,
     run_full_exhaustive,
     run_quick_verification,
 )
@@ -100,17 +101,29 @@ async def supervision_quick_verify(request: Request):
     if redir:
         return redir
     invalidate_snapshot_cache()
-    result = run_quick_verification(request)
     lang = getattr(request.state, "locale", "fr")
+    try:
+        result = await asyncio.to_thread(run_quick_verification, request)
+    except Exception as exc:
+        logger.exception("supervision_quick_verify")
+        result = {
+            "mode": "quick",
+            "ok": False,
+            "failures": 1,
+            "checks": [],
+            "log": str(exc)[:2000],
+            "duration_sec": 0,
+        }
+        persist_last_verification(result)
     if result.get("ok"):
-        msg = translate(lang, "super.verify_quick_ok", n=len(result.get("items", [])))
+        msg = translate(lang, "super.verify_quick_ok", n=len(result.get("checks", [])))
     else:
         msg = translate(
             lang,
             "super.verify_quick_fail",
             n=result.get("failures", 0),
         )
-    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}", status_code=302)
+    return RedirectResponse(f"/admin/supervision?msg={quote(msg)}#integrity", status_code=302)
 
 
 @router.post("/supervision/verification/full")
@@ -119,8 +132,20 @@ async def supervision_full_verify(request: Request):
     if redir:
         return redir
     invalidate_snapshot_cache()
-    result = run_full_exhaustive(request)
     lang = getattr(request.state, "locale", "fr")
+    try:
+        result = await asyncio.to_thread(run_full_exhaustive, request)
+    except Exception as exc:
+        logger.exception("supervision_full_verify")
+        result = {
+            "mode": "full",
+            "ok": False,
+            "failures": 1,
+            "checks": [],
+            "log": str(exc)[:2000],
+            "duration_sec": 0,
+        }
+        persist_last_verification(result)
     if result.get("ok"):
         msg = translate(lang, "super.verify_full_ok", sec=result.get("duration_sec", 0))
     else:

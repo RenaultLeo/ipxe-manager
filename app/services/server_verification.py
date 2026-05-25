@@ -14,6 +14,8 @@ from urllib.parse import urlencode, urlparse
 from fastapi import Request
 
 from app.config import settings
+from app.database import SessionLocal
+from app.models.models import AppSetting
 from app.services.server_diagnostics import (
     PROJECT_ROOT,
     _detect_venv,
@@ -29,11 +31,58 @@ from app.services.server_diagnostics import (
 
 logger = logging.getLogger(__name__)
 
+_LAST_VER_KEY = "supervision_last_verification"
 _last_run: dict[str, Any] | None = None
 
 
+def persist_last_verification(result: dict[str, Any]) -> None:
+    global _last_run
+    _last_run = result
+    try:
+        payload = json.dumps(result, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        logger.warning("Vérification non sérialisable : %s", exc)
+        return
+    db = SessionLocal()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _LAST_VER_KEY).first()
+        if row:
+            row.value = payload
+        else:
+            db.add(AppSetting(key=_LAST_VER_KEY, value=payload))
+        db.commit()
+    except Exception:
+        logger.exception("persist_last_verification")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def get_last_verification() -> dict[str, Any] | None:
-    return _last_run
+    """Dernier audit (SQLite) — partagé entre workers Uvicorn/Gunicorn."""
+    global _last_run
+    db = SessionLocal()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _LAST_VER_KEY).first()
+        if row and (row.value or "").strip():
+            data = json.loads(row.value)
+            if isinstance(data, dict):
+                _last_run = _normalize_verification_result(data)
+                return _last_run
+    except Exception:
+        logger.exception("get_last_verification")
+    finally:
+        db.close()
+    if _last_run is not None:
+        return _normalize_verification_result(_last_run)
+    return None
+
+
+def _normalize_verification_result(data: dict[str, Any]) -> dict[str, Any]:
+    """Compat : anciennes entrées utilisaient la clé « items » (conflit Jinja dict.items)."""
+    if "checks" not in data and "items" in data:
+        data = {**data, "checks": data["items"]}
+    return data
 
 
 def _session_cookie_from_request(request: Request) -> str:
@@ -70,7 +119,10 @@ def _http_get(
         if p.scheme == "https":
             import ssl
 
+            # Sonde locale : certificat auto-signé (TLS interne) accepté
             ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
             conn = http.client.HTTPSConnection(p.hostname, port, timeout=timeout, context=ctx)
         else:
             conn = http.client.HTTPConnection(p.hostname, port, timeout=timeout)
@@ -139,19 +191,18 @@ def run_quick_verification(request: Request) -> dict[str, Any]:
         add("HTTP (session)", "Cookie session", False, "Session absente")
 
     failures = sum(1 for i in items if i["ok"] is False)
-    global _last_run
     result = {
         "mode": "quick",
         "started_at": started,
         "duration_sec": round(time.time() - started, 2),
         "base_url": base,
-        "items": items,
+        "checks": items,
         "failures": failures,
         "warnings": 0,
         "ok": failures == 0,
         "log": "",
     }
-    _last_run = result
+    persist_last_verification(result)
     return result
 
 
@@ -169,12 +220,11 @@ def run_full_exhaustive(request: Request) -> dict[str, Any]:
             "ok": False,
             "failures": 1,
             "log": f"Script introuvable : {script}",
-            "items": [],
+            "checks": [],
             "duration_sec": 0,
             "base_url": base,
         }
-        global _last_run
-        _last_run = result
+        persist_last_verification(result)
         return result
 
     if not cookie:
@@ -183,11 +233,11 @@ def run_full_exhaustive(request: Request) -> dict[str, Any]:
             "ok": False,
             "failures": 1,
             "log": "Session admin requise pour l’audit exhaustif.",
-            "items": [],
+            "checks": [],
             "duration_sec": 0,
             "base_url": base,
         }
-        _last_run = result
+        persist_last_verification(result)
         return result
 
     cmd = [
@@ -238,9 +288,9 @@ def run_full_exhaustive(request: Request) -> dict[str, Any]:
         "failures": failures,
         "exit_code": exit_code,
         "log": log[-50000:],
-        "items": _parse_log_categories(log),
+        "checks": _parse_log_categories(log),
     }
-    _last_run = result
+    persist_last_verification(result)
     return result
 
 

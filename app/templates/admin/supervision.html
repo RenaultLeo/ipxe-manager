@@ -208,11 +208,11 @@
         </span>
         <span class="text-muted small">{{ last_verification.duration_sec }} s</span>
       </div>
-      {% if last_verification.items %}
+      {% if last_verification.checks %}
       <div class="card-body p-0 max-h-320 overflow-auto">
         <table class="table table-dark table-sm mb-0">
           <tbody>
-            {% for it in last_verification.items[-40:] %}
+            {% for it in last_verification.checks[-40:] %}
             <tr>
               <td class="text-muted small">{{ it.category }}</td>
               <td>{{ it.name }}</td>
