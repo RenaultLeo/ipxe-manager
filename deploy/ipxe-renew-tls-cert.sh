@@ -11,7 +11,7 @@ fi
 
 HOST="${1:-$(hostname -I | awk '{print $1}')}"
 SSL_DIR="${SSL_DIR:-/srv/ipxe/ssl}"
-DAYS="${TLS_CERT_DAYS:-3650}"
+DAYS="${TLS_CERT_DAYS:-730}"
 
 if [ -z "$HOST" ]; then
   echo "IP/FQDN requis." >&2
