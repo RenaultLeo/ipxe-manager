@@ -31,7 +31,7 @@ window.IpxeConfirm = (function () {
   }
 
   function show(opts) {
-    if (!modal) return Promise.resolve(false);
+    if (!modal) return false;
     confirmed = false;
     titleEl.textContent = opts.title || defaults.title || 'Confirmation';
     bodyEl.textContent = opts.body || '';
@@ -44,6 +44,7 @@ window.IpxeConfirm = (function () {
   }
 
   function ask(opts) {
+    if (!modal) return Promise.resolve(false);
     return new Promise(function (resolve) {
       pendingResolve = resolve;
       show(opts || {});
@@ -166,7 +167,7 @@ function insertTemplate(type) {
   }
 }
 
-async function confirmDelete(msg) {
+async function ipxeConfirmDelete(msg) {
   return IpxeConfirm.ask({
     body: msg || 'Confirmer la suppression ?',
     variant: 'danger',

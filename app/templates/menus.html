@@ -219,10 +219,14 @@
                         onclick="openScriptEditor({{ s.boot_entry_id }})">
                   <i class="bi bi-pencil me-1"></i>{{ t('menu.btn_edit') }}
                 </button>
-                <button class="btn btn-outline-danger btn-sm" type="button"
-                        onclick="confirmDelete({{ s.boot_entry_id }}, {{ s.filename|tojson }})">
-                  <i class="bi bi-trash me-1"></i>{{ t('menu.btn_delete') }}
-                </button>
+                <form method="post" action="/ipxe-menus/custom/{{ s.boot_entry_id }}/delete" class="d-inline m-0"
+                      data-confirm="{{ t('menu.confirm_delete_script', filename=s.filename)|e }}"
+                      data-confirm-title="{{ t('menu.btn_delete')|e }}"
+                      data-confirm-variant="danger">
+                  <button class="btn btn-outline-danger btn-sm" type="submit">
+                    <i class="bi bi-trash me-1"></i>{{ t('menu.btn_delete') }}
+                  </button>
+                </form>
               </div>
             </td>
           </tr>
@@ -281,10 +285,6 @@
               </div>
             </td>
           </tr>
-
-          <!-- Formulaire de suppression caché -->
-          <form id="delete-form-{{ s.boot_entry_id }}" method="post"
-                action="/ipxe-menus/custom/{{ s.boot_entry_id }}/delete" class="d-none"></form>
 
           {% endfor %}
         </tbody>
@@ -393,7 +393,6 @@
 
 {% block scripts %}
 <script>
-const MSG_DEL_SCRIPT = {{ t('menu.confirm_delete_script')|tojson }};
 const MSG_DEL_CHAIN = {{ t('menu.confirm_delete_chain')|tojson }};
 const CHAIN_UI = {
   titleEnable: {{ t('menu.toggle_enable')|tojson }},
@@ -438,14 +437,6 @@ function switchPanelMode(id, mode) {
     edit.classList.remove('d-none');
     btnV.classList.remove('active');
     btnE.classList.add('active');
-  }
-}
-
-async function confirmDelete(id, filename) {
-  const msg = MSG_DEL_SCRIPT.replace('{filename}', filename);
-  const ok = await window.IpxeConfirm.ask({ body: msg, variant: 'danger' });
-  if (ok) {
-    document.getElementById('delete-form-' + id).submit();
   }
 }
 
