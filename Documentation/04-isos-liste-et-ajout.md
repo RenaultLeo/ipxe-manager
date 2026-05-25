@@ -63,7 +63,6 @@ Bouton depuis la liste ISOs ou le tableau de bord.
 - Texte d’aide : l’extraction des fichiers de boot pourra être lancée **depuis la fiche version** (pas forcément pendant l’upload).
 - **Doublon** : si même type + libellé + nom de fichier ISO → badge avertissement avant envoi.
 
-**Fedora** : case à cocher **ISO Fedora Live (Workstation)** — change le mode de boot (squashfs Live vs inst.stage2 netinst).
 
 > ### 📷 Emplacement capture
 > **Fichier suggéré :** `Documentation/images/04-isos-upload-iso-section.png`
@@ -79,7 +78,7 @@ Bouton depuis la liste ISOs ou le tableau de bord.
 Selon le type d’OS, des sections apparaissent :
 
 - **Linux** : vmlinuz, initrd, modloop (Alpine), dépôt APK personnalisé (Alpine).
-- **Windows** : boot.wim (BCD/boot.sdi souvent issus de l’ISO si vous en uploadez une).
+- **Windows** : upload de l'iso obligatoire.
 
 **Ubuntu** : choix variante **Server** vs **Desktop** ; message indiquant extraction complète type casper.
 
@@ -89,13 +88,6 @@ Selon le type d’OS, des sections apparaissent :
 > **Description de la photo :** Type Linux sélectionné (ex. Debian) : champs vmlinuz / initrd visibles.
 >
 > **Éléments à cadrer :** Section « Fichiers boot », noms des champs fichier.
-
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/04-isos-upload-windows-bootwim.png`
->
-> **Description de la photo :** Type Windows : champ boot.wim mis en avant, texte sur BCD/boot.sdi automatiques depuis ISO.
->
-> **Éléments à cadrer :** Champ boot.wim, encadré d’information Windows.
 
 ---
 

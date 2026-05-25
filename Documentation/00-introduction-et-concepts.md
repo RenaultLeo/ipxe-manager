@@ -22,13 +22,6 @@ Les opérations longues (extraction d’ISO, compilation firmware, régénérati
 
 Le firmware TFTP est **petit** ; une fois iPXE lancé, tout le reste passe par **HTTP** (plus simple à mettre à jour).
 
-> ### 📷 Emplacement capture
-> **Fichier suggéré :** `Documentation/images/00-architecture-schema.png`
->
-> **Description de la photo :** Schéma dessiné (Draw.io, Excalidraw ou PowerPoint) montrant : PC client → DHCP → TFTP (firmware) → HTTP (menu + fichiers). Pas une capture d’écran obligatoire — un schéma clair suffit.
->
-> **Éléments à cadrer :** Flèches « DHCP », « TFTP », « HTTP », IP du serveur iPXE Manager.
-
 ![Architecture PXE — TFTP puis HTTP](images/00-architecture-schema.png)
 
 ---
