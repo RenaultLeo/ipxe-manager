@@ -21,11 +21,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_URL="https://${HOST}"
 
 echo "==> [1/3] Certificats TLS (OpenSSL)…"
-bash "$SCRIPT_DIR/generate-tls-cert.sh" "$HOST"
+SSL_DIR="${SSL_DIR:-/srv/ipxe/ssl}"
+if [ -f "$SSL_DIR/server.crt" ] && command -v openssl >/dev/null 2>&1; then
+  if ! openssl x509 -in "$SSL_DIR/server.crt" -noout -text 2>/dev/null | grep -qF "$HOST"; then
+    echo "    Certificat serveur sans SAN pour $HOST — renouvellement."
+    bash "$SCRIPT_DIR/ipxe-renew-tls-cert.sh" "$HOST"
+  else
+    bash "$SCRIPT_DIR/generate-tls-cert.sh" "$HOST"
+  fi
+else
+  bash "$SCRIPT_DIR/generate-tls-cert.sh" "$HOST"
+fi
+chmod 644 "$SSL_DIR/ca.crt" "$SSL_DIR/server.crt" 2>/dev/null || true
+chown "${APP_USER:-ipxe}:${APP_USER:-ipxe}" "$SSL_DIR/ca.crt" 2>/dev/null || true
 
 if [ ! -f /srv/ipxe/ssl/server.crt ]; then
   echo "Échec : /srv/ipxe/ssl/server.crt absent." >&2
   exit 1
+fi
+
+echo "==> Test TLS 1.2 (doit afficher Verify return code: 0)…"
+if ! openssl s_client -connect "${HOST}:443" -servername "$HOST" \
+  -CAfile "$SSL_DIR/ca.crt" -tls1_2 </dev/null 2>&1 | grep -qE 'Verify return code: 0|Verification: OK'; then
+  echo "ATTENTION : TLS KO depuis ce serveur — corriger avant le boot PXE." >&2
 fi
 
 echo "==> [2/3] Nginx HTTPS…"

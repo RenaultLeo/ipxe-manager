@@ -216,13 +216,71 @@ def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
         )
 
 
-def ipxe_tls_make_args() -> list[str]:
-    """CERT= et TRUST= pour make (derniers arguments de la ligne make)."""
+def _purge_tls_build_artifacts(make_dir: Path, bin_subdir: str, logs: list[str]) -> None:
+    """Force le re-lien des certificats TRUST= (comme embedded.*)."""
+    bin_dir = make_dir / bin_subdir
+    if not bin_dir.is_dir():
+        return
+    removed: list[str] = []
+    for path in sorted(bin_dir.iterdir()):
+        name = path.name
+        if name.startswith((".certificate", ".certificates", ".trusted", ".private_key")):
+            path.unlink(missing_ok=True)
+            removed.append(name)
+    if removed:
+        logs.append(f"Purge {bin_subdir}/ certs : {', '.join(removed)}")
+
+
+def prepare_make_tls_certificates(make_dir: Path, logs: list[str]) -> list[str]:
+    """
+    Copie CA + cert serveur dans src/ (chemins relatifs pour make TRUST=/CERT=).
+    iPXE embarque mal les certificats si les chemins absolus ou le cache certstore est périmé.
+    """
+    ssl_dir = Path(settings.ssl_dir)
     ca = settings.tls_ca_cert_path
+    server = ssl_dir / "server.crt"
     if not ca.is_file():
-        return []
-    ca_s = str(ca.resolve())
-    return [f"CERT={ca_s}", f"TRUST={ca_s}"]
+        raise RuntimeError(
+            f"{ca} absent — lancez : sudo bash deploy/generate-tls-cert.sh [IP]"
+        )
+    if not server.is_file():
+        raise RuntimeError(
+            f"{server} absent — lancez : sudo bash deploy/generate-tls-cert.sh [IP]"
+        )
+    if not os.access(ca, os.R_OK) or not os.access(server, os.R_OK):
+        raise RuntimeError(
+            "Certificats illisibles par l'utilisateur de compilation — "
+            f"chmod/chown sur {ssl_dir} (utilisateur ipxe doit lire ca.crt)."
+        )
+
+    try:
+        proc = subprocess.run(
+            ["openssl", "verify", "-CAfile", str(ca), str(server)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "server.crt n'est pas signé par ca.crt — régénérez les certificats "
+                f"(deploy/generate-tls-cert.sh ou enable-https.sh)."
+            )
+        logs.append(f"openssl verify OK : {proc.stdout.strip()}")
+    except FileNotFoundError:
+        logs.append("openssl verify ignoré (openssl absent).")
+
+    dest_ca = make_dir / "ipxe-ca.crt"
+    dest_srv = make_dir / "ipxe-server.crt"
+    shutil.copy2(ca, dest_ca)
+    shutil.copy2(server, dest_srv)
+    dest_ca.chmod(0o644)
+    dest_srv.chmod(0o644)
+    logs.append(f"Certificats copiés dans {make_dir} (ipxe-ca.crt, ipxe-server.crt).")
+
+    # TRUST : CA racine + cert serveur (évite 0216eb3c si chaîne/SAN délicate)
+    trust = "ipxe-ca.crt,ipxe-server.crt"
+    cert = "ipxe-ca.crt,ipxe-server.crt"
+    return [f"CERT={cert}", f"TRUST={trust}"]
 
 
 def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
@@ -355,13 +413,15 @@ def compile_ipxe_firmware(
     logs.append("Patch config iPXE (DEBUG / LOG_LEVEL)…")
     patch_ipxe_debug_support(src_dir, logs, enable=settings.ipxe_debug)
     completed_steps.append("patch_ipxe_debug")
-    make_tail = [*ipxe_tls_make_args(), *ipxe_make_debug_args()]
+
+    make_tail: list[str] = []
+    if menu_url.lower().startswith("https://"):
+        make_tail.extend(prepare_make_tls_certificates(make_dir, logs))
+    make_tail.extend(ipxe_make_debug_args())
     if tls_args := [a for a in make_tail if a.startswith("TRUST=")]:
         logs.append(f"Compilation avec {' '.join(tls_args)}.")
     elif menu_url.lower().startswith("https://"):
-        logs.append(
-            f"Attention : {settings.tls_ca_cert_path} absent — HTTPS sans TRUST custom."
-        )
+        raise RuntimeError("HTTPS demandé mais TRUST= non configuré (ca.crt manquant).")
     if settings.ipxe_debug:
         logs.append(
             "Mode debug : scripts (loglevel 7) + LOG_LEVEL dans general.h "
@@ -385,6 +445,8 @@ def compile_ipxe_firmware(
 
     kpxe_src = make_dir / "bin" / "undionly.kpxe"
     _purge_embed_build_artifacts(make_dir, "bin", logs)
+    if menu_url.lower().startswith("https://"):
+        _purge_tls_build_artifacts(make_dir, "bin", logs)
     if kpxe_src.exists():
         kpxe_src.unlink()
         logs.append("Supprimé avant make : bin/undionly.kpxe")
@@ -398,6 +460,8 @@ def compile_ipxe_firmware(
 
     progress("compile_efi", completed_steps, logs)
     _purge_embed_build_artifacts(make_dir, "bin-x86_64-efi", logs)
+    if menu_url.lower().startswith("https://"):
+        _purge_tls_build_artifacts(make_dir, "bin-x86_64-efi", logs)
     logs.append("Compilation snponly.efi (UEFI SNP)…")
     run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_tail], make_dir)
     logs.append("Compilation ipxe.efi (UEFI bare)…")
