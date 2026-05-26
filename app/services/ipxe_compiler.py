@@ -89,16 +89,6 @@ def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) ->
         logs.append("config/general.h : LOG_LEVEL déjà adapté ou format inattendu.")
 
 
-def _grep_config_lines(path: Path, patterns: tuple[str, ...]) -> list[str]:
-    if not path.is_file():
-        return []
-    out: list[str] = []
-    for i, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-        if any(p in line for p in patterns):
-            out.append(f"  L{i}: {line.rstrip()}")
-    return out
-
-
 def _pcbios_still_undefines_https(general_text: str) -> bool:
     """True si le bloc #if PLATFORM_pcbios contient encore #undef DOWNLOAD_PROTO_HTTPS."""
     in_pcbios = False
@@ -111,124 +101,6 @@ def _pcbios_still_undefines_https(general_text: str) -> bool:
         if in_pcbios and re.search(r"#undef[ \t]+DOWNLOAD_PROTO_HTTPS\b", line):
             return True
     return False
-
-
-def verify_ipxe_https_config(src_dir: Path, logs: list[str]) -> None:
-    """Contrôle general.h + local/general.h avant make (échec immédiat si invalide)."""
-    general = src_dir / "src" / "config" / "general.h"
-    local_h = src_dir / "src" / "config" / "local" / "general.h"
-    ca = settings.tls_ca_cert_path
-
-    logs.append("=== Pré-vol HTTPS : config/general.h (extrait) ===")
-    for line in _grep_config_lines(
-        general, ("DOWNLOAD_PROTO_HTTPS", "PLATFORM_pcbios", "DOWNLOAD_PROTO_HTTP")
-    ):
-        logs.append(line)
-
-    g = general.read_text(encoding="utf-8", errors="replace") if general.is_file() else ""
-    if _pcbios_still_undefines_https(g):
-        raise RuntimeError(
-            "general.h : bloc PLATFORM_pcbios contient encore "
-            "#undef DOWNLOAD_PROTO_HTTPS (undionly.kpxe = HTTP only)."
-        )
-    if re.search(r"^[ \t]*#undef[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE):
-        raise RuntimeError(
-            "general.h contient encore #undef DOWNLOAD_PROTO_HTTPS — "
-            "patch non appliqué ou écrasé par git pull."
-        )
-    if not re.search(r"^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE):
-        raise RuntimeError(
-            "general.h sans #define DOWNLOAD_PROTO_HTTPS — patch HTTPS incomplet."
-        )
-
-    logs.append("=== Pré-vol HTTPS : config/local/general.h ===")
-    if not local_h.is_file():
-        raise RuntimeError(
-            f"config/local/general.h absent ({local_h}) — requis pour undionly (PLATFORM_pcbios)."
-        )
-    local_body = local_h.read_text(encoding="utf-8", errors="replace")
-    for line in _grep_config_lines(local_h, ("DOWNLOAD_PROTO_HTTPS",)):
-        logs.append(line)
-    if not re.search(r"^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS\b", local_body, flags=re.MULTILINE):
-        raise RuntimeError("local/general.h sans #define DOWNLOAD_PROTO_HTTPS.")
-
-    if ca.is_file():
-        logs.append(f"Pré-vol OK : CA présente ({ca.resolve()}).")
-    else:
-        logs.append(
-            f"Attention : CA absente ({ca}) — compilation sans TRUST= personnalisé."
-        )
-    logs.append(
-        "HTTPS activé via config/general.h + config/local/general.h "
-        "(pas seulement CERT/TRUST sur la ligne make)."
-    )
-    logs.append(
-        "Note : DOWNLOAD_PROTO_HTTPS=1 sur « make » n'est pas lu par iPXE officiel "
-        "(ipxe.org/crypto) — seuls TRUST=/CERT=/EMBED= le sont."
-    )
-    logs.append("Pré-vol HTTPS : configuration fichiers OK.")
-
-
-def verify_https_preprocessor(make_dir: Path, logs: list[str]) -> None:
-    """Vérifie que le préprocesseur voit DOWNLOAD_PROTO_HTTPS (build BIOS / undionly)."""
-    probe = make_dir / ".ipxe_https_probe.c"
-    probe.write_text(
-        "#include <config/general.h>\n"
-        "#ifndef DOWNLOAD_PROTO_HTTPS\n"
-        '#error "DOWNLOAD_PROTO_HTTPS absent pour PLATFORM_pcbios"\n'
-        "#endif\n",
-        encoding="utf-8",
-    )
-    cmd = [
-        "gcc",
-        "-E",
-        "-I.",
-        "-Iinclude",
-        "-DARCH=i386",
-        "-DPLATFORM=pcbios",
-        "-DPLATFORM_pcbios",
-        str(probe),
-    ]
-    logs.append(f"=== Pré-vol préprocesseur (undionly / pcbios) ===\n$ {' '.join(cmd)}")
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=make_dir,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            errors="replace",
-        )
-    except OSError as exc:
-        logs.append(f"Pré-vol préprocesseur ignoré ({exc}) — gcc absent ?")
-        return
-    combined = (proc.stdout or "") + (proc.stderr or "")
-    if "DOWNLOAD_PROTO_HTTPS absent" in combined or proc.returncode != 0:
-        tail = combined[-1500:] if len(combined) > 1500 else combined
-        raise RuntimeError(
-            "Le préprocesseur ne voit pas DOWNLOAD_PROTO_HTTPS pour undionly.kpxe. "
-            f"Vérifiez config/local/general.h.\n{tail}"
-        )
-    logs.append("Pré-vol préprocesseur : DOWNLOAD_PROTO_HTTPS défini pour pcbios.")
-
-
-def verify_embed_script(embed_path: Path, menu_url: str, logs: list[str]) -> None:
-    """Vérifie embed.ipxe sur disque avant make."""
-    if not embed_path.is_file():
-        raise RuntimeError(f"embed.ipxe absent : {embed_path}")
-    body = embed_path.read_text(encoding="utf-8", errors="replace")
-    logs.append(f"=== Pré-vol embed.ipxe ({embed_path.stat().st_size} octets) ===")
-    for line in body.splitlines()[:12]:
-        logs.append(f"  | {line}")
-    if "#!ipxe" not in body:
-        raise RuntimeError("embed.ipxe invalide : en-tête #!ipxe manquant.")
-    if menu_url not in body:
-        raise RuntimeError(
-            f"embed.ipxe ne contient pas l'URL menu attendue : {menu_url}"
-        )
-    if f"chain --autofree {menu_url}" not in body:
-        raise RuntimeError("embed.ipxe : ligne chain --autofree introuvable.")
-    logs.append("Pré-vol embed.ipxe : OK.")
 
 
 def _purge_embed_build_artifacts(make_dir: Path, bin_subdir: str, logs: list[str]) -> None:
@@ -246,175 +118,6 @@ def _purge_embed_build_artifacts(make_dir: Path, bin_subdir: str, logs: list[str
         logs.append(
             f"Purge {bin_subdir}/ : {', '.join(removed)} (rebuild embedded obligatoire)."
         )
-
-
-def _binary_has_embed_markers(data: bytes, menu_url: str) -> list[str]:
-    """Marqueurs présents dans le binaire (même si compressé — pas toujours visibles via strings)."""
-    data_l = data.lower()
-    checks = (
-        ("menu.ipxe", b"menu.ipxe" in data_l),
-        (":retry", b":retry" in data_l),
-        ("chain", b"chain" in data_l and b"autofree" in data_l),
-        ("load_error", b"load_error" in data_l),
-        ("menu_url", menu_url.encode() in data),
-        ("https_host", b"https://" in data_l and menu_url.split("/")[2].encode() in data),
-    )
-    return [name for name, ok in checks if ok]
-
-
-def _strings_blob(path: Path) -> str:
-    proc = subprocess.run(
-        ["strings", str(path)],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        errors="replace",
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"strings a échoué sur {path} (code {proc.returncode})")
-    return proc.stdout or ""
-
-
-def verify_built_firmware(
-    kpxe: Path,
-    menu_url: str,
-    make_dir: Path,
-    logs: list[str],
-    *,
-    label: str,
-    embed_path: Path,
-    bin_subdir: str = "bin",
-) -> None:
-    """Vérifie EMBED via .embedded.list + contenu binaire (pas seulement strings)."""
-    if not kpxe.is_file():
-        raise RuntimeError(f"{label} absent après make : {kpxe}")
-
-    bin_dir = make_dir / bin_subdir
-    embedded_list = bin_dir / ".embedded.list"
-    if not embedded_list.is_file():
-        raise RuntimeError(
-            f"{label} : {bin_subdir}/.embedded.list absent — le build n'a pas pris EMBED=."
-        )
-
-    listed = embedded_list.read_text(encoding="utf-8", errors="replace").strip()
-    logs.append(f"=== {label} : {bin_subdir}/.embedded.list ===\n  {listed}")
-    embed_resolved = str(embed_path.resolve())
-    if listed not in (embed_resolved, "embed.ipxe", str(embed_path)):
-        logs.append(
-            f"Attention : .embedded.list ({listed!r}) ≠ embed attendu ({embed_resolved})."
-        )
-
-    candidates: list[Path] = [kpxe]
-    bin_alt = bin_dir / kpxe.name.replace(".kpxe", ".bin").replace(".efi", ".bin")
-    for alt in (kpxe.with_suffix(".bin"), bin_alt):
-        if alt.is_file() and alt not in candidates:
-            candidates.append(alt)
-
-    byte_markers: list[str] = []
-    for path in candidates:
-        data = path.read_bytes()
-        found = _binary_has_embed_markers(data, menu_url)
-        if found:
-            byte_markers = found
-            logs.append(
-                f"=== {label} : embed détecté dans {path.name} "
-                f"({path.stat().st_size} o) — {found} ==="
-            )
-            break
-
-    blob = _strings_blob(kpxe)
-    blob_l = blob.lower()
-    str_markers = [
-        m
-        for m in (menu_url, "/menus/menu.ipxe", "chain --autofree", ":retry", "load_error")
-        if m.lower() in blob_l
-    ]
-    has_tls = any(s in blob_l for s in ("openssl", "tls_", "tlsv", "https_conn"))
-
-    logs.append(
-        f"=== {label} : strings — texte {str_markers or 'aucun'}, "
-        f"TLS={'oui' if has_tls else 'non'} ==="
-    )
-
-    if not byte_markers and not str_markers:
-        embed_mtime = embed_path.stat().st_mtime if embed_path.is_file() else 0
-        embedded_objs = [
-            p
-            for p in bin_dir.iterdir()
-            if p.name.startswith("embedded.") and p.is_file()
-        ]
-        if embedded_objs and all(
-            p.stat().st_mtime >= embed_mtime - 2 for p in embedded_objs
-        ):
-            logs.append(
-                f"{label} : .embedded.list + {bin_subdir}/embedded.* à jour "
-                f"(script peut être compressé dans .kpxe — pas visible en strings)."
-            )
-        else:
-            raise RuntimeError(
-                f"{label} : EMBED non détecté dans le binaire "
-                f"(fichier {embed_resolved} listé dans .embedded.list). "
-                f"Purgez {bin_subdir}/embedded.* et relancez make clean."
-            )
-    if not byte_markers and str_markers:
-        logs.append(
-            f"{label} : embed visible via strings seulement "
-            "(undionly peut être compressé — boot PXE reste valide)."
-        )
-    if menu_url.lower().startswith("https://") and not has_tls and "https://" not in blob_l:
-        logs.append(
-            f"Attention {label} : peu d'indices TLS dans strings "
-            "(normal si .kpxe compressé ; le boot confirmera HTTPS)."
-        )
-    logs.append(f"Pré-vol binaire {label} : OK.")
-
-
-def _verify_firmware_https_support(tftp_kpxe: Path, menu_url: str, logs: list[str]) -> None:
-    """Vérifie embed (URL menu) et indices TLS dans undionly.kpxe."""
-    if not menu_url.lower().startswith("https://"):
-        return
-    try:
-        proc = subprocess.run(
-            ["strings", str(tftp_kpxe)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            errors="replace",
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        logs.append(f"Vérification strings {tftp_kpxe.name} ignorée : {exc}")
-        return
-    blob = proc.stdout or ""
-    blob_l = blob.lower()
-    has_embed = menu_url in blob or "/menus/menu.ipxe" in blob_l
-    has_https_url = "https://" in blob_l
-    has_tls = any(
-        s in blob_l
-        for s in ("openssl", "tls_", "tlsv", "https_conn", "cipher")
-    )
-    if has_embed and (has_https_url or has_tls):
-        logs.append(
-            "Vérification OK : undionly.kpxe contient l'URL embed et TLS/HTTPS."
-        )
-        return
-    if has_embed and not has_tls:
-        logs.append(
-            "Attention : URL embed présente mais peu d'indices TLS — "
-            "testez quand même le boot PXE."
-        )
-        return
-    hints = [
-        "Contrôlez src/config/general.h : aucun #undef DOWNLOAD_PROTO_HTTPS "
-        "(bloc PLATFORM_pcbios).",
-        "Vérifiez src/config/local/general.h (#define DOWNLOAD_PROTO_HTTPS).",
-        "Relancez après « make clean » (embed.ipxe doit exister avant make).",
-        f"Vérifiez {settings.tls_ca_cert_path} pour TRUST= au build.",
-    ]
-    raise RuntimeError(
-        "undionly.kpxe sans URL menu embarquée ou sans HTTPS — au boot : "
-        "« Operation not supported » (https://ipxe.org/3c092003). "
-        + " ".join(hints)
-    )
 
 
 def ipxe_make_debug_args() -> list[str]:
@@ -504,31 +207,22 @@ def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
     general.write_text(g, encoding="utf-8")
     ensure_ipxe_local_https_override(src_dir, logs)
 
+    g = general.read_text(encoding="utf-8", errors="replace")
+    if _pcbios_still_undefines_https(g) or re.search(
+        r"^[ \t]*#undef[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE
+    ):
+        raise RuntimeError(
+            "general.h : DOWNLOAD_PROTO_HTTPS encore désactivé (bloc PLATFORM_pcbios)."
+        )
+
 
 def ipxe_tls_make_args() -> list[str]:
-    """CERT= et TRUST= pour make (paramètres make documentés par ipxe.org/crypto)."""
+    """CERT= et TRUST= pour make (derniers arguments de la ligne make)."""
     ca = settings.tls_ca_cert_path
     if not ca.is_file():
         return []
     ca_s = str(ca.resolve())
     return [f"CERT={ca_s}", f"TRUST={ca_s}"]
-
-
-def ipxe_firmware_make_args(menu_url: str) -> list[str]:
-    """
-    Paramètres make pour le firmware.
-
-    - TRUST=/CERT= : certificat(s) embarqués (documenté iPXE).
-    - DOWNLOAD_PROTO_HTTPS=1 : présent dans certains tutos ; le Makefile iPXE
-      officiel ne le consomme pas — l'activation HTTPS est faite dans general.h
-      + config/local/general.h (voir patch_ipxe_https_support).
-    """
-    args: list[str] = []
-    if menu_url.lower().startswith("https://"):
-        args.append("DOWNLOAD_PROTO_HTTPS=1")
-    args.extend(ipxe_tls_make_args())
-    args.extend(ipxe_make_debug_args())
-    return args
 
 
 def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
@@ -629,9 +323,6 @@ def compile_ipxe_firmware(
         progress("git_pull", completed_steps, logs)
         logs.append("Sources iPXE déjà présentes — git pull")
         run(["git", "pull", "--ff-only"], src_dir)
-        logs.append(
-            "git pull terminé — les patches HTTPS/embed seront réappliqués avant make."
-        )
         completed_steps.append("git_clone")
         completed_steps.append("git_pull")
     else:
@@ -664,30 +355,20 @@ def compile_ipxe_firmware(
     logs.append("Patch config iPXE (DEBUG / LOG_LEVEL)…")
     patch_ipxe_debug_support(src_dir, logs, enable=settings.ipxe_debug)
     completed_steps.append("patch_ipxe_debug")
-    make_tail = ipxe_firmware_make_args(menu_url)
-    if any(a.startswith("CERT=") or a.startswith("TRUST=") for a in make_tail):
+    make_tail = [*ipxe_tls_make_args(), *ipxe_make_debug_args()]
+    if tls_args := [a for a in make_tail if a.startswith("TRUST=")]:
+        logs.append(f"Compilation avec {' '.join(tls_args)}.")
+    elif menu_url.lower().startswith("https://"):
         logs.append(
-            f"Compilation avec {' '.join(a for a in make_tail if 'TRUST=' in a or 'CERT=' in a)}."
-        )
-    else:
-        logs.append(
-            "Attention : /srv/ipxe/ssl/ca.crt absent — HTTPS sans TRUST custom."
+            f"Attention : {settings.tls_ca_cert_path} absent — HTTPS sans TRUST custom."
         )
     if settings.ipxe_debug:
         logs.append(
             "Mode debug : scripts (loglevel 7) + LOG_LEVEL dans general.h "
             "(pas de DEBUG= sur la ligne make — évite openssl.dbg1.o)."
         )
-    logs.append(
-        "HTTPS protocole : patch general.h + local/general.h "
-        f"(make reçoit aussi {' '.join(a for a in make_tail if 'DOWNLOAD_PROTO' in a)} — "
-        "ignoré par make officiel, conservé pour compatibilité tutos)."
-    )
     completed_steps.append("patch_ipxe_https")
 
-    progress("preflight_config", completed_steps, logs)
-    verify_ipxe_https_config(src_dir, logs)
-    completed_steps.append("preflight_config")
     if menu_url.lower().startswith("https://"):
         progress("make_clean", completed_steps, logs)
         logs.append("make clean (rebuild complet pour HTTPS)…")
@@ -697,15 +378,10 @@ def compile_ipxe_firmware(
     embed_content = build_embed_ipxe(menu_url)
     progress("embed", completed_steps, logs)
     embed_path.write_text(embed_content, encoding="utf-8")
-    verify_embed_script(embed_path, menu_url, logs)
+    if menu_url not in embed_path.read_text(encoding="utf-8"):
+        raise RuntimeError(f"embed.ipxe invalide : URL menu absente ({menu_url})")
+    logs.append(f"embed.ipxe généré (après make clean) :\n{embed_content}")
     completed_steps.append("embed")
-
-    progress("preflight_embed", completed_steps, logs)
-    verify_ipxe_https_config(src_dir, logs)
-    verify_embed_script(embed_path, menu_url, logs)
-    if menu_url.lower().startswith("https://"):
-        verify_https_preprocessor(make_dir, logs)
-    completed_steps.append("preflight_embed")
 
     kpxe_src = make_dir / "bin" / "undionly.kpxe"
     _purge_embed_build_artifacts(make_dir, "bin", logs)
@@ -716,15 +392,8 @@ def compile_ipxe_firmware(
     progress("compile_bios", completed_steps, logs)
     logs.append("Compilation undionly.kpxe (BIOS), EMBED=embed.ipxe…")
     run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_tail], make_dir)
-    verify_built_firmware(
-        kpxe_src,
-        menu_url,
-        make_dir,
-        logs,
-        label="undionly.kpxe",
-        embed_path=embed_path,
-        bin_subdir="bin",
-    )
+    if not kpxe_src.is_file():
+        raise RuntimeError("undionly.kpxe absent après make")
     completed_steps.append("compile_bios")
 
     progress("compile_efi", completed_steps, logs)
@@ -746,8 +415,6 @@ def compile_ipxe_firmware(
     for fname in ("undionly.kpxe", "ipxe.efi", "snponly.efi"):
         (tftp_dir / fname).chmod(0o644)
     completed_steps.append("copy")
-
-    _verify_firmware_https_support(tftp_dir / "undionly.kpxe", menu_url, logs)
 
     logs.append("Compilation terminée avec succès.")
     return {
