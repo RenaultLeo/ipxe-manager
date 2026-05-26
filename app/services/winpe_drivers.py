@@ -99,6 +99,13 @@ def _safe_filename(name: str) -> str:
     return base
 
 
+def _is_catalog_driver_dir(slug: str) -> bool:
+    """Dossiers internes (staging ZIP) exclus du catalogue deploy."""
+    if not slug or slug.startswith(".") or slug.startswith("_"):
+        return False
+    return slug != STAGING_DIRNAME
+
+
 def rebuild_catalog() -> dict[str, dict[str, Any]]:
     """Scanne ``drivers/*`` et réécrit ``drivers.json``."""
     root = drivers_root()
@@ -117,7 +124,7 @@ def rebuild_catalog() -> dict[str, dict[str, Any]]:
         if not entry.is_dir():
             continue
         slug = entry.name
-        if slug.startswith("."):
+        if not _is_catalog_driver_dir(slug):
             continue
         prev = existing_json.get(slug) or {}
         if isinstance(prev, dict) and prev.get("label"):
@@ -142,6 +149,8 @@ def rebuild_catalog() -> dict[str, dict[str, Any]]:
         if not path_s.startswith(f"{DRIVERS_DIRNAME}/"):
             continue
         slug = path_s.split("/", 1)[-1]
+        if not _is_catalog_driver_dir(slug):
+            continue
         folder = root / slug
         if folder.is_dir() and label not in catalog:
             catalog[label] = {
@@ -206,12 +215,18 @@ def catalog_for_template() -> list[dict[str, Any]]:
     for label, meta in sorted(cat.items(), key=lambda x: x[0].lower()):
         if not isinstance(meta, dict):
             continue
+        slug = str(meta.get("slug") or "")
+        if not slug:
+            path_s = (meta.get("path") or "").replace("\\", "/").strip("/")
+            slug = path_s.split("/")[-1] if path_s else ""
+        if not _is_catalog_driver_dir(slug):
+            continue
         rows.append(
             {
                 "label": label,
                 "path": meta.get("path") or "",
                 "count": int(meta.get("count") or 0),
-                "slug": meta.get("slug") or "",
+                "slug": slug,
             }
         )
     return rows
