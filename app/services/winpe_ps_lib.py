@@ -100,9 +100,20 @@ function Install-WinpeDrivers {{
     }}
     $imageRoot = $TargetOS.TrimEnd('\\')
     $dismArgs = @('/Image:' + $imageRoot, '/Add-Driver', '/Driver:' + $driverDir, '/Recurse')
+    foreach ($scratch in @('X:\', 'S:\', 'T:\')) {{
+        if (Test-Path -LiteralPath $scratch) {{
+            $dismArgs += '/ScratchDir:' + $scratch.TrimEnd('\\')
+            break
+        }}
+    }}
     $p = Start-Process -FilePath 'dism.exe' -ArgumentList $dismArgs -Wait -PassThru -NoNewWindow
     if ($p.ExitCode -ne 0) {{
-        Write-Host "DISM Add-Driver avertissement (code $($p.ExitCode)) — poursuite." -ForegroundColor Yellow
+        Write-Host "DISM Add-Driver echec (code $($p.ExitCode)) — profil $ProfileKey" -ForegroundColor Red
+        return $false
+    }}
+    $added = @(Get-ChildItem -LiteralPath $driverDir -Recurse -Filter '*.inf' -File -ErrorAction SilentlyContinue).Count
+    if (-not $Quiet) {{
+        Write-Host "DISM Add-Driver OK : $ProfileKey ($added .inf source, pilotes dans le magasin image)." -ForegroundColor Green
     }}
     return $true
 }}
@@ -820,32 +831,102 @@ function Get-UnattendIntlFieldValue {{
     return ''
 }}
 
+function Ensure-PnpSysprepForSpecialize {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    $settings = $Doc.SelectSingleNode("//u:settings[@pass='specialize']", $NsMgr)
+    if (-not $settings) {{
+        $settings = New-UnattendElement -Doc $Doc -LocalName 'settings' -NsUri $NsUri
+        $null = $settings.SetAttribute('pass', 'specialize')
+        $Doc.DocumentElement.AppendChild($settings) | Out-Null
+    }}
+    $comp = $settings.SelectSingleNode("u:component[@name='Microsoft-Windows-Pnp-Sysprep']", $NsMgr)
+    if (-not $comp) {{
+        $comp = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
+        $null = $comp.SetAttribute('name', 'Microsoft-Windows-Pnp-Sysprep')
+        $null = $comp.SetAttribute('processorArchitecture', 'amd64')
+        $null = $comp.SetAttribute('publicKeyToken', '31bf3856ad364e35')
+        $null = $comp.SetAttribute('language', 'neutral')
+        $null = $comp.SetAttribute('versionScope', 'nonSxS')
+        $settings.AppendChild($comp) | Out-Null
+    }}
+    Set-UnattendXmlText -Parent $comp -Doc $Doc -NsUri $NsUri -LocalName 'PersistAllDeviceInstalls' -Value 'true' | Out-Null
+    Set-UnattendXmlText -Parent $comp -Doc $Doc -NsUri $NsUri -LocalName 'DoNotCleanUpNonPresentDevices' -Value 'true' | Out-Null
+}}
+
+function Get-OfflineImageDefaultUiLanguage {{
+    param([string]$TargetOS = 'W:\\')
+    $imageRoot = $TargetOS.TrimEnd('\\')
+    if (-not (Test-Path -LiteralPath (Join-Path $imageRoot 'Windows'))) {{ return '' }}
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {{
+        $p = Start-Process -FilePath 'dism.exe' -ArgumentList @('/Image:' + $imageRoot, '/Get-Intl', '/English') -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tmp
+        if ($p.ExitCode -ne 0) {{ return '' }}
+        $lines = Get-Content -LiteralPath $tmp -ErrorAction SilentlyContinue
+        foreach ($line in @($lines)) {{
+            if ($line -match 'Default UI Language\s*:\s*(\S+)') {{ return $Matches[1].Trim() }}
+        }}
+    }} finally {{
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }}
+    return ''
+}}
+
+function Set-OfflineImageIntlDefaults {{
+    param(
+        [string]$TargetOS = 'W:\\',
+        [string]$LanguageId,
+        [string]$InputLocale = ''
+    )
+    if (-not $LanguageId) {{ return $true }}
+    $imageRoot = $TargetOS.TrimEnd('\\')
+    Write-Host "DISM Set-SKUIntlDefaults:$LanguageId (langue par defaut dans l image)..." -ForegroundColor Cyan
+    $p = Start-Process -FilePath 'dism.exe' -ArgumentList @('/Image:' + $imageRoot, '/Set-SKUIntlDefaults:' + $LanguageId, '/Quiet') -Wait -PassThru -NoNewWindow
+    if ($p.ExitCode -ne 0) {{
+        Write-Host "ERREUR Set-SKUIntlDefaults:$LanguageId (code $($p.ExitCode))." -ForegroundColor Red
+        Write-Host 'Verifiez Client-Language-Pack + build identique au master.' -ForegroundColor Red
+        return $false
+    }}
+    Write-Host "Set-SKUIntlDefaults:$LanguageId OK." -ForegroundColor Green
+    if ($InputLocale -and $InputLocale.Trim()) {{
+        $il = $InputLocale.Trim()
+        Write-Host "DISM Set-InputLocale:$il..." -ForegroundColor Cyan
+        $p2 = Start-Process -FilePath 'dism.exe' -ArgumentList @('/Image:' + $imageRoot, '/Set-InputLocale:' + $il, '/Quiet') -Wait -PassThru -NoNewWindow
+        if ($p2.ExitCode -ne 0) {{
+            Write-Host "Avertissement Set-InputLocale (code $($p2.ExitCode)) — clavier via unattend au boot." -ForegroundColor Yellow
+        }}
+    }}
+    $detected = Get-OfflineImageDefaultUiLanguage -TargetOS $TargetOS
+    if ($detected -and ($detected -ine $LanguageId)) {{
+        Write-Host "ERREUR verification Get-Intl : attendu $LanguageId, image=$detected" -ForegroundColor Red
+        return $false
+    }}
+    if ($detected) {{
+        Write-Host "Verification Get-Intl : Default UI Language = $detected" -ForegroundColor Green
+    }}
+    return $true
+}}
+
 function Apply-OfflineUnattendIntlToImage {{
     param(
         [string]$TargetOS = 'W:\\',
         [string]$UnattendPath,
-        [string]$LanguageId
+        [string]$LanguageId,
+        [string]$InputLocale = ''
     )
-    if (-not $UnattendPath -or -not (Test-Path -LiteralPath $UnattendPath)) {{ return }}
+    if (-not (Test-Path -LiteralPath (Join-Path ($TargetOS.TrimEnd('\\')) 'Windows'))) {{ return $false }}
+    if (-not $LanguageId) {{ return $true }}
     $imageRoot = $TargetOS.TrimEnd('\\')
-    if (-not (Test-Path -LiteralPath (Join-Path $imageRoot 'Windows'))) {{ return }}
-    Write-Host 'Application des reglages langue dans l image (DISM Apply-Unattend)...' -ForegroundColor Cyan
-    $args = @('/Image:' + $imageRoot, '/Apply-Unattend:' + $UnattendPath, '/Quiet')
-    $p = Start-Process -FilePath 'dism.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
-    if ($p.ExitCode -eq 0) {{
-        Write-Host 'DISM Apply-Unattend : langue gravee dans l image offline.' -ForegroundColor Green
-        return
-    }}
-    Write-Host "DISM Apply-Unattend code $($p.ExitCode) — tentative Set-SKUIntlDefaults:$LanguageId" -ForegroundColor Yellow
-    if ($LanguageId) {{
-        $p2 = Start-Process -FilePath 'dism.exe' -ArgumentList @('/Image:' + $imageRoot, '/Set-SKUIntlDefaults:' + $LanguageId, '/Quiet') -Wait -PassThru -NoNewWindow
-        if ($p2.ExitCode -eq 0) {{
-            Write-Host "DISM Set-SKUIntlDefaults:$LanguageId OK." -ForegroundColor Green
+    if ($UnattendPath -and (Test-Path -LiteralPath $UnattendPath)) {{
+        Write-Host 'Fusion unattend dans l image (DISM Apply-Unattend)...' -ForegroundColor Cyan
+        $args = @('/Image:' + $imageRoot, '/Apply-Unattend:' + $UnattendPath, '/Quiet')
+        $p = Start-Process -FilePath 'dism.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
+        if ($p.ExitCode -eq 0) {{
+            Write-Host 'DISM Apply-Unattend OK.' -ForegroundColor Green
         }} else {{
-            Write-Host "ATTENTION : le master n a peut-etre pas le pack de langue $LanguageId (cab/LXP)." -ForegroundColor Red
-            Write-Host 'Windows restera dans la langue de l image (ex. fr-FR) malgre UILanguage dans unattend.xml.' -ForegroundColor Red
+            Write-Host "DISM Apply-Unattend code $($p.ExitCode) — poursuite via Set-SKUIntlDefaults." -ForegroundColor Yellow
         }}
     }}
+    return (Set-OfflineImageIntlDefaults -TargetOS $TargetOS -LanguageId $LanguageId -InputLocale $InputLocale)
 }}
 
 function Update-OfflineUnattend {{
@@ -876,6 +957,7 @@ function Update-OfflineUnattend {{
     $keyboard = Get-KeyboardById -KeyboardId $kbId
     if ($uiLang -and $region -and $keyboard) {{
         Set-UnattendLocaleSettings -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -UiLang $uiLang -Region $region -InputLocale $keyboard.input_locale
+        Ensure-PnpSysprepForSpecialize -Doc $doc -NsMgr $nsMgr -NsUri $nsUri
         Write-Host "Langue interface : $($uiLang.label) ($($uiLang.id))" -ForegroundColor Green
         Write-Host "Region (formats) : $($region.label) ($($region.id))" -ForegroundColor Green
         Write-Host "Clavier : $($keyboard.label) ($($keyboard.input_locale))" -ForegroundColor Green
@@ -945,7 +1027,11 @@ function Update-OfflineUnattend {{
             Write-Host "Verification XML oobeSystem/UILanguage = $uiWritten" -ForegroundColor Cyan
         }}
         if ($uiLang) {{
-            Apply-OfflineUnattendIntlToImage -TargetOS $TargetOS -UnattendPath $path -LanguageId $uiLang.id
+            $intlOk = Apply-OfflineUnattendIntlToImage -TargetOS $TargetOS -UnattendPath $path -LanguageId $uiLang.id -InputLocale $keyboard.input_locale
+            if (-not $intlOk) {{
+                Write-Host 'ERREUR : langue non gravee dans l image offline (Set-SKUIntlDefaults / Get-Intl).' -ForegroundColor Red
+                return $false
+            }}
         }}
     }} elseif (-not $userRequested) {{
         Write-Host 'Aucune modification unattend (valeurs par defaut du master).' -ForegroundColor Gray
@@ -1351,7 +1437,12 @@ function Invoke-WinpeDeployment {{
     if ($p.ExitCode -ne 0) {{ throw 'DISM /Apply-Image a echoue.' }}
     Write-Host 'Image appliquee.' -ForegroundColor Green
 
-    Install-WinpeDrivers -TargetOS $TargetOS -ProfileKey $Choice.DriverProfileKey -Quiet | Out-Null
+    if ($Choice.DriverProfileKey) {{
+        $drvOk = Install-WinpeDrivers -TargetOS $TargetOS -ProfileKey $Choice.DriverProfileKey
+        if (-not $drvOk) {{
+            throw 'Injection pilotes echouee — verifiez le profil et les .inf sur le serveur.'
+        }}
+    }}
 
     $lpOk = Install-WinpeLanguagePacks -TargetOS $TargetOS -LanguageId $Choice.LanguageId
     if (-not $lpOk) {{

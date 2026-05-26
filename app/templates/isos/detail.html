@@ -441,6 +441,7 @@
           {% if request.query_params.get('msg') == 'winpe_drivers_uploaded' %}
           <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_drivers_uploaded') }}</div>
           {% endif %}
+          <div id="winpe-drivers-status-alert" class="alert alert-info py-2 small mb-3 d-none" role="status"></div>
           {% if winpe_smb_host %}
           <p class="small mb-3">
             <strong>{{ t('iso.winpe_drivers_smb') }}</strong>
@@ -456,6 +457,10 @@
                 id="winpe-drivers-form" class="row g-2 mb-4"
                 data-version-id="{{ version.id }}"
                 data-msg-progress="{{ t('iso.winpe_drivers_progress') }}"
+                data-msg-extract="{{ t('iso.winpe_drivers_zip_extract') }}"
+                data-msg-started="{{ t('iso.winpe_drivers_zip_started') }}"
+                data-msg-done="{{ t('iso.winpe_drivers_zip_done') }}"
+                data-msg-error="{{ t('iso.winpe_drivers_zip_error') }}"
                 data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
                 data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
             <div class="col-12">
@@ -481,8 +486,8 @@
             </div>
             <div class="col-12">
               <label class="form-label small mb-1">{{ t('iso.winpe_drivers_files') }}</label>
-              <input type="file" name="driver_files" id="winpe-drivers-files" class="form-control form-control-sm"
-                     multiple required>
+              <input type="file" name="driver_zip" id="winpe-drivers-files" class="form-control form-control-sm"
+                     accept=".zip,application/zip" required>
               <div class="form-text text-muted">{{ t('iso.winpe_drivers_files_hint') }}</div>
             </div>
             <div id="winpe-drivers-progress-wrap" class="col-12 d-none">
@@ -1271,12 +1276,17 @@
   var fileInput = document.getElementById('winpe-drivers-files');
   var versionId = form.dataset.versionId || '';
   var msgProgress = form.dataset.msgProgress || '…';
+  var msgExtract = form.dataset.msgExtract || '…';
+  var msgStarted = form.dataset.msgStarted || '';
+  var msgError = form.dataset.msgError || '';
   var msgXhr = form.dataset.msgXhr || 'Error';
   var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
   var wrap = document.getElementById('winpe-drivers-progress-wrap');
   var bar = document.getElementById('winpe-drivers-progress-bar');
   var pct = document.getElementById('winpe-drivers-progress-pct');
+  var plab = document.getElementById('winpe-drivers-progress-label');
   var btn = document.getElementById('winpe-drivers-submit-btn');
+  var statusAlert = document.getElementById('winpe-drivers-status-alert');
 
   function syncKind() {
     var isNew = kindSel && kindSel.value === 'new';
@@ -1290,10 +1300,65 @@
     syncKind();
   }
 
+  function setProgress(p, label) {
+    if (!wrap || !bar || !pct) return;
+    wrap.classList.remove('d-none');
+    var n = Math.max(0, Math.min(100, Math.round(p)));
+    bar.style.width = n + '%';
+    pct.textContent = n + '%';
+    if (plab && label) plab.textContent = label;
+  }
+
+  function showStatusAlert(text, kind) {
+    if (!statusAlert) return;
+    statusAlert.textContent = text;
+    statusAlert.className = 'alert py-2 small mb-3 alert-' + (kind || 'info');
+    statusAlert.classList.remove('d-none');
+  }
+
   function parseDetail(detail) {
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail) && detail.length && detail[0].msg) return detail[0].msg;
     return String(detail);
+  }
+
+  async function pollDriversZipJob(uploadId) {
+    setProgress(100, msgExtract);
+    if (btn) btn.disabled = true;
+    if (statusAlert && msgStarted) showStatusAlert(msgStarted, 'info');
+
+    var delay = 1500;
+    for (var attempt = 0; attempt < 7200; attempt++) {
+      await new Promise(function (r) { setTimeout(r, delay); });
+      try {
+        var r = await fetch('/isos/uploads/' + encodeURIComponent(uploadId) + '/status', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (r.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (!r.ok) continue;
+        var j = await r.json();
+        var st = (j.status || '').toLowerCase();
+        if (st === 'done') {
+          window.location.href = '/isos/' + versionId + '?msg=winpe_drivers_uploaded';
+          return;
+        }
+        if (st === 'error') {
+          if (btn) btn.disabled = false;
+          if (wrap) wrap.classList.add('d-none');
+          var err = (j.error_msg || '').trim() || msgError;
+          showStatusAlert(err, 'danger');
+          alert(err);
+          return;
+        }
+      } catch (e) { /* retry */ }
+    }
+    if (btn) btn.disabled = false;
+    if (wrap) wrap.classList.add('d-none');
+    alert(msgError);
   }
 
   form.addEventListener('submit', function (e) {
@@ -1313,25 +1378,26 @@
 
     var data = new FormData(form);
     var xhr = new XMLHttpRequest();
-    if (wrap) wrap.classList.remove('d-none');
     if (btn) btn.disabled = true;
 
     xhr.upload.addEventListener('progress', function (ev) {
-      if (ev.lengthComputable && bar && pct) {
-        var p = Math.round(ev.loaded / ev.total * 100);
-        bar.style.width = p + '%';
-        pct.textContent = p + '%';
+      if (ev.lengthComputable) {
+        setProgress(Math.round(ev.loaded / ev.total * 100), msgProgress);
       }
     });
 
     xhr.addEventListener('load', function () {
       if (xhr.status >= 200 && xhr.status < 400) {
-        var url = '/isos/' + versionId + '?msg=winpe_drivers_uploaded';
+        var uploadId = null;
         try {
           var j = JSON.parse(xhr.responseText || '{}');
-          if (j.redirect) url = j.redirect;
+          uploadId = j.upload_id;
         } catch (err) {}
-        window.location.href = url;
+        if (uploadId) {
+          pollDriversZipJob(uploadId);
+          return;
+        }
+        window.location.href = '/isos/' + versionId + '?msg=winpe_drivers_uploaded';
         return;
       }
       if (btn) btn.disabled = false;
@@ -1357,6 +1423,12 @@
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.send(data);
   });
+
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('msg') === 'winpe_drivers_zip_started') {
+    var pendingId = params.get('upload_id');
+    if (pendingId) pollDriversZipJob(pendingId);
+  }
 })();
 
 (function () {

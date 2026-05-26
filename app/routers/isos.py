@@ -1258,75 +1258,166 @@ async def upload_winpe_drivers(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    machine_kind: str = Form(...),
+    machine_key: str = Form(""),
+    new_machine_name: str = Form(""),
+    driver_zip: UploadFile = File(...),
 ):
-    """Upload multiple pilotes dans boot/drivers/<type>/ (catalogue drivers.json)."""
+    """Reçoit un ZIP pilotes, puis extraction Celery vers boot/drivers/<type>/."""
     redir = _auth(request)
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
+    user = get_session_user(request)
+    if not user:
+        raise HTTPException(401)
+
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_windows_version(version, lang)
 
-    form = await _read_multipart_form(request, lang=lang)
-    machine_kind = str(form.get("machine_kind") or "")
-    machine_key = str(form.get("machine_key") or "")
-    new_machine_name = str(form.get("new_machine_name") or "")
-    files = _upload_files_from_form(form, "driver_files")
-    if not files:
-        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_no_files"))
+    fname = Path(driver_zip.filename or "").name
+    if not fname.lower().endswith(".zip"):
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_zip_only"))
 
     mf0 = _minimum_free_near_upload_roots()
-    total_decl = 0
-    for f in files:
-        decl = _multipart_part_declared_bytes(f)
-        if isinstance(decl, int) and decl > 0:
-            total_decl += decl
-    blocked = _multipart_upload_blocked(lang, mf=mf0, expected_file_bytes=total_decl)
-    if blocked:
-        raise HTTPException(status_code=blocked[0], detail=blocked[1])
+    posted_ul: int | None = None
+    raw_cl = request.headers.get("content-length")
+    if raw_cl:
+        try:
+            n = int(raw_cl)
+            if n > 0:
+                posted_ul = n
+        except ValueError:
+            pass
+    blocked0 = _multipart_upload_blocked(
+        lang,
+        mf=mf0,
+        expected_file_bytes=0,
+        multipart_total_upper=posted_ul,
+    )
+    if blocked0:
+        raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
 
     from app.services.winpe_drivers import (
-        rebuild_catalog,
         resolve_machine_upload,
-        save_uploaded_driver_files,
+        staging_zip_part_path,
     )
 
     try:
-        label, slug, folder = resolve_machine_upload(
+        label, slug, _folder = resolve_machine_upload(
             machine_kind=machine_kind,
             machine_key=machine_key,
             new_machine_name=new_machine_name,
         )
-        n_saved, names = await save_uploaded_driver_files(folder, files)
-        if n_saved == 0:
-            raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_no_files"))
-        cat = rebuild_catalog()
-        meta = cat.get(label) or {}
-        payload = {
-            "ok": True,
-            "label": label,
-            "slug": slug,
-            "path": meta.get("path") or f"drivers/{slug}",
-            "count": int(meta.get("count") or 0),
-            "saved": names,
-            "redirect": f"/isos/{version_id}?msg=winpe_drivers_uploaded",
-        }
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
+
+    decl = _multipart_part_declared_bytes(driver_zip)
+    decl_need = decl if isinstance(decl, int) and decl > 0 else 0
+    blocked1 = _multipart_upload_blocked(
+        lang, mf=_minimum_free_near_upload_roots(), expected_file_bytes=decl_need
+    )
+    if blocked1:
+        raise HTTPException(status_code=blocked1[0], detail=blocked1[1])
+
+    upload_log = Upload(
+        filename=f"{label}|{slug}|{fname}",
+        file_type="winpe_drivers_zip",
+        size=0,
+        status="pending",
+        owner_user_id=user.id,
+        iso_version_id=version.id,
+    )
+    db.add(upload_log)
+    db.flush()
+
+    part_path = staging_zip_part_path(upload_log.id)
+    size = 0
+    pending_poll = 0
+    try:
+        if part_path.is_file():
+            part_path.unlink()
+        with open(part_path, "wb") as out:
+            while chunk := await driver_zip.read(1024 * 1024):
+                out.write(chunk)
+                size += len(chunk)
+                pending_poll += len(chunk)
+                if pending_poll >= _UPLOAD_DISK_POLL_EVERY_BYTES:
+                    pending_poll = 0
+                    blocked = _multipart_upload_blocked(
+                        lang,
+                        mf=_minimum_free_near_upload_roots(),
+                        expected_file_bytes=0,
+                    )
+                    if blocked:
+                        raise HTTPException(
+                            status_code=blocked[0], detail=blocked[1]
+                        )
+        if size == 0:
+            raise HTTPException(
+                400, detail=translate(lang, "iso.winpe_drivers_zip_empty")
+            )
+
+        upload_log.size = size
+        upload_log.status = "processing"
+        db.commit()
+
+        from app.tasks.jobs import upload_winpe_drivers_zip_task
+
+        upload_winpe_drivers_zip_task.delay(
+            upload_log.id,
+            label,
+            slug,
+            str(part_path.resolve()),
+        )
+    except HTTPException:
+        db.rollback()
+        try:
+            if part_path.is_file():
+                part_path.unlink()
+        except OSError:
+            pass
+        raise
     except OSError as exc:
+        db.rollback()
+        try:
+            if part_path.is_file():
+                part_path.unlink()
+        except OSError:
+            pass
         if exc.errno in (errno.ENOSPC, errno.EDQUOT):
             raise HTTPException(
                 507, detail=translate(lang, "iso.upload.disk_full")
             ) from exc
-        logger.warning("Erreur I/O upload drivers WinPE : %s", exc)
+        logger.warning("Erreur I/O upload ZIP pilotes : %s", exc)
+        raise HTTPException(
+            500, detail=translate(lang, "iso.upload.io_error")
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        try:
+            if part_path.is_file():
+                part_path.unlink()
+        except OSError:
+            pass
+        logger.exception("Échec réception ZIP pilotes")
         raise HTTPException(
             500, detail=translate(lang, "iso.upload.io_error")
         ) from exc
 
+    redirect_url = (
+        f"/isos/{version_id}?msg=winpe_drivers_zip_started&upload_id={upload_log.id}"
+    )
     accept = (request.headers.get("accept") or "").lower()
     if "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JSONResponse(payload)
-    return RedirectResponse(payload["redirect"], status_code=302)
+        return JSONResponse(
+            {
+                "ok": True,
+                "upload_id": upload_log.id,
+                "redirect": redirect_url,
+            }
+        )
+    return RedirectResponse(redirect_url, status_code=302)
 
 
 @router.get("/{version_id}/winpe-language-packs/catalog")

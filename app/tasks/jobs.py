@@ -231,6 +231,84 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         db.close()
 
 
+@celery.task(bind=True, name="upload_winpe_drivers_zip", soft_time_limit=3600, time_limit=3900)
+def upload_winpe_drivers_zip_task(
+    self,
+    upload_id: int,
+    label: str,
+    slug: str,
+    part_path: str,
+):
+    """Dézippe une archive pilotes dans boot/drivers/<slug>/ et met à jour drivers.json."""
+    from app.services.winpe_drivers import (
+        process_driver_zip_upload,
+        staging_zip_part_path,
+    )
+
+    db = SessionLocal()
+    part = Path(part_path)
+    try:
+        upload: Upload | None = db.query(Upload).get(upload_id)
+        if not upload:
+            raise ValueError(f"Upload {upload_id} introuvable")
+
+        upload.status = "processing"
+        upload.task_id = self.request.id
+        db.commit()
+
+        if not part.is_file():
+            raise FileNotFoundError(f"Archive ZIP temporaire absente : {part}")
+
+        result = process_driver_zip_upload(
+            zip_path=part,
+            label=label,
+            slug=slug,
+        )
+
+        upload.status = "done"
+        upload.size = part.stat().st_size
+        upload.filename = f"{label}|{slug}|{part.name}"
+        upload.error_msg = json.dumps(
+            {
+                "extracted_files": result["extracted_files"],
+                "inf_count": result["inf_count"],
+                "path": result["path"],
+            },
+            ensure_ascii=False,
+        )
+        db.commit()
+        logger.info(
+            "Pilotes ZIP OK — upload %s profil %s (%s .inf, %s fichiers)",
+            upload_id,
+            label,
+            result["inf_count"],
+            result["extracted_files"],
+        )
+        return result
+    except Exception as exc:
+        logger.exception("upload_winpe_drivers_zip_task failed (upload %s)", upload_id)
+        db.rollback()
+        try:
+            upload = db.query(Upload).get(upload_id)
+            if upload:
+                upload.status = "error"
+                upload.error_msg = str(exc)[:4000]
+                db.commit()
+        except Exception:
+            pass
+        raise self.retry(exc=exc, countdown=0, max_retries=0)
+    finally:
+        try:
+            if part.is_file():
+                part.unlink()
+            alt = staging_zip_part_path(upload_id)
+            if alt.is_file() and alt != part:
+                alt.unlink()
+        except OSError:
+            pass
+        db.close()
+
+
 @celery.task(bind=True, name="upload_winpe_install", soft_time_limit=7200, time_limit=7500)
 def upload_winpe_install_task(
     self,

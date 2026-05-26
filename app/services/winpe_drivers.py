@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 DRIVERS_DIRNAME = "drivers"
 CATALOG_FILENAME = "drivers.json"
+STAGING_DIRNAME = "_staging"
+MAX_ZIP_MEMBER_BYTES = 512 * 1024 * 1024
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,80}$")
 _DRIVER_EXTENSIONS = {
     ".inf",
@@ -31,6 +35,16 @@ def drivers_root() -> Path:
     root = settings.boot_dir / DRIVERS_DIRNAME
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def staging_root() -> Path:
+    path = drivers_root() / STAGING_DIRNAME
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def staging_zip_part_path(upload_id: int) -> Path:
+    return staging_root() / f"{upload_id}.zip.part"
 
 
 def catalog_path() -> Path:
@@ -143,6 +157,27 @@ def rebuild_catalog() -> dict[str, dict[str, Any]]:
     return catalog
 
 
+def upsert_catalog_label(label: str, slug: str) -> dict[str, Any]:
+    """Force la clé catalogue (libellé wizard) après upload ZIP."""
+    folder = folder_for_slug(slug)
+    cat = load_catalog()
+    for key in list(cat.keys()):
+        meta = cat.get(key)
+        if isinstance(meta, dict) and meta.get("slug") == slug and key != label:
+            del cat[key]
+    entry = {
+        "path": rel_folder_path(slug),
+        "count": count_driver_files(folder),
+        "slug": slug,
+    }
+    cat[label] = entry
+    catalog_path().write_text(
+        json.dumps(cat, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return entry
+
+
 def load_catalog() -> dict[str, dict[str, Any]]:
     if not catalog_path().is_file():
         return rebuild_catalog()
@@ -218,6 +253,79 @@ def resolve_machine_upload(
         return key, slug, folder
 
     raise ValueError("Mode de sélection de machine invalide.")
+
+
+def _zip_member_is_junk(name: str) -> bool:
+    norm = (name or "").replace("\\", "/").lstrip("/")
+    if not norm or norm.endswith("/"):
+        return True
+    parts = norm.split("/")
+    if any(p in (".", "..") or p.startswith(".") for p in parts):
+        return True
+    if norm.startswith("__MACOSX/"):
+        return True
+    return False
+
+
+def safe_extract_zip_archive(zip_path: Path, dest_folder: Path) -> tuple[int, int]:
+    """
+    Dézippe dans ``dest_folder`` (fusion, sans effacer l'existant).
+    Retourne (fichiers extraits, nombre de .inf).
+    """
+    if not zip_path.is_file():
+        raise FileNotFoundError(f"Archive absente : {zip_path}")
+
+    dest_folder.mkdir(parents=True, exist_ok=True)
+    dest_resolved = dest_folder.resolve()
+
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError("Fichier ZIP invalide ou archive corrompue.")
+
+    extracted = 0
+    with zipfile.ZipFile(zip_path) as zf:
+        for info in zf.infolist():
+            if info.is_dir() or _zip_member_is_junk(info.filename):
+                continue
+            if info.file_size > MAX_ZIP_MEMBER_BYTES:
+                raise ValueError(
+                    f"Fichier trop volumineux dans le ZIP : {Path(info.filename).name}"
+                )
+            rel = info.filename.replace("\\", "/").lstrip("/")
+            target = (dest_resolved / rel).resolve()
+            if not str(target).startswith(str(dest_resolved)):
+                raise ValueError(f"Chemin non autorise dans le ZIP : {info.filename}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info, "r") as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
+            extracted += 1
+
+    inf_count = count_driver_files(dest_folder)
+    if inf_count == 0:
+        raise ValueError(
+            "Aucun fichier .inf dans le ZIP — verifiez que l archive contient des pilotes Windows."
+        )
+    return extracted, inf_count
+
+
+def process_driver_zip_upload(
+    *,
+    zip_path: Path,
+    label: str,
+    slug: str,
+) -> dict[str, Any]:
+    """Extrait le ZIP dans ``boot/drivers/<slug>/`` et regenere ``drivers.json``."""
+    folder = folder_for_slug(slug)
+    extracted, inf_count = safe_extract_zip_archive(zip_path, folder)
+    rebuild_catalog()
+    meta = upsert_catalog_label(label, slug)
+    return {
+        "label": label,
+        "slug": slug,
+        "path": meta.get("path") or rel_folder_path(slug),
+        "count": int(meta.get("count") or inf_count),
+        "extracted_files": extracted,
+        "inf_count": inf_count,
+    }
 
 
 async def save_uploaded_driver_files(
