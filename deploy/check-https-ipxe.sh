@@ -2,7 +2,12 @@
 # Diagnostic HTTPS + chaîne PXE/iPXE (certificats, Nginx, menus, firmware, embed).
 # Usage : sudo bash deploy/check-https-ipxe.sh [IP_ou_FQDN]
 #         sudo bash /srv/ipxe/app/deploy/check-https-ipxe.sh
-set -euo pipefail
+# (ne pas lancer avec « sh » : utiliser « bash »)
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "Lancez avec bash : sudo bash $0 $*" >&2
+  exit 2
+fi
+set -eo pipefail
 
 APP_DIR="${APP_DIR:-/srv/ipxe/app}"
 VENV="${VENV:-/srv/ipxe/venv}"
@@ -37,21 +42,18 @@ read_env_url() {
   fi
 }
 
-ENV_URL="$(read_env_url || true)"
+ENV_URL="$(read_env_url)"
+ENV_URL="${ENV_URL:-}"
+
 DB_URL=""
 if [ -x "$VENV/bin/python" ] && [ -d "$APP_DIR/app" ]; then
-  DB_URL="$(
-    cd "$APP_DIR" && "$VENV/bin/python" - <<'PY' 2>/dev/null || true
-from app.config import resolve_server_base_url
-print(resolve_server_base_url())
-PY
-  )"
+  DB_URL="$(cd "$APP_DIR" && "$VENV/bin/python" -c 'from app.config import resolve_server_base_url; print(resolve_server_base_url())' 2>/dev/null)" || DB_URL=""
 fi
 
 BASE_URL="${ENV_URL:-$DB_URL}"
 if [ -z "$BASE_URL" ] && [ -n "$HOST" ]; then
   BASE_URL="https://${HOST}"
-  warn "SERVER_BASE_URL absent — on suppose $BASE_URL"
+  warn "SERVER_BASE_URL absent - on suppose $BASE_URL"
 fi
 
 SCHEME=""
@@ -65,8 +67,8 @@ fi
 hdr "iPXE Manager — checkup HTTPS / PXE"
 echo "  Date      : $(date -Is 2>/dev/null || date)"
 echo "  Hôte test : ${HOST:-?}"
-echo "  URL .env  : ${ENV_URL:-—}"
-echo "  URL BDD   : ${DB_URL:-—}"
+echo "  URL .env  : ${ENV_URL:-n/a}"
+echo "  URL BDD   : ${DB_URL:-n/a}"
 echo "  IP locale : $(hostname -I 2>/dev/null | tr '\n' ' ')"
 
 # ── 1. TLS ───────────────────────────────────────────────────────────────────
