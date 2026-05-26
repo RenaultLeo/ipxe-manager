@@ -1233,8 +1233,8 @@ function Invoke-WinpeDeployment {{
     if ($p2.ExitCode -ne 0) {{ throw 'bcdboot a echoue.' }}
 
     Write-Host 'Redemarrage dans 10 secondes...' -ForegroundColor Green
-    Start-Sleep -Seconds 10
-    wpeutil reboot
+    
+    
 }}
 
 # --- Main ---
