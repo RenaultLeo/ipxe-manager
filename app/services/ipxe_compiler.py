@@ -69,28 +69,6 @@ def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) ->
     g = general.read_text(encoding="utf-8", errors="replace")
     changed = False
 
-    if not re.search(r"^[ \t]*#define[ \t]+DEBUG\b", g, flags=re.MULTILINE):
-        g2, n = re.subn(
-            r"^[ \t]*//[ \t]*#define[ \t]+DEBUG\b",
-            "#define DEBUG",
-            g,
-            count=1,
-            flags=re.MULTILINE,
-        )
-        if n:
-            g = g2
-            changed = True
-            logs.append("config/general.h : DEBUG activé.")
-        else:
-            if "#define DEBUG" not in g:
-                g = g.replace(
-                    "/* Enable/disable specific protocols */\n",
-                    "/* Enable/disable specific protocols */\n#define DEBUG\n",
-                    1,
-                )
-                changed = True
-                logs.append("config/general.h : #define DEBUG ajouté.")
-
     if re.search(r"^[ \t]*#define[ \t]+LOG_LEVEL[ \t]+LOG_", g, flags=re.MULTILINE):
         g2, n = re.subn(
             r"^[ \t]*#define[ \t]+LOG_LEVEL[ \t]+LOG_[A-Z_0-9]+",
@@ -107,14 +85,16 @@ def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) ->
     if changed:
         general.write_text(g, encoding="utf-8")
     else:
-        logs.append("config/general.h : DEBUG/LOG_LEVEL déjà adaptés ou format inattendu.")
+        logs.append("config/general.h : LOG_LEVEL déjà adapté ou format inattendu.")
 
 
 def ipxe_make_debug_args() -> list[str]:
-    """Cibles make DEBUG=… (firmware plus bavard, surtout HTTP/TLS)."""
-    if not settings.ipxe_debug:
-        return []
-    return ["DEBUG=http,tls,openssl,dhcp,errno"]
+    """
+    Ne pas passer DEBUG=… à make : sur plusieurs clones iPXE cela casse la build
+    (ex. « aucune règle pour fabriquer bin/openssl.dbg1.o »).
+    Le mode debug repose sur set loglevel 7 (scripts) + LOG_LEVEL dans general.h.
+    """
+    return []
 
 
 def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
@@ -298,8 +278,11 @@ def compile_ipxe_firmware(
         logs.append(
             "Attention : /srv/ipxe/ssl/ca.crt absent — HTTPS sans TRUST custom."
         )
-    if debug_args:
-        logs.append(f"Compilation DEBUG={' '.join(debug_args)}")
+    if settings.ipxe_debug:
+        logs.append(
+            "Mode debug : scripts (loglevel 7) + LOG_LEVEL dans general.h "
+            "(pas de DEBUG= sur la ligne make — évite openssl.dbg1.o)."
+        )
     completed_steps.append("patch_ipxe_https")
 
     make_tail = [*tls_args, *debug_args]
