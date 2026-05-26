@@ -64,6 +64,45 @@ def _multipart_upload_blocked(
     return None
 
 
+def _multipart_form_limits() -> dict[str, int]:
+    return {
+        "max_files": settings.multipart_max_files,
+        "max_fields": settings.multipart_max_fields,
+    }
+
+
+async def _read_multipart_form(request: Request, *, lang: str):
+    """Parse multipart avec limites configurables (évite le plafond Starlette à 1000 fichiers)."""
+    from starlette.formparsers import MultiPartException
+
+    try:
+        return await request.form(**_multipart_form_limits())
+    except MultiPartException as exc:
+        msg = str(exc).lower()
+        if "too many files" in msg:
+            raise HTTPException(
+                413,
+                detail=translate(lang, "iso.upload.too_many_files"),
+            ) from exc
+        if "too many fields" in msg:
+            raise HTTPException(
+                413,
+                detail=translate(lang, "iso.upload.too_many_fields"),
+            ) from exc
+        raise HTTPException(400, detail=str(exc)) from exc
+
+
+def _upload_files_from_form(form, field_name: str) -> list[UploadFile]:
+    out: list[UploadFile] = []
+    for part in form.getlist(field_name):
+        if not part:
+            continue
+        fname = getattr(part, "filename", None)
+        if fname and str(fname).strip():
+            out.append(part)
+    return out
+
+
 def _multipart_part_declared_bytes(upload: object) -> int | None:
     """Taille annoncée d'un champ fichier (``.size`` Starlette ou en-tête part ``Content-Length``)."""
     sz = getattr(upload, "size", None)
@@ -1219,10 +1258,6 @@ async def upload_winpe_drivers(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    machine_kind: str = Form(...),
-    machine_key: str = Form(""),
-    new_machine_name: str = Form(""),
-    driver_files: list[UploadFile] = File(...),
 ):
     """Upload multiple pilotes dans boot/drivers/<type>/ (catalogue drivers.json)."""
     redir = _auth(request)
@@ -1232,7 +1267,11 @@ async def upload_winpe_drivers(
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_windows_version(version, lang)
 
-    files = [f for f in (driver_files or []) if f and (f.filename or "").strip()]
+    form = await _read_multipart_form(request, lang=lang)
+    machine_kind = str(form.get("machine_kind") or "")
+    machine_key = str(form.get("machine_key") or "")
+    new_machine_name = str(form.get("new_machine_name") or "")
+    files = _upload_files_from_form(form, "driver_files")
     if not files:
         raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_no_files"))
 
@@ -1312,7 +1351,6 @@ async def upload_winpe_language_packs(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    pack_files: list[UploadFile] = File(...),
 ):
     """Upload .cab : locale deduite du nom de fichier, classement automatique."""
     redir = _auth(request)
@@ -1322,7 +1360,8 @@ async def upload_winpe_language_packs(
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_windows_version(version, lang)
 
-    files = [f for f in (pack_files or []) if f and (f.filename or "").strip()]
+    form = await _read_multipart_form(request, lang=lang)
+    files = _upload_files_from_form(form, "pack_files")
     if not files:
         raise HTTPException(
             400, detail=translate(lang, "iso.winpe_language_packs_no_files")

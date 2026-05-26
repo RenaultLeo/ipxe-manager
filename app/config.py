@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     upload_min_free_bytes: int = 268_435_456  # 256 Mo — garde fou avant uploads (multipart + fichiers boot)
 
     max_upload_size: int = 53_687_091_200  # 50 GB
+    # Starlette limite à 1000 fichiers par défaut — relever pour uploads massifs (.cab, pilotes).
+    multipart_max_files: int = 100_000
+    multipart_max_fields: int = 2_048
     extract_timeout: int = 3600
 
     # Ubuntu : par défaut HTTP (root=/dev/ram0, url= ISO, autoinstall nocloud-net). NFS optionnel.
