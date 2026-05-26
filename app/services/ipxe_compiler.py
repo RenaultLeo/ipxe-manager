@@ -88,6 +88,33 @@ def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) ->
         logs.append("config/general.h : LOG_LEVEL déjà adapté ou format inattendu.")
 
 
+def _verify_firmware_https_support(tftp_kpxe: Path, menu_url: str, logs: list[str]) -> None:
+    """Évite de copier un undionly.kpxe HTTP-only alors que le menu est en https://."""
+    if not menu_url.lower().startswith("https://"):
+        return
+    try:
+        proc = subprocess.run(
+            ["strings", str(tftp_kpxe)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            errors="replace",
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logs.append(f"Vérification strings {tftp_kpxe.name} ignorée : {exc}")
+        return
+    blob = proc.stdout or ""
+    if "DOWNLOAD_PROTO_HTTPS" in blob or "https://" in blob.lower():
+        logs.append("Vérification OK : undionly.kpxe contient HTTPS (strings).")
+        return
+    raise RuntimeError(
+        "undionly.kpxe compilé sans support HTTPS — au boot : "
+        "« Operation not supported » (https://ipxe.org/3c092003). "
+        "Contrôlez build/ipxe-src/src/config/general.h (#define DOWNLOAD_PROTO_HTTPS) "
+        "et /srv/ipxe/ssl/ca.crt, puis relancez la compilation firmware."
+    )
+
+
 def ipxe_make_debug_args() -> list[str]:
     """
     Ne pas passer DEBUG=… à make : sur plusieurs clones iPXE cela casse la build
@@ -98,32 +125,60 @@ def ipxe_make_debug_args() -> list[str]:
 
 
 def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
-    """Active DOWNLOAD_PROTO_HTTPS dans config/general.h (ré-appliqué après chaque git pull)."""
+    """Active DOWNLOAD_PROTO_HTTPS (supprime #undef résiduels, un seul #define)."""
     general = src_dir / "src" / "config" / "general.h"
     if not general.is_file():
         raise RuntimeError(f"Sources iPXE incomplètes : {general}")
 
     g = general.read_text(encoding="utf-8", errors="replace")
-    if re.search(r"^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE):
-        logs.append("config/general.h : DOWNLOAD_PROTO_HTTPS déjà activé.")
-        return
-
-    g_new, n = re.subn(
+    # #undef désactive le protocole même si un #define existe plus loin
+    g, n_undef = re.subn(
         r"^[ \t]*#undef[ \t]+DOWNLOAD_PROTO_HTTPS[^\n]*\n",
+        "",
+        g,
+        flags=re.MULTILINE,
+    )
+    g, n_comment = re.subn(
+        r"^[ \t]*//[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS[^\n]*\n",
         "#define DOWNLOAD_PROTO_HTTPS\t\t/* Secure Hypertext Transfer Protocol */\n",
         g,
         count=1,
         flags=re.MULTILINE,
     )
-    if n == 0:
-        raise RuntimeError(
-            "config/general.h : ligne #undef DOWNLOAD_PROTO_HTTPS introuvable — "
-            "sources iPXE inattendues."
-        )
-    general.write_text(g_new, encoding="utf-8")
-    logs.append(
-        "config/general.h : #undef DOWNLOAD_PROTO_HTTPS → #define DOWNLOAD_PROTO_HTTPS."
+    has_define = bool(
+        re.search(r"^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE)
     )
+    if not has_define:
+        g2, n_ins = re.subn(
+            r"(^[ \t]*#define[ \t]+DOWNLOAD_PROTO_HTTP\b[^\n]*\n)",
+            r"\1#define DOWNLOAD_PROTO_HTTPS\t\t/* Secure Hypertext Transfer Protocol */\n",
+            g,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if n_ins:
+            g = g2
+        else:
+            raise RuntimeError(
+                "config/general.h : impossible d'insérer #define DOWNLOAD_PROTO_HTTPS "
+                "(structure iPXE inattendue)."
+            )
+
+    if n_undef:
+        logs.append(f"config/general.h : {n_undef} ligne(s) #undef DOWNLOAD_PROTO_HTTPS supprimée(s).")
+    if n_comment:
+        logs.append("config/general.h : #define DOWNLOAD_PROTO_HTTPS décommenté.")
+    if has_define and not n_undef and not n_comment:
+        logs.append("config/general.h : #define DOWNLOAD_PROTO_HTTPS déjà présent.")
+    elif not n_undef and not n_comment:
+        logs.append("config/general.h : #define DOWNLOAD_PROTO_HTTPS ajouté après HTTP.")
+
+    if re.search(r"^[ \t]*#undef[ \t]+DOWNLOAD_PROTO_HTTPS\b", g, flags=re.MULTILINE):
+        raise RuntimeError(
+            "config/general.h : #undef DOWNLOAD_PROTO_HTTPS encore présent après patch."
+        )
+
+    general.write_text(g, encoding="utf-8")
 
 
 def ipxe_tls_make_args() -> list[str]:
@@ -286,6 +341,12 @@ def compile_ipxe_firmware(
     completed_steps.append("patch_ipxe_https")
 
     make_tail = [*tls_args, *debug_args]
+    if menu_url.lower().startswith("https://"):
+        progress("make_clean", completed_steps, logs)
+        logs.append("make clean (rebuild complet pour HTTPS)…")
+        run(["make", "clean"], make_dir)
+        completed_steps.append("make_clean")
+
     progress("compile_bios", completed_steps, logs)
     logs.append("Compilation undionly.kpxe (BIOS)…")
     run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_tail], make_dir)
@@ -310,6 +371,8 @@ def compile_ipxe_firmware(
     for fname in ("undionly.kpxe", "ipxe.efi", "snponly.efi"):
         (tftp_dir / fname).chmod(0o644)
     completed_steps.append("copy")
+
+    _verify_firmware_https_support(tftp_dir / "undionly.kpxe", menu_url, logs)
 
     logs.append("Compilation terminée avec succès.")
     return {
