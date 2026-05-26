@@ -56,10 +56,14 @@ def _esxi_kernel_basename_from_boot_cfg(boot_cfg: Path) -> str | None:
 
 
 def _jinja_env() -> Environment:
-    return Environment(
+    from app.config import settings as app_settings
+
+    env = Environment(
         loader=FileSystemLoader(str(TMPL_DIR)),
         keep_trailing_newline=True,
     )
+    env.globals["ipxe_debug"] = app_settings.ipxe_debug
+    return env
 
 
 def _boot_os_version_segment(be: BootEntry | None, os_slug: str) -> str | None:

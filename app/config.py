@@ -128,6 +128,8 @@ class Settings(BaseSettings):
     iso_http_alias: str = "isos-ipxe"
     build_dir: str = "/srv/ipxe/build"   # répertoire de compilation firmware iPXE
     ssl_dir: str = "/srv/ipxe/ssl"       # CA + cert serveur (HTTPS / TRUST iPXE)
+    # Console PXE verbeuse + compile firmware avec DEBUG=http,tls (désactiver en prod stable)
+    ipxe_debug: bool = True
 
     upload_min_free_bytes: int = 268_435_456  # 256 Mo — garde fou avant uploads (multipart + fichiers boot)
 

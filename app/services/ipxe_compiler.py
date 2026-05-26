@@ -56,6 +56,67 @@ def patch_ipxe_graphical_console_headers(src_dir: Path, logs: list[str]) -> None
         )
 
 
+def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) -> None:
+    """LOG_LEVEL élevé + symbole DEBUG pour traces http/tls sur la console iPXE."""
+    if not enable:
+        logs.append("config/general.h : mode debug firmware désactivé (IPXE_DEBUG=false).")
+        return
+
+    general = src_dir / "src" / "config" / "general.h"
+    if not general.is_file():
+        raise RuntimeError(f"Sources iPXE incomplètes : {general}")
+
+    g = general.read_text(encoding="utf-8", errors="replace")
+    changed = False
+
+    if not re.search(r"^[ \t]*#define[ \t]+DEBUG\b", g, flags=re.MULTILINE):
+        g2, n = re.subn(
+            r"^[ \t]*//[ \t]*#define[ \t]+DEBUG\b",
+            "#define DEBUG",
+            g,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if n:
+            g = g2
+            changed = True
+            logs.append("config/general.h : DEBUG activé.")
+        else:
+            if "#define DEBUG" not in g:
+                g = g.replace(
+                    "/* Enable/disable specific protocols */\n",
+                    "/* Enable/disable specific protocols */\n#define DEBUG\n",
+                    1,
+                )
+                changed = True
+                logs.append("config/general.h : #define DEBUG ajouté.")
+
+    if re.search(r"^[ \t]*#define[ \t]+LOG_LEVEL[ \t]+LOG_", g, flags=re.MULTILINE):
+        g2, n = re.subn(
+            r"^[ \t]*#define[ \t]+LOG_LEVEL[ \t]+LOG_[A-Z_0-9]+",
+            "#define LOG_LEVEL LOG_ALL",
+            g,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if n:
+            g = g2
+            changed = True
+            logs.append("config/general.h : LOG_LEVEL → LOG_ALL.")
+
+    if changed:
+        general.write_text(g, encoding="utf-8")
+    else:
+        logs.append("config/general.h : DEBUG/LOG_LEVEL déjà adaptés ou format inattendu.")
+
+
+def ipxe_make_debug_args() -> list[str]:
+    """Cibles make DEBUG=… (firmware plus bavard, surtout HTTP/TLS)."""
+    if not settings.ipxe_debug:
+        return []
+    return ["DEBUG=http,tls,openssl,dhcp,errno"]
+
+
 def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
     """Active DOWNLOAD_PROTO_HTTPS dans config/general.h (ré-appliqué après chaque git pull)."""
     general = src_dir / "src" / "config" / "general.h"
@@ -94,23 +155,56 @@ def ipxe_tls_make_args() -> list[str]:
     return [f"CERT={ca_s}", f"TRUST={ca_s}"]
 
 
-def build_embed_ipxe(menu_url: str) -> str:
-    return (
-        "#!ipxe\n"
-        "\n"
-        "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)\n"
-        "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
-        "\n"
-        ":retry\n"
-        f"chain --autofree {menu_url} || goto load_error\n"
-        "exit\n"
-        "\n"
-        ":load_error\n"
-        f"echo iPXE : impossible de charger {menu_url}\n"
-        "sleep 5\n"
-        "isset ${ip} || dhcp || dhcp net0 || dhcp net1\n"
-        "goto retry\n"
+def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
+    dbg = settings.ipxe_debug if debug is None else debug
+    lines = [
+        "#!ipxe",
+        "",
+    ]
+    if dbg:
+        lines.extend(
+            [
+                "# Mode debug iPXE Manager (IPXE_DEBUG)",
+                "set loglevel 7",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)",
+            "isset ${ip} || dhcp || dhcp net0 || dhcp net1",
+            "",
+            ":retry",
+            f"chain --autofree {menu_url} || goto load_error",
+            "exit",
+            "",
+            ":load_error",
+            "echo ========================================",
+            "echo iPXE : echec chain menu",
+            f"echo URL : {menu_url}",
+        ]
     )
+    if dbg:
+        lines.extend(
+            [
+                "echo errno : ${errno}",
+                "echo errmsg : ${errmsg}",
+                "ifstat",
+                "route",
+                "echo ========================================",
+                "sleep 15",
+            ]
+        )
+    else:
+        lines.append("sleep 5")
+    lines.extend(
+        [
+            "isset ${ip} || dhcp || dhcp net0 || dhcp net1",
+            "goto retry",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def compile_ipxe_firmware(
@@ -190,7 +284,12 @@ def compile_ipxe_firmware(
     progress("patch_ipxe_https", completed_steps, logs)
     logs.append("Patch config iPXE (DOWNLOAD_PROTO_HTTPS)…")
     patch_ipxe_https_support(src_dir, logs)
+    progress("patch_ipxe_debug", completed_steps, logs)
+    logs.append("Patch config iPXE (DEBUG / LOG_LEVEL)…")
+    patch_ipxe_debug_support(src_dir, logs, enable=settings.ipxe_debug)
+    completed_steps.append("patch_ipxe_debug")
     tls_args = ipxe_tls_make_args()
+    debug_args = ipxe_make_debug_args()
     if tls_args:
         logs.append(
             f"Compilation avec {' '.join(tls_args)} (CERT/TRUST en fin de ligne make)."
@@ -199,18 +298,21 @@ def compile_ipxe_firmware(
         logs.append(
             "Attention : /srv/ipxe/ssl/ca.crt absent — HTTPS sans TRUST custom."
         )
+    if debug_args:
+        logs.append(f"Compilation DEBUG={' '.join(debug_args)}")
     completed_steps.append("patch_ipxe_https")
 
+    make_tail = [*tls_args, *debug_args]
     progress("compile_bios", completed_steps, logs)
     logs.append("Compilation undionly.kpxe (BIOS)…")
-    run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *tls_args], make_dir)
+    run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_tail], make_dir)
     completed_steps.append("compile_bios")
 
     progress("compile_efi", completed_steps, logs)
     logs.append("Compilation snponly.efi (UEFI SNP)…")
-    run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *tls_args], make_dir)
+    run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_tail], make_dir)
     logs.append("Compilation ipxe.efi (UEFI bare)…")
-    run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *tls_args], make_dir)
+    run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *make_tail], make_dir)
     completed_steps.append("compile_efi")
 
     progress("copy", completed_steps, logs)

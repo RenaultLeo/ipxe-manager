@@ -251,29 +251,39 @@ done
 # ── 9. Chaîne dans le binaire (strings) ───────────────────────────────────────
 hdr "9. URL embarquée dans undionly.kpxe (strings)"
 KPXE="$TFTP_ROOT/undionly.kpxe"
+STR_TMP=""
 if [ -f "$KPXE" ] && command -v strings >/dev/null 2>&1; then
-  if strings "$KPXE" | grep -q 'DOWNLOAD_PROTO_HTTPS'; then
+  STR_TMP="$(mktemp /tmp/ipxe-strings.XXXXXX)"
+  strings "$KPXE" 2>/dev/null >"$STR_TMP" || true
+  has_dl_https=0
+  has_https_url=0
+  grep -q 'DOWNLOAD_PROTO_HTTPS' "$STR_TMP" 2>/dev/null && has_dl_https=1 || true
+  grep -qi 'https://' "$STR_TMP" 2>/dev/null && has_https_url=1 || true
+  if [ "$has_dl_https" -eq 1 ]; then
     ok "symbole DOWNLOAD_PROTO_HTTPS visible (build avec HTTPS)"
-  elif strings "$KPXE" | grep -qi 'https://'; then
-    ok "chaîne https:// trouvée dans le binaire (embed/menu)"
+  elif [ "$has_https_url" -eq 1 ]; then
+    ok "chaine https:// trouvee dans le binaire (embed/menu)"
   else
-    warn "pas de https:// ni DOWNLOAD_PROTO_HTTPS dans strings — firmware probablement HTTP-only"
-    ko "→ cause typique du message « https://…/menu.ipxe not supported »"
+    warn "pas de https:// ni DOWNLOAD_PROTO_HTTPS dans strings - firmware probablement HTTP-only"
+    ko "cause typique du message https://.../menu.ipxe not supported"
   fi
-  emb_url="$(strings "$KPXE" | grep -E 'https?://[^ ]+/menus/menu\.ipxe' | head -1 || true)"
+  emb_url="$(grep -E 'https?://[^[:space:]]+/menus/menu\.ipxe' "$STR_TMP" 2>/dev/null | head -1)" || emb_url=""
   if [ -n "$emb_url" ]; then
     echo "      URL embed : $emb_url"
     if [ -n "$MENU_URL" ] && [ "$emb_url" = "$MENU_URL" ]; then
       ok "URL embed = menu attendu"
     else
-      warn "URL embed ≠ $MENU_URL — recompiler avec la bonne IP"
+      warn "URL embed different de $MENU_URL - recompiler avec la bonne IP"
     fi
+  else
+    warn "aucune URL .../menus/menu.ipxe lisible dans le binaire (strings)"
   fi
   for old in 192.168.2.6 192.168.2.8; do
-    if strings "$KPXE" | grep -q "$old"; then
+    if grep -q "$old" "$STR_TMP" 2>/dev/null; then
       warn "binaire contient encore IP exemple $old"
     fi
   done
+  rm -f "$STR_TMP"
 else
   warn "strings ou undionly.kpxe indisponible"
 fi
