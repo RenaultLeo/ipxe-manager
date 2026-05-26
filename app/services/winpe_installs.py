@@ -116,14 +116,3 @@ def delete_install_folder(version: IsoVersion, install_slug: str) -> None:
     folder = install_folder(version, install_slug)
     if folder.is_dir():
         shutil.rmtree(folder)
-
-
-def list_installs_on_disk(version: IsoVersion) -> list[Path]:
-    root = installs_root(version)
-    if not root.is_dir():
-        return []
-    out: list[Path] = []
-    for d in sorted(root.iterdir()):
-        if d.is_dir() and (d / INSTALL_WIM_FILENAME).is_file():
-            out.append(d)
-    return out

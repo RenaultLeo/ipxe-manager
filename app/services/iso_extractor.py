@@ -1568,10 +1568,16 @@ def _fix_permissions(path: Path):
 
 # ── Nettoyage ──────────────────────────────────────────────────────────────────
 
-def cleanup_boot_files(os_slug: str, version_label: str, version_id: int = 0):
+def cleanup_boot_files(os_slug: str, version_label: str, version_id: int = 0) -> None:
     from app.services.slugify import slugify
+
     version_slug = slugify(version_label) if version_label else str(version_id)
-    dest = settings.boot_dir / os_slug / version_slug
-    if dest.exists():
-        shutil.rmtree(dest)
-        logger.info("Dossier supprimé : %s", dest)
+    candidates = [settings.boot_dir / os_slug / version_slug]
+    if version_id:
+        by_id = settings.boot_dir / os_slug / str(version_id)
+        if by_id not in candidates:
+            candidates.append(by_id)
+    for dest in candidates:
+        if dest.exists():
+            shutil.rmtree(dest)
+            logger.info("Dossier supprimé : %s", dest)

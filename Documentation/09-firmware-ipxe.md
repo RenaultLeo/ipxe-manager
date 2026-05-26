@@ -33,6 +33,8 @@ Trois cartes : présent / absent, taille en Ko, chemin sur disque.
 
 Lance une tâche **Celery** longue (clone git, patch, compile BIOS + EFI, copie TFTP).
 
+**Build incrémental :** les sources iPXE restent sur disque ; une recompilation ne lance **`make clean`** que si la **CA TLS** (`ca.crt`) a changé (renouvellement certificat). Sinon seuls les artefacts **embed** (`embedded.*`) et les binaires concernés sont reconstruits — beaucoup plus rapide qu’une compile complète OpenSSL.
+
 Pendant la compilation :
 
 - Bouton désactivé « Compilation… »

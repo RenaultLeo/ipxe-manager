@@ -40,11 +40,6 @@ def _auth(request: Request):
     return auth_redirect_admin(request)
 
 
-def _get_setting(db: Session, key: str, default: str = "") -> str:
-    row = db.query(AppSetting).filter(AppSetting.key == key).first()
-    return row.value if row else default
-
-
 def _set_setting(db: Session, key: str, value: str):
     row = db.query(AppSetting).filter(AppSetting.key == key).first()
     if row:

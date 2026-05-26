@@ -1096,16 +1096,6 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
 
 # ── Job status (HTMX polling) ─────────────────────────────────────────────────
 
-@router.get("/{version_id}/status")
-async def iso_status(
-    version_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    version = _get_version_view_or_404(db, request, version_id)
-    return JSONResponse({"status": version.status})
-
-
 @router.get("/{version_id}/status-fragment", response_class=HTMLResponse)
 async def iso_status_fragment(
     version_id: int,
@@ -1628,14 +1618,9 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
                 legacy.unlink(missing_ok=True)
 
         # 2. Supprimer les fichiers boot (dossier slug ET dossier ID pour compat)
-        from app.services.slugify import slugify
-        version_slug = slugify(version.version_label)
-        for boot_path in [
-            settings.boot_dir / os_slug / version_slug,
-            settings.boot_dir / os_slug / str(version_id),
-        ]:
-            if boot_path.exists():
-                shutil.rmtree(boot_path, ignore_errors=True)
+        from app.services.iso_extractor import cleanup_boot_files
+
+        cleanup_boot_files(os_slug, version.version_label, version_id)
 
         # 3. Supprimer les fichiers de config auto
         for cfg_path in [

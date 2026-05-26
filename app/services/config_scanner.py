@@ -152,10 +152,6 @@ NAME_TYPE: dict[str, str] = {
 }
 
 
-def default_config_type(os_slug: str) -> str:
-    return OS_CONFIG_TYPE.get(os_slug, "custom")
-
-
 def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
     """
     Retourne l'argument kernel iPXE à ajouter pour déclencher l'install automatique.

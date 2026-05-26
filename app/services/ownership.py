@@ -16,10 +16,6 @@ def filter_iso_versions(db: Session, user: SessionUser | None) -> Query:
     return q
 
 
-def owned_iso_version_ids(db: Session, user: SessionUser) -> list[int]:
-    return [row[0] for row in filter_iso_versions(db, user).with_entities(IsoVersion.id).all()]
-
-
 def can_modify_iso_version(user: SessionUser | None, version: IsoVersion) -> bool:
     if not user or not version:
         return False
@@ -43,18 +39,6 @@ def get_iso_version(db: Session, user: SessionUser, version_id: int) -> IsoVersi
     if can_modify_iso_version(user, v):
         return v
     return None
-
-
-def filter_autoconfigs(db: Session, user: SessionUser | None) -> Query:
-    q = db.query(AutoConfig)
-    if not user:
-        return q.filter(AutoConfig.id < 0)
-    if user.role != ROLE_ADMIN:
-        ids = owned_iso_version_ids(db, user)
-        if not ids:
-            return q.filter(AutoConfig.id < 0)
-        q = q.filter(AutoConfig.iso_version_id.in_(ids))
-    return q
 
 
 def get_autoconfig_view(db: Session, user: SessionUser, config_id: int) -> AutoConfig | None:

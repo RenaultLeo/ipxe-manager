@@ -141,50 +141,6 @@ def systemctl_is_active(unit: str) -> dict[str, Any]:
     }
 
 
-def systemctl_restart(unit: str) -> dict[str, Any]:
-    """Relance via /usr/local/sbin/ipxe-service-ctl (sudo) si installé, sinon systemctl."""
-    allowed = {"ipxe-manager", "ipxe-celery", "tftpd-hpa"}
-    if unit not in allowed:
-        return {"unit": unit, "ok": False, "detail": "unité non autorisée", "sudo": False}
-
-    if SERVICE_CTL.is_file():
-        for cmd in (
-            ["sudo", "-n", str(SERVICE_CTL), "restart", unit],
-        ):
-            code, out, err = _run_cmd(cmd, timeout=90)
-            if code == 0:
-                return {
-                    "unit": unit,
-                    "ok": True,
-                    "detail": (out or "OK")[:200],
-                    "sudo": True,
-                    "via": "ipxe-service-ctl",
-                }
-            last_err = err or out or f"exit {code}"
-        hint = (
-            "sudo refusé — exécutez sur le serveur : "
-            "sudo bash deploy/install-service-sudo.sh"
-        )
-        if "password" in (last_err or "").lower() or code == 1:
-            return {"unit": unit, "ok": False, "detail": hint[:300], "sudo": False}
-        return {"unit": unit, "ok": False, "detail": (last_err or hint)[:300], "sudo": False}
-
-    last_err = ""
-    for cmd in _systemctl_argv("restart", unit):
-        code, out, err = _run_cmd(cmd, timeout=90)
-        if code == 127:
-            return {"unit": unit, "ok": False, "detail": "systemctl introuvable", "sudo": False}
-        if code == 0:
-            return {"unit": unit, "ok": True, "detail": (out or "OK")[:200], "sudo": cmd[0] == "sudo"}
-        last_err = err or out or f"exit {code}"
-    return {
-        "unit": unit,
-        "ok": False,
-        "detail": (last_err or "install-service-sudo.sh requis")[:300],
-        "sudo": False,
-    }
-
-
 RESTART_UNITS_ORDER = ("ipxe-celery", "tftpd-hpa", "ipxe-manager")
 
 

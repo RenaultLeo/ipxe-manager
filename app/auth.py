@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import bcrypt
-from fastapi import Request, HTTPException, status
+from fastapi import Request
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
@@ -74,23 +74,6 @@ def auth_redirect_admin(request: Request) -> RedirectResponse | None:
     if not is_admin(request):
         return RedirectResponse("/", status_code=302)
     return None
-
-
-def require_auth(request: Request) -> SessionUser:
-    user = get_session_user(request)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_303_SEE_OTHER,
-            headers={"Location": "/login"},
-        )
-    return user
-
-
-def require_admin(request: Request) -> SessionUser:
-    user = require_auth(request)
-    if user.role != ROLE_ADMIN:
-        raise HTTPException(status_code=403, detail="admin_required")
-    return user
 
 
 def login_user(request: Request, user_id: int, username: str, role: str) -> None:

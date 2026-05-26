@@ -4,6 +4,7 @@ Utilisé par Celery (compile_ipxe_task) et deploy/compile_ipxe_firmware.py (setu
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -89,8 +90,32 @@ def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) ->
         logs.append("config/general.h : LOG_LEVEL déjà adapté ou format inattendu.")
 
 
+def _tls_ca_stamp_path(make_dir: Path) -> Path:
+    return make_dir / ".ipxe_manager_tls_ca_stamp"
+
+
+def _tls_ca_changed_since_last_build(make_dir: Path, logs: list[str]) -> bool:
+    """True si la CA embarquée (TRUST=) a changé — seul cas où make clean est utile."""
+    stamp = _tls_ca_stamp_path(make_dir)
+    ca = settings.tls_ca_cert_path
+    if not ca.is_file():
+        if stamp.is_file():
+            stamp.unlink(missing_ok=True)
+        return False
+    digest = hashlib.sha256(ca.read_bytes()).hexdigest()
+    prev = stamp.read_text(encoding="utf-8").strip() if stamp.is_file() else ""
+    if prev == digest:
+        return False
+    stamp.write_text(digest, encoding="utf-8")
+    if prev:
+        logs.append("CA TLS modifiée — make clean (recompile liée OpenSSL/TLS).")
+        return True
+    logs.append("Première compilation avec CA TLS — pas de make clean (build incrémental).")
+    return False
+
+
 def _purge_embed_build_artifacts(make_dir: Path, bin_subdir: str, logs: list[str]) -> None:
-    """Force la regénération de embedded.o (ccache / .incbin ne voit pas toujours embed.ipxe)."""
+    """Force la regénération de embedded.o (.incbin / ccache ne voient pas toujours embed.ipxe)."""
     bin_dir = make_dir / bin_subdir
     if not bin_dir.is_dir():
         return
@@ -104,15 +129,6 @@ def _purge_embed_build_artifacts(make_dir: Path, bin_subdir: str, logs: list[str
         logs.append(
             f"Purge {bin_subdir}/ : {', '.join(removed)} (rebuild embedded obligatoire)."
         )
-
-
-def ipxe_make_debug_args() -> list[str]:
-    """
-    Ne pas passer DEBUG=… à make : sur plusieurs clones iPXE cela casse la build
-    (ex. « aucune règle pour fabriquer bin/openssl.dbg1.o »).
-    Le mode debug repose sur set loglevel 7 (scripts) + LOG_LEVEL dans general.h.
-    """
-    return []
 
 
 def ensure_ipxe_local_https_override(src_dir: Path, logs: list[str]) -> None:
@@ -270,7 +286,7 @@ def compile_ipxe_firmware(
     src_dir = settings.ipxe_src_dir
     build_dir = Path(settings.build_dir)
 
-    make_env = {**os.environ, "CCACHE_DISABLE": "1"}
+    make_env = os.environ.copy()
 
     def run(cmd: list[str], cwd: Path | None = None) -> str:
         logs.append(f"$ {' '.join(cmd)}")
@@ -334,7 +350,8 @@ def compile_ipxe_firmware(
     patch_ipxe_debug_support(src_dir, logs, enable=settings.ipxe_debug)
     completed_steps.append("patch_ipxe_debug")
 
-    make_tail = [*ipxe_tls_make_args(), *ipxe_make_debug_args()]
+    # Pas de DEBUG= sur la ligne make (casse openssl.dbg1.o sur certains clones).
+    make_tail = ipxe_tls_make_args()
     if tls_args := [a for a in make_tail if a.startswith("TRUST=")]:
         logs.append(f"Compilation avec {' '.join(tls_args)}.")
     elif menu_url.lower().startswith("https://"):
@@ -348,9 +365,8 @@ def compile_ipxe_firmware(
         )
     completed_steps.append("patch_ipxe_https")
 
-    if menu_url.lower().startswith("https://"):
+    if _tls_ca_changed_since_last_build(make_dir, logs):
         progress("make_clean", completed_steps, logs)
-        logs.append("make clean (rebuild complet pour HTTPS)…")
         run(["make", "clean"], make_dir)
         completed_steps.append("make_clean")
 
@@ -359,14 +375,11 @@ def compile_ipxe_firmware(
     embed_path.write_text(embed_content, encoding="utf-8")
     if menu_url not in embed_path.read_text(encoding="utf-8"):
         raise RuntimeError(f"embed.ipxe invalide : URL menu absente ({menu_url})")
-    logs.append(f"embed.ipxe généré (après make clean) :\n{embed_content}")
+    logs.append(f"embed.ipxe généré :\n{embed_content}")
     completed_steps.append("embed")
 
     kpxe_src = make_dir / "bin" / "undionly.kpxe"
     _purge_embed_build_artifacts(make_dir, "bin", logs)
-    if kpxe_src.exists():
-        kpxe_src.unlink()
-        logs.append("Supprimé avant make : bin/undionly.kpxe")
 
     progress("compile_bios", completed_steps, logs)
     logs.append("Compilation undionly.kpxe (BIOS), EMBED=embed.ipxe…")
