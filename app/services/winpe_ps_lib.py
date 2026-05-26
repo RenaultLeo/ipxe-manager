@@ -118,6 +118,16 @@ function Get-UnattendWcmUri {{
     return 'http://schemas.microsoft.com/WMIConfig/2002/State'
 }}
 
+function Ensure-WcmOnUnattendRoot {{
+    param([xml]$Doc)
+    $root = $Doc.DocumentElement
+    if (-not $root) {{ return }}
+    $wcmUri = Get-UnattendWcmUri
+    if (-not $root.GetAttribute('xmlns:wcm')) {{
+        $null = $root.SetAttribute('xmlns:wcm', $wcmUri)
+    }}
+}}
+
 function Ensure-WcmOnShellComponent {{
     param($Shell)
     $wcmUri = Get-UnattendWcmUri
@@ -266,11 +276,49 @@ function Test-UnattendLocalAccountExistsInDoc {{
     return $false
 }}
 
+function Test-UnattendReservedUsername {{
+    param([string]$User)
+    $reserved = @('Administrator', 'Guest', 'DefaultAccount', 'WDAGUtilityAccount')
+    foreach ($r in $reserved) {{
+        if ($User -ieq $r) {{ return $true }}
+    }}
+    return $false
+}}
+
+function Ensure-OobeBypassForLocalAccount {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr -NsUri $NsUri
+    Ensure-WcmOnShellComponent -Shell $shell
+    $oobe = Get-UnattendDirectChild -Parent $shell -LocalName 'OOBE'
+    if (-not $oobe) {{
+        $oobe = New-UnattendElement -Doc $Doc -LocalName 'OOBE' -NsUri $NsUri
+        $ua = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
+        if ($ua) {{
+            $shell.InsertBefore($oobe, $ua) | Out-Null
+        }} else {{
+            Insert-ShellSetupChildBefore -Shell $shell -NewNode $oobe -BeforeLocalName 'AutoLogon'
+        }}
+    }}
+    foreach ($pair in @(
+        @('HideEULAPage', 'true'),
+        @('HideOEMRegistrationScreen', 'true'),
+        @('HideOnlineAccountScreens', 'true'),
+        @('HideWirelessSetupInOOBE', 'true'),
+        @('NetworkLocation', 'Work'),
+        @('ProtectYourPC', '3'),
+        @('SkipMachineOOBE', 'true'),
+        @('SkipUserOOBE', 'true')
+    )) {{
+        Set-UnattendXmlText -Parent $oobe -Doc $Doc -NsUri $NsUri -LocalName $pair[0] -Value $pair[1] | Out-Null
+    }}
+}}
+
 function Add-UnattendOobeLocalAccount {{
     param([xml]$Doc, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
     if (Test-UnattendLocalAccountExistsInDoc -Doc $Doc -NsMgr $NsMgr -User $User) {{
         return $false
     }}
+    Ensure-OobeBypassForLocalAccount -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
     $shell = (Get-ShellSetupComponentsForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr | Select-Object -First 1)
     if (-not $shell) {{
         $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr -NsUri $NsUri
@@ -343,6 +391,46 @@ function Find-OfflineUnattendPath {{
     $found = @(Get-ChildItem -LiteralPath $TargetOS -Recurse -Filter 'unattend.xml' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
     if ($found) {{ return $found.FullName }}
     return $null
+}}
+
+function New-MinimalUnattendDocument {{
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.PreserveWhitespace = $true
+    $nsUri = 'urn:schemas-microsoft-com:unattend'
+    $wcmUri = Get-UnattendWcmUri
+    $decl = $doc.CreateXmlDeclaration('1.0', 'utf-8', $null)
+    $doc.AppendChild($decl) | Out-Null
+    $root = $doc.CreateElement('unattend', $nsUri)
+    $null = $root.SetAttribute('xmlns:wcm', $wcmUri)
+    $doc.AppendChild($root) | Out-Null
+    return $doc
+}}
+
+function Get-OrCreateOfflineUnattendDocument {{
+    param([string]$TargetOS = 'W:\\')
+    $pantherDir = Join-Path $TargetOS 'Windows\\Panther'
+    $pantherPath = Join-Path $pantherDir 'unattend.xml'
+    if (-not (Test-Path -LiteralPath $pantherDir)) {{
+        New-Item -ItemType Directory -Path $pantherDir -Force | Out-Null
+    }}
+    if (Test-Path -LiteralPath $pantherPath) {{
+        $doc = New-Object System.Xml.XmlDocument
+        $doc.PreserveWhitespace = $true
+        $doc.Load($pantherPath)
+        Ensure-WcmOnUnattendRoot -Doc $doc
+        return $doc, $pantherPath
+    }}
+    $sourcePath = Find-OfflineUnattendPath -TargetOS $TargetOS
+    if ($sourcePath -and ($sourcePath -ne $pantherPath)) {{
+        Write-Host "Unattend source : $sourcePath (fusion vers Panther)" -ForegroundColor Cyan
+        $doc = New-Object System.Xml.XmlDocument
+        $doc.PreserveWhitespace = $true
+        $doc.Load($sourcePath)
+        Ensure-WcmOnUnattendRoot -Doc $doc
+        return $doc, $pantherPath
+    }}
+    Write-Host 'Creation unattend.xml minimal dans Panther (master sans answer file).' -ForegroundColor Yellow
+    return (New-MinimalUnattendDocument), $pantherPath
 }}
 
 function Get-UiLanguageById {{
@@ -440,17 +528,12 @@ function Update-OfflineUnattend {{
         [string]$KeyboardId = '',
         [string]$LocaleId = ''
     )
-    $path = Find-OfflineUnattendPath -TargetOS $TargetOS
-    if (-not $path) {{
-        Write-Host 'unattend.xml introuvable dans l image — nom machine / user non modifies.' -ForegroundColor Yellow
-        return $false
-    }}
+    $doc, $path = Get-OrCreateOfflineUnattendDocument -TargetOS $TargetOS
     Write-Host "Personnalisation : $path" -ForegroundColor Cyan
-    $doc = New-Object System.Xml.XmlDocument
-    $doc.PreserveWhitespace = $true
-    $doc.Load($path)
     $nsMgr, $nsUri = Get-UnattendNsMgr -Doc $doc
     $changed = $false
+    $userRequested = ($LocalUser -and $LocalUser.Trim())
+    $userReady = $false
 
     $legacy = if ($LocaleId -and $LocaleId.Trim()) {{ $LocaleId.Trim() }} else {{ '' }}
     $langId = if ($LanguageId -and $LanguageId.Trim()) {{ $LanguageId.Trim() }} elseif ($legacy) {{ $legacy }} else {{ $script:WinpeDefaultUiLanguageId }}
@@ -482,36 +565,46 @@ function Update-OfflineUnattend {{
         }}
     }}
 
-    if ($LocalUser -and $LocalUser.Trim()) {{
+    if ($userRequested) {{
         $user = $LocalUser.Trim() -replace '[^a-zA-Z0-9._-]', ''
         if (-not $user) {{
-            Write-Host 'Nom utilisateur invalide — compte local ignore.' -ForegroundColor Yellow
+            Write-Host 'Nom utilisateur invalide — compte local ignore.' -ForegroundColor Red
+        }} elseif (Test-UnattendReservedUsername -User $user) {{
+            Write-Host "Nom reserve Windows ($user) — choisissez un autre utilisateur." -ForegroundColor Red
         }} elseif (-not $LocalPassword) {{
-            Write-Host 'Mot de passe requis pour un compte local — compte ignore (cochez et saisissez un mot de passe).' -ForegroundColor Yellow
+            Write-Host 'Mot de passe requis pour un compte local — compte ignore.' -ForegroundColor Red
         }} else {{
+            Ensure-OobeBypassForLocalAccount -Doc $doc -NsMgr $nsMgr -NsUri $nsUri
+            $shellOobe = Ensure-ShellSetupForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr -NsUri $nsUri
             if (Test-UnattendLocalAccountExistsInDoc -Doc $doc -NsMgr $nsMgr -User $user) {{
-                Write-Host "Compte « $user » deja dans le XML — aucune modification." -ForegroundColor Yellow
+                Write-Host "Compte « $user » deja present dans le XML — AutoLogon mis a jour." -ForegroundColor Yellow
+                $userReady = $true
             }} else {{
                 $added = Add-UnattendOobeLocalAccount -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
                 if (-not $added) {{
                     Write-Host "Impossible d ajouter le compte $user dans oobeSystem." -ForegroundColor Red
                 }} else {{
-                    Write-Host "Compte ajoute (oobeSystem, wcm:action=add) : $user — IT-LOCAL / comptes master intacts." -ForegroundColor Green
-                    $shellOobe = (Get-ShellSetupComponentsForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr | Select-Object -First 1)
-                    if ($shellOobe) {{
-                        Update-UnattendAutoLogon -Doc $doc -Shell $shellOobe -NsUri $nsUri -User $user -Password $LocalPassword | Out-Null
-                        Write-Host "AutoLogon : $user (meme mot de passe en clair que le compte)." -ForegroundColor Green
-                    }}
-                    $changed = $true
+                    Write-Host "Compte ajoute (oobeSystem, wcm:action=add) : $user" -ForegroundColor Green
+                    $userReady = $true
                 }}
+            }}
+            if ($userReady) {{
+                Update-UnattendAutoLogon -Doc $doc -Shell $shellOobe -NsUri $nsUri -User $user -Password $LocalPassword | Out-Null
+                Write-Host "AutoLogon OOBE : $user" -ForegroundColor Green
+                $changed = $true
             }}
         }}
     }}
 
     if ($changed) {{
         Save-UnattendDocument -Doc $doc -Path $path
-    }} else {{
+        Write-Host "Unattend enregistre : $path" -ForegroundColor Green
+    }} elseif (-not $userRequested) {{
         Write-Host 'Aucune modification unattend (valeurs par defaut du master).' -ForegroundColor Gray
+    }}
+    if ($userRequested -and -not $userReady) {{
+        Write-Host 'ERREUR : compte local demande mais non injecte dans unattend.xml.' -ForegroundColor Red
+        return $false
     }}
     return $true
 }}
@@ -912,7 +1005,10 @@ function Invoke-WinpeDeployment {{
 
     Install-WinpeDrivers -TargetOS $TargetOS -ProfileKey $Choice.DriverProfileKey -Quiet | Out-Null
 
-    Update-OfflineUnattend -TargetOS $TargetOS -ComputerName $Choice.ComputerName -LocalUser $Choice.LocalUser -LocalPassword $Choice.LocalPassword -LanguageId $Choice.LanguageId -RegionId $Choice.RegionId -KeyboardId $Choice.KeyboardId | Out-Null
+    $unattendOk = Update-OfflineUnattend -TargetOS $TargetOS -ComputerName $Choice.ComputerName -LocalUser $Choice.LocalUser -LocalPassword $Choice.LocalPassword -LanguageId $Choice.LanguageId -RegionId $Choice.RegionId -KeyboardId $Choice.KeyboardId
+    if (-not $unattendOk) {{
+        throw 'Personnalisation unattend.xml echouee — verifiez les messages ci-dessus (Panther\\unattend.xml).'
+    }}
 
     Write-Host 'Configuration demarrage UEFI (bcdboot)...' -ForegroundColor Cyan
     $p2 = Start-Process -FilePath 'bcdboot.exe' -ArgumentList @("$TargetWin", '/s', 'S:', '/f', 'uefi') -Wait -PassThru -NoNewWindow
