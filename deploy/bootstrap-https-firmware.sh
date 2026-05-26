@@ -28,11 +28,6 @@ echo "==> Compilation firmware iPXE (HTTPS, TRUST=ca.crt)…"
 echo "    Menu : ${BASE_URL}/menus/menu.ipxe"
 echo "    (10–25 min selon la machine)"
 
-# Compilation (root ou ipxe) : doit pouvoir lire /srv/ipxe/ssl/ca.crt
-if [ "$(id -u)" -eq 0 ] && [ -r /srv/ipxe/ssl/ca.crt ]; then
-  chmod 644 /srv/ipxe/ssl/ca.crt /srv/ipxe/ssl/server.crt 2>/dev/null || true
-  chown "$APP_USER:$APP_USER" /srv/ipxe/ssl/ca.crt 2>/dev/null || true
-fi
 sudo -u "$APP_USER" env HOME=/srv/ipxe \
   "$VENV/bin/python" "$APP_DIR/deploy/compile_ipxe_firmware.py" \
   --menu-url "${BASE_URL}/menus/menu.ipxe"

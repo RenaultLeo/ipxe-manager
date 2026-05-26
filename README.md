@@ -7,7 +7,7 @@ Ce projet est en phase de développement (**beta**) et est partagé à des fins 
 **À garder en tête :**
 
 * 🛑 **Pas pour la production critique :** pas de garantie de disponibilité, de support ni de durcissement « entreprise ».
-* 🔒 **HTTPS interne uniquement :** l’UI et Nginx peuvent tourner en **HTTPS avec certificat auto-signé** (`deploy/enable-https.sh`, renouvellement depuis **Paramètres**). Ce n’est **pas** une PKI publique : le navigateur affichera « Non sécurisé » tant que la CA n’est pas importée ; les clients **iPXE** doivent être **recompilés** après activation ou renouvellement TLS (page **Firmware**). Les mots de passe applicatifs ne sont pas chiffrés au repos ; pas de gestion avancée des secrets (Vault, etc.).
+* 🔒 **HTTPS interne uniquement :** l’UI et Nginx peuvent tourner en **HTTPS avec certificat auto-signé** (`deploy/enable-https.sh`, renouvellement depuis **Paramètres**). Ce n’est **pas** une PKI publique : le navigateur affichera « Non sécurisé » tant que la CA n’est pas importée ; les clients **iPXE** doivent être **recompilés** après activation ou renouvellement TLS (page **Firmware**). **Horloge :** le **serveur** iPXE Manager, l’**hôte** (hyperviseur) et chaque **client PXE** (VM, bare-metal) doivent avoir l’heure correcte (NTP ou sync hôte invité) — sinon TLS échoue côté iPXE avec *Permission denied* alors que les certificats sont bons. Les mots de passe applicatifs ne sont pas chiffrés au repos ; pas de gestion avancée des secrets (Vault, etc.).
 * 👤 **Authentification simple :** comptes locaux (admin / utilisateur), sessions cookie — pas de SSO, MFA ni politique de mot de passe centralisée.
 * 🌐 **Exposition réseau :** déployer sur Internet ou un VLAN non maîtrisé sans pare-feu, TLS public et revue de sécurité est **déconseillé**.
 * 🛠️ **Évolution rapide :** schéma, API et scripts de déploiement peuvent changer entre les versions.
@@ -49,6 +49,7 @@ Schéma logique des briques :
 - **RAM** : 4 Go minimum, **8 Go** si tu compiles souvent le firmware iPXE ou extrais de grosses ISO Windows.
 - **Disque** : volume système (32 Go suffisent souvent) ; **à part**, beaucoup d’espace pour les ISOs sous `/srv/ipxe/isos/` et les arborescences extraites sous `http/boot/`.
 - **Réseau** : une IP **fixe** sur le LAN (les menus et le DHCP pointent vers cette IP).
+- **Heure (HTTPS)** : si tu actives le HTTPS, vérifie que la VM **serveur** est synchronisée (`timedatectl`, NTP/chrony) et que les **clients PXE** (surtout VMs VMware/Proxmox) héritent d’une horloge juste — voir [HTTPS et horloge](#https-et-horloge) ci-dessous.
 
 Exemple **Netplan** (adapter l’interface et la passerelle à ton site) :
 
@@ -126,13 +127,33 @@ Ce que fait **`deploy/setup.sh`** (synthèse) :
 
 ### Référence `deploy/` (noms systemd)
 
-Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/install-proxmox-autoinstall-assistant.sh`** ajoute le dépôt Proxmox et le binaire **`proxmox-auto-install-assistant`** (appelé par `setup.sh` et, si absent, par **`deploy/update.sh`**). **HTTPS (auto-signé)** : **`deploy/enable-https.sh`** (OpenSSL + `nginx-https.conf` + `SERVER_BASE_URL` https) ; rollback **`deploy/disable-https.sh`**. Recompiler le firmware iPXE après activation (patch `DOWNLOAD_PROTO_HTTPS` + `CERT/TRUST=ca.crt`). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/setup.sh`** est aussi exposé brut sur GitHub pour un **bootstrap** « **curl \| bash** » (voir Installation en une ligne).
+Les fichiers **`deploy/ipxe-manager.service`** et **`deploy/celery-worker.service`** documentent une unité proche ; sur le système réel **`setup.sh`** installe **`ipxe-manager`** et **`ipxe-celery`** sous `/etc/systemd/system/` (logs dans **`/var/log/ipxe-manager/`**). **`deploy/install-proxmox-autoinstall-assistant.sh`** ajoute le dépôt Proxmox et le binaire **`proxmox-auto-install-assistant`** (appelé par `setup.sh` et, si absent, par **`deploy/update.sh`**). **HTTPS (auto-signé)** : **`deploy/enable-https.sh`** (OpenSSL + `nginx-https.conf` + `SERVER_BASE_URL` https) ; rollback **`deploy/disable-https.sh`**. Recompiler le firmware iPXE après activation (patch `DOWNLOAD_PROTO_HTTPS` + `CERT/TRUST=ca.crt`). **Horloge** serveur + hôte + clients PXE obligatoire (voir [HTTPS et horloge](#https-et-horloge)). **`deploy/nfs-setup.sh`** ne fait que NFS + export Ubuntu. **`deploy/patch.sh`** est **historique** : préfère **`deploy/update.sh`** au quotidien. **`deploy/setup.sh`** est aussi exposé brut sur GitHub pour un **bootstrap** « **curl \| bash** » (voir Installation en une ligne).
 
 ### Première connexion
 
 - Ouvre **`http://<IP>/`** dans un navigateur.
 - Identifiants par défaut : **`admin` / `admin`**.
 - Va dans **Paramètres** et **change immédiatement le mot de passe** (et vérifie **`SERVER_BASE_URL`** / URL de base si ton accès passe par un reverse proxy ou un autre port).
+
+### HTTPS et horloge
+
+L’installation via **`setup.sh`** active déjà le **HTTPS auto-signé** (certificats, Nginx, firmware compilé avec `TRUST=ca.crt`). Pour activer ou réactiver plus tard : **`sudo bash /srv/ipxe/app/deploy/enable-https.sh <IP>`**.
+
+**Synchronisation de l’heure (indispensable en HTTPS)**
+
+| Où | Pourquoi |
+|----|----------|
+| **Serveur** iPXE Manager (Debian) | Valide les certificats TLS servis par Nginx |
+| **Hyperviseur / hôte** (Windows, Proxmox, ESXi…) | Les VMs PXE héritent souvent de son horloge au boot |
+| **Client PXE** (VM invitée, PC) | iPXE refuse la connexion HTTPS si l’horloge est trop décalée (*Permission denied*, code du type `0216eb3c`) |
+
+**Bonnes pratiques**
+
+- Sur le **serveur Debian** : `timedatectl status` → *System clock synchronized: yes* ; activer **chrony** ou **systemd-timesyncd** si besoin.
+- Sur **VMware** : heure correcte sur l’hôte Windows/Linux, options invité « synchroniser avec l’hôte » ; redémarrer la VM après correction.
+- Sur **Proxmox/QEMU** : l’hôte NTP à jour ; pour une VM de test PXE, vérifier l’heure dans le BIOS/EFI ou une fois sous iPXE : `show unixtime:int32` (comparer à l’heure réelle).
+
+Les certificats et le firmware peuvent être **parfaits** ; une horloge fausse sur le client suffit à reproduire l’erreur.
 
 ---
 

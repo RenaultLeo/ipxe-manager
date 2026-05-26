@@ -107,6 +107,7 @@ Si le site est en **HTTPS** :
 1. Certificat valide (ou auto-signé) sur Nginx
 2. Firmware **recompilé** avec CA embarquée (`TRUST`)
 3. URL du menu en `https://…`
+4. **Horloge correcte** sur le serveur, l’hôte hyperviseur et le **client PXE** (NTP ou sync invité). Sans cela : *Permission denied* au `chain https://…` alors que tout est bien configuré côté serveur.
 
 Sinon : erreurs TLS sur le client iPXE. Workflow : [10-parametres.md](10-parametres.md) + [09-firmware-ipxe.md](09-firmware-ipxe.md).
 

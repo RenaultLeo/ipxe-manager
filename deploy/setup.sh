@@ -434,6 +434,7 @@ echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (optionnel — UB
 echo ""
 echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
 echo "  FIRMWARE  : Compilé à l’install (HTTPS + TRUST ca.crt) — recompiler via /firmware si besoin"
+echo "  HTTPS     : serveur + hôte + clients PXE doivent être à l’heure (NTP) — sinon Permission denied"
 echo "  Rollback HTTP : sudo bash $APP_DIR/deploy/disable-https.sh $SERVER_IP"
 echo ""
 echo "  Mise à jour :"

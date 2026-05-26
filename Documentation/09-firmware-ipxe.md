@@ -87,6 +87,7 @@ Si le site est en HTTPS :
 
 - Bandeau rappel de recompiler après changement de certificat / activation HTTPS
 - Nécessité d’embarquer la CA dans le firmware (`CERT/TRUST`)
+- **Horloge** : serveur, hôte (VMware, Proxmox…) et machine qui boote en PXE doivent être à l’heure (NTP). Sinon erreur *Permission denied* sur le menu HTTPS malgré un firmware à jour
 
 
 ![Alerte bleue en haut page Firmware mentionnant HTTPS et recompilation.](images/09-firmware-https-banner.png)

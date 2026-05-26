@@ -10,7 +10,7 @@
 
 | Élément | Détail |
 |--------|--------|
-| **HTTPS (optionnel)** | Certificat **auto-signé** via `deploy/enable-https.sh` ; renouvellement depuis l’UI (**Paramètres**). Usage **interne / LAN** — pas une PKI publique. |
+| **HTTPS (optionnel)** | Certificat **auto-signé** via `deploy/enable-https.sh` ; renouvellement depuis l’UI (**Paramètres**). Usage **interne / LAN** — pas une PKI publique. **Horloge** : serveur, hôte et clients PXE synchronisés (NTP), sinon échec TLS côté iPXE. |
 | **Clients iPXE** | Après activation ou renouvellement TLS : **recompiler le firmware** (CA embarquée dans le binaire). |
 | **Authentification** | Comptes locaux (admin / utilisateur), sessions par cookie. |
 | **Supervision** | Contrôles d’intégrité et état des services (admin) — diagnostic, pas un SOC. |

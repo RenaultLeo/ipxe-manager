@@ -43,6 +43,7 @@ Détail page : [08-menus-ipxe.md](08-menus-ipxe.md).
 | Cartes « Absent » | Jamais compilé ou échec compile | Relancer **Compiler** ; lire logs dans la carte progression |
 | Compile annulée | Action utilisateur | Relancer — les sources restent (plus rapide) |
 | PXE OK mais pas HTTPS | Firmware pas recompilé après TLS | Paramètres → renouveler si besoin → Firmware → recompiler |
+| HTTPS : *Permission denied* (0216eb3c) | Horloge fausse sur le **client** PXE (VM sans NTP) | Corriger l’heure hôte + VM ; `show unixtime:int32` dans iPXE ; puis retester |
 
 ---
 

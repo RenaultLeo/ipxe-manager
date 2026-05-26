@@ -35,6 +35,7 @@ Trois cartes côte à côte :
 - Date d’expiration, jours restants
 - Badge alerte si expiration proche
 - **Renouveler le certificat** → modale de confirmation (2 ans, reload Nginx, **recompiler firmware ensuite**)
+- **Horloge** : en HTTPS, chaque client PXE (VM, PC) doit avoir l’heure juste (sync NTP sur le serveur Debian, heure correcte sur l’hyperviseur et les VMs). Sinon *Permission denied* au boot iPXE
 
 
 ![Carte TLS avec date d’expiration et bouton renouveler.](images/10-settings-tls-card.png)
