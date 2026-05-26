@@ -260,20 +260,134 @@ function Set-UnattendComputerName {{
     return $updated
 }}
 
+function Get-OobeLocalAccountNodes {{
+    param([xml]$Doc, $NsMgr)
+    return @($Doc.SelectNodes("//u:settings[@pass='oobeSystem']//u:LocalAccount", $NsMgr))
+}}
+
+function Find-OobeLocalAccountByName {{
+    param([xml]$Doc, $NsMgr, [string]$User)
+    foreach ($node in (Get-OobeLocalAccountNodes -Doc $Doc -NsMgr $NsMgr)) {{
+        $n = Get-UnattendDirectChild -Parent $node -LocalName 'Name'
+        if ($n -and $n.InnerText -ieq $User) {{ return $node }}
+    }}
+    return $null
+}}
+
 function Test-UnattendLocalAccountExistsInDoc {{
+    param([xml]$Doc, $NsMgr, [string]$User)
+    return [bool](Find-OobeLocalAccountByName -Doc $Doc -NsMgr $NsMgr -User $User)
+}}
+
+function Ensure-WcmActionAddOnElement {{
+    param($Element)
+    if (-not $Element) {{ return }}
+    $wcmUri = Get-UnattendWcmUri
+    $cur = $Element.GetAttribute('action', $wcmUri)
+    if ($cur -ne 'add') {{
+        $null = $Element.SetAttribute('action', $wcmUri, 'add')
+    }}
+    $key = $Element.GetAttribute('keyValue', $wcmUri)
+    if (-not $key) {{
+        $null = $Element.SetAttribute('keyValue', $wcmUri, [guid]::NewGuid().ToString())
+    }}
+}}
+
+function Set-LocalAccountFieldsOnNode {{
+    param($Acct, [xml]$Doc, [string]$NsUri, [string]$User, [string]$Password)
+    Ensure-WcmActionAddOnElement -Element $Acct
+    Set-UnattendPasswordNode -Parent $Acct -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText
+    Set-UnattendXmlText -Parent $Acct -Doc $Doc -NsUri $NsUri -LocalName 'Description' -Value ('Compte iPXE Manager — ' + $User) | Out-Null
+    Set-UnattendXmlText -Parent $Acct -Doc $Doc -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
+    Set-UnattendXmlText -Parent $Acct -Doc $Doc -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
+    Set-UnattendXmlText -Parent $Acct -Doc $Doc -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
+}}
+
+function Test-UnattendLocalAccountConfigured {{
+    param([xml]$Doc, $NsMgr, [string]$User)
+    $acct = Find-OobeLocalAccountByName -Doc $Doc -NsMgr $NsMgr -User $User
+    if (-not $acct) {{ return $false }}
+    $wcmUri = Get-UnattendWcmUri
+    if ($acct.GetAttribute('action', $wcmUri) -ne 'add') {{ return $false }}
+    $name = Get-UnattendDirectChild -Parent $acct -LocalName 'Name'
+    $group = Get-UnattendDirectChild -Parent $acct -LocalName 'Group'
+    $pw = Get-UnattendDirectChild -Parent $acct -LocalName 'Password'
+    $pwVal = $null
+    if ($pw) {{ $pwVal = Get-UnattendDirectChild -Parent $pw -LocalName 'Value' }}
+    if (-not $name -or -not $group -or -not $pwVal -or -not $pwVal.InnerText) {{ return $false }}
+    if ($name.InnerText -ine $User) {{ return $false }}
+    if ($group.InnerText -notmatch 'Administrators') {{ return $false }}
+    return $true
+}}
+
+function Test-UnattendAutoLogonConfigured {{
     param([xml]$Doc, $NsMgr, [string]$User)
     $shells = Get-ShellSetupComponentsForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr
     foreach ($shell in $shells) {{
-        $ua = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
-        if (-not $ua) {{ continue }}
-        $la = Get-UnattendDirectChild -Parent $ua -LocalName 'LocalAccounts'
-        if (-not $la) {{ continue }}
-        foreach ($node in @($la.SelectNodes('u:LocalAccount', $NsMgr))) {{
-            $n = Get-UnattendDirectChild -Parent $node -LocalName 'Name'
-            if ($n -and $n.InnerText -ieq $User) {{ return $true }}
-        }}
+        $auto = Get-UnattendDirectChild -Parent $shell -LocalName 'AutoLogon'
+        if (-not $auto) {{ continue }}
+        $en = Get-UnattendDirectChild -Parent $auto -LocalName 'Enabled'
+        $un = Get-UnattendDirectChild -Parent $auto -LocalName 'Username'
+        if ($en -and $en.InnerText -ieq 'true' -and $un -and $un.InnerText -ieq $User) {{ return $true }}
     }}
     return $false
+}}
+
+function Ensure-OobeShellUserAccounts {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr -NsUri $NsUri
+    Ensure-WcmOnShellComponent -Shell $shell
+    Ensure-WcmOnUnattendRoot -Doc $Doc
+    $userAccounts = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
+    if (-not $userAccounts) {{
+        $userAccounts = New-UnattendElement -Doc $Doc -LocalName 'UserAccounts' -NsUri $NsUri
+        Insert-ShellSetupChildBefore -Shell $shell -NewNode $userAccounts -BeforeLocalName 'AutoLogon'
+    }}
+    $localAccounts = Get-UnattendDirectChild -Parent $userAccounts -LocalName 'LocalAccounts'
+    if (-not $localAccounts) {{
+        $localAccounts = New-UnattendElement -Doc $Doc -LocalName 'LocalAccounts' -NsUri $NsUri
+        $userAccounts.AppendChild($localAccounts) | Out-Null
+    }}
+    return $shell, $localAccounts
+}}
+
+function Sync-UnattendOobeLocalAccount {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
+    Ensure-OobeBypassForLocalAccount -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+    $shell, $localAccounts = Ensure-OobeShellUserAccounts -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+    $existing = Find-OobeLocalAccountByName -Doc $Doc -NsMgr $NsMgr -User $User
+    if ($existing) {{
+        Set-LocalAccountFieldsOnNode -Acct $existing -Doc $Doc -NsUri $NsUri -User $User -Password $Password
+        Write-Host "Compte oobeSystem mis a jour : $User (LocalAccount wcm:action=add)" -ForegroundColor Green
+        return 'updated'
+    }}
+    $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
+    Set-LocalAccountFieldsOnNode -Acct $acct -Doc $Doc -NsUri $NsUri -User $User -Password $Password
+    $localAccounts.AppendChild($acct) | Out-Null
+    Write-Host "Compte oobeSystem ajoute : $User (LocalAccount wcm:action=add)" -ForegroundColor Green
+    return 'added'
+}}
+
+function Add-UnattendOobeLocalAccount {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
+    $result = Sync-UnattendOobeLocalAccount -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri -User $User -Password $Password
+    if ($result -eq 'added' -or $result -eq 'updated') {{ return $true }}
+    return $false
+}}
+
+function Update-UnattendAutoLogon {{
+    param([xml]$Doc, $Shell, [string]$NsUri, [string]$User, [string]$Password)
+    Ensure-WcmOnShellComponent -Shell $Shell
+    $auto = Get-UnattendDirectChild -Parent $Shell -LocalName 'AutoLogon'
+    if (-not $auto) {{
+        $auto = New-UnattendElement -Doc $Doc -LocalName 'AutoLogon' -NsUri $NsUri
+        $Shell.AppendChild($auto) | Out-Null
+    }}
+    Set-UnattendPasswordNode -Parent $auto -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText
+    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Enabled' -Value 'true' | Out-Null
+    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'LogonCount' -Value '1' | Out-Null
+    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Username' -Value $User | Out-Null
+    return $true
 }}
 
 function Test-UnattendReservedUsername {{
@@ -311,54 +425,6 @@ function Ensure-OobeBypassForLocalAccount {{
     )) {{
         Set-UnattendXmlText -Parent $oobe -Doc $Doc -NsUri $NsUri -LocalName $pair[0] -Value $pair[1] | Out-Null
     }}
-}}
-
-function Add-UnattendOobeLocalAccount {{
-    param([xml]$Doc, $NsMgr, [string]$NsUri, [string]$User, [string]$Password)
-    if (Test-UnattendLocalAccountExistsInDoc -Doc $Doc -NsMgr $NsMgr -User $User) {{
-        return $false
-    }}
-    Ensure-OobeBypassForLocalAccount -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
-    $shell = (Get-ShellSetupComponentsForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr | Select-Object -First 1)
-    if (-not $shell) {{
-        $shell = Ensure-ShellSetupForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr -NsUri $NsUri
-    }}
-    Ensure-WcmOnShellComponent -Shell $shell
-    $wcmUri = Get-UnattendWcmUri
-    $userAccounts = Get-UnattendDirectChild -Parent $shell -LocalName 'UserAccounts'
-    if (-not $userAccounts) {{
-        $userAccounts = New-UnattendElement -Doc $Doc -LocalName 'UserAccounts' -NsUri $NsUri
-        Insert-ShellSetupChildBefore -Shell $shell -NewNode $userAccounts -BeforeLocalName 'AutoLogon'
-    }}
-    $localAccounts = Get-UnattendDirectChild -Parent $userAccounts -LocalName 'LocalAccounts'
-    if (-not $localAccounts) {{
-        $localAccounts = New-UnattendElement -Doc $Doc -LocalName 'LocalAccounts' -NsUri $NsUri
-        $userAccounts.AppendChild($localAccounts) | Out-Null
-    }}
-    $acct = New-UnattendElement -Doc $Doc -LocalName 'LocalAccount' -NsUri $NsUri
-    $null = $acct.SetAttribute('action', $wcmUri, 'add')
-    $localAccounts.AppendChild($acct) | Out-Null
-    Set-UnattendPasswordNode -Parent $acct -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Description' -Value ('Compte ajoute par iPXE Manager — ' + $User) | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'DisplayName' -Value $User | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Group' -Value 'Administrators' | Out-Null
-    Set-UnattendXmlText -Parent $acct -Doc $Doc -NsUri $NsUri -LocalName 'Name' -Value $User | Out-Null
-    return $true
-}}
-
-function Update-UnattendAutoLogon {{
-    param([xml]$Doc, $Shell, [string]$NsUri, [string]$User, [string]$Password)
-    Ensure-WcmOnShellComponent -Shell $Shell
-    $auto = Get-UnattendDirectChild -Parent $Shell -LocalName 'AutoLogon'
-    if (-not $auto) {{
-        $auto = New-UnattendElement -Doc $Doc -LocalName 'AutoLogon' -NsUri $NsUri
-        $Shell.AppendChild($auto) | Out-Null
-    }}
-    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Enabled' -Value 'true' | Out-Null
-    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'Username' -Value $User | Out-Null
-    Set-UnattendPasswordNode -Parent $auto -Doc $Doc -NsUri $NsUri -Password $Password -AsPlainText
-    Set-UnattendXmlText -Parent $auto -Doc $Doc -NsUri $NsUri -LocalName 'LogonCount' -Value '1' | Out-Null
-    return $true
 }}
 
 function Save-UnattendDocument {{
@@ -574,24 +640,28 @@ function Update-OfflineUnattend {{
         }} elseif (-not $LocalPassword) {{
             Write-Host 'Mot de passe requis pour un compte local — compte ignore.' -ForegroundColor Red
         }} else {{
-            Ensure-OobeBypassForLocalAccount -Doc $doc -NsMgr $nsMgr -NsUri $nsUri
-            $shellOobe = Ensure-ShellSetupForPass -Doc $doc -Pass 'oobeSystem' -NsMgr $nsMgr -NsUri $nsUri
-            if (Test-UnattendLocalAccountExistsInDoc -Doc $doc -NsMgr $nsMgr -User $user) {{
-                Write-Host "Compte « $user » deja present dans le XML — AutoLogon mis a jour." -ForegroundColor Yellow
-                $userReady = $true
-            }} else {{
-                $added = Add-UnattendOobeLocalAccount -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
-                if (-not $added) {{
-                    Write-Host "Impossible d ajouter le compte $user dans oobeSystem." -ForegroundColor Red
-                }} else {{
-                    Write-Host "Compte ajoute (oobeSystem, wcm:action=add) : $user" -ForegroundColor Green
-                    $userReady = $true
-                }}
+            $wrongPass = @($doc.SelectNodes("//u:settings[@pass!='oobeSystem']//u:LocalAccount", $nsMgr))
+            if ($wrongPass.Count -gt 0) {{
+                Write-Host "ATTENTION : $($wrongPass.Count) LocalAccount hors pass oobeSystem (ignores par Setup)." -ForegroundColor Yellow
             }}
-            if ($userReady) {{
+            $syncResult = Sync-UnattendOobeLocalAccount -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -User $user -Password $LocalPassword
+            if ($syncResult -eq 'added' -or $syncResult -eq 'updated') {{
+                $shellOobe = (Ensure-OobeShellUserAccounts -Doc $doc -NsMgr $nsMgr -NsUri $nsUri)[0]
                 Update-UnattendAutoLogon -Doc $doc -Shell $shellOobe -NsUri $nsUri -User $user -Password $LocalPassword | Out-Null
-                Write-Host "AutoLogon OOBE : $user" -ForegroundColor Green
-                $changed = $true
+                if (Test-UnattendLocalAccountConfigured -Doc $doc -NsMgr $nsMgr -User $user) {{
+                    Write-Host "Validation OK : oobeSystem/UserAccounts/LocalAccount/$user" -ForegroundColor Green
+                    if (Test-UnattendAutoLogonConfigured -Doc $doc -NsMgr $nsMgr -User $user) {{
+                        Write-Host "Validation OK : oobeSystem/AutoLogon/$user" -ForegroundColor Green
+                    }} else {{
+                        Write-Host 'ATTENTION : AutoLogon oobeSystem incomplet.' -ForegroundColor Yellow
+                    }}
+                    $userReady = $true
+                    $changed = $true
+                }} else {{
+                    Write-Host 'ERREUR : LocalAccount oobeSystem invalide apres sync (wcm:action, Name, Group, Password).' -ForegroundColor Red
+                }}
+            }} else {{
+                Write-Host "Impossible de synchroniser le compte $user dans oobeSystem." -ForegroundColor Red
             }}
         }}
     }}
