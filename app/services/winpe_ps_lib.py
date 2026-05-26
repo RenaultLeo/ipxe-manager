@@ -125,16 +125,10 @@ function Get-LanguagePackFolderForId {{
     return Join-Path $script:WinpeLanguagePacksRoot $rel
 }}
 
-function Get-SortedLanguagePackCabs {{
+function Get-LanguagePackCabCount {{
     param([string]$Folder)
-    if (-not $Folder -or -not (Test-Path -LiteralPath $Folder)) {{ return @() }}
-    $cabs = @(Get-ChildItem -LiteralPath $Folder -Filter '*.cab' -File -ErrorAction SilentlyContinue)
-    return @($cabs | Sort-Object {{
-        $n = $_.Name.ToLowerInvariant()
-        if ($n -match 'language-pack|client-language') {{ 0 }}
-        elseif ($n -match 'language-features|language-experience') {{ 1 }}
-        else {{ 2 }}
-    }}, Name)
+    if (-not $Folder -or -not (Test-Path -LiteralPath $Folder)) {{ return 0 }}
+    return @(Get-ChildItem -LiteralPath $Folder -Filter '*.cab' -File -Recurse -ErrorAction SilentlyContinue).Count
 }}
 
 function Install-WinpeLanguagePacks {{
@@ -157,27 +151,36 @@ function Install-WinpeLanguagePacks {{
         if (-not $Quiet) {{ Write-Host "Aucun pack langue sur le serveur pour $LanguageId." -ForegroundColor Yellow }}
         return $true
     }}
-    $cabs = Get-SortedLanguagePackCabs -Folder $packDir
-    if (-not $cabs -or $cabs.Count -eq 0) {{
+    $cabCount = Get-LanguagePackCabCount -Folder $packDir
+    if ($cabCount -eq 0) {{
         if (-not $Quiet) {{ Write-Host "Aucun .cab dans $packDir" -ForegroundColor Yellow }}
         return $true
     }}
     if (-not $Quiet) {{
-        Write-Host "Injection language pack : $LanguageId ($($cabs.Count) .cab)" -ForegroundColor Cyan
+        Write-Host "Injection language pack : $LanguageId ($cabCount .cab, DISM /Add-Package dossier)" -ForegroundColor Cyan
     }}
     $imageRoot = $TargetOS.TrimEnd('\\')
-    $ok = $true
-    foreach ($cab in $cabs) {{
-        $dismArgs = @('/Image:' + $imageRoot, '/Add-Package', '/PackagePath:' + $cab.FullName)
-        $p = Start-Process -FilePath 'dism.exe' -ArgumentList $dismArgs -Wait -PassThru -NoNewWindow
-        if ($p.ExitCode -ne 0) {{
-            Write-Host "DISM Add-Package echec $($cab.Name) (code $($p.ExitCode))" -ForegroundColor Red
-            $ok = $false
-        }} elseif (-not $Quiet) {{
-            Write-Host "  OK $($cab.Name)" -ForegroundColor Gray
+    $dismArgs = @(
+        '/Image:' + $imageRoot,
+        '/Add-Package',
+        '/PackagePath:' + $packDir,
+        '/IgnoreCheck'
+    )
+    foreach ($scratch in @('X:\', 'S:\', 'T:\')) {{
+        if (Test-Path -LiteralPath $scratch) {{
+            $dismArgs += '/ScratchDir:' + $scratch.TrimEnd('\\')
+            break
         }}
     }}
-    return $ok
+    $p = Start-Process -FilePath 'dism.exe' -ArgumentList $dismArgs -Wait -PassThru -NoNewWindow
+    if ($p.ExitCode -ne 0) {{
+        Write-Host "DISM Add-Package echec pour $LanguageId (code $($p.ExitCode)) — dossier $packDir" -ForegroundColor Red
+        return $false
+    }}
+    if (-not $Quiet) {{
+        Write-Host "  OK $LanguageId ($cabCount .cab)" -ForegroundColor Gray
+    }}
+    return $true
 }}
 
 function Get-UnattendNsUri {{
