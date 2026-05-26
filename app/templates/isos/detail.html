@@ -537,6 +537,11 @@
           <p class="small text-muted mb-3">{{ t('iso.winpe_language_packs_intro') }}</p>
           {% if request.query_params.get('msg') == 'winpe_language_packs_uploaded' %}
           <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_language_packs_uploaded') }}</div>
+          {% if request.query_params.get('lp_skipped') %}
+          <div class="alert alert-warning py-2 small mb-3">
+            {{ request.query_params.get('lp_skipped') }} {{ t('iso.winpe_language_packs_skipped') }}
+          </div>
+          {% endif %}
           {% endif %}
           {% if winpe_smb_host %}
           <p class="small mb-3">
@@ -555,27 +560,6 @@
                 data-msg-progress="{{ t('iso.winpe_language_packs_progress') }}"
                 data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
                 data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
-            <div class="col-12">
-              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_locale') }}</label>
-              <select name="locale_kind" id="winpe-language-packs-kind" class="form-select form-select-sm" required>
-                <option value="existing">{{ t('iso.winpe_language_packs_existing') }}</option>
-                <option value="new">{{ t('iso.winpe_language_packs_new') }}</option>
-              </select>
-            </div>
-            <div class="col-12" id="winpe-language-packs-existing-wrap">
-              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_existing') }}</label>
-              <select name="locale_id" id="winpe-language-packs-id" class="form-select form-select-sm">
-                <option value="">{{ t('common.choose') }}</option>
-                {% for lp in winpe_language_packs_catalog %}
-                <option value="{{ lp.id }}">{{ lp.label }} ({{ lp.id }}) — {{ lp.cab_count }} {{ t('iso.winpe_language_packs_count') }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-12 d-none" id="winpe-language-packs-new-wrap">
-              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_new_id') }}</label>
-              <input type="text" name="new_locale_id" id="winpe-language-packs-new-id"
-                     class="form-control form-control-sm" placeholder="{{ t('iso.winpe_language_packs_new_ph') }}">
-            </div>
             <div class="col-12">
               <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_files') }}</label>
               <input type="file" name="pack_files" id="winpe-language-packs-files" class="form-control form-control-sm"
@@ -1378,11 +1362,6 @@
 (function () {
   var form = document.getElementById('winpe-language-packs-form');
   if (!form) return;
-  var kindSel = document.getElementById('winpe-language-packs-kind');
-  var existingWrap = document.getElementById('winpe-language-packs-existing-wrap');
-  var newWrap = document.getElementById('winpe-language-packs-new-wrap');
-  var idSel = document.getElementById('winpe-language-packs-id');
-  var newId = document.getElementById('winpe-language-packs-new-id');
   var fileInput = document.getElementById('winpe-language-packs-files');
   var versionId = form.dataset.versionId || '';
   var msgProgress = form.dataset.msgProgress || '…';
@@ -1393,18 +1372,6 @@
   var pct = document.getElementById('winpe-language-packs-progress-pct');
   var btn = document.getElementById('winpe-language-packs-submit-btn');
 
-  function syncKind() {
-    var isNew = kindSel && kindSel.value === 'new';
-    if (existingWrap) existingWrap.classList.toggle('d-none', isNew);
-    if (newWrap) newWrap.classList.toggle('d-none', !isNew);
-    if (idSel) idSel.required = !isNew;
-    if (newId) newId.required = !!isNew;
-  }
-  if (kindSel) {
-    kindSel.addEventListener('change', syncKind);
-    syncKind();
-  }
-
   function parseDetail(detail) {
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail) && detail.length && detail[0].msg) return detail[0].msg;
@@ -1414,14 +1381,6 @@
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     if (!fileInput || !fileInput.files || !fileInput.files.length) {
-      alert(msgXhr);
-      return;
-    }
-    if (kindSel.value === 'existing' && idSel && !idSel.value) {
-      alert(msgXhr);
-      return;
-    }
-    if (kindSel.value === 'new' && newId && !newId.value.trim()) {
       alert(msgXhr);
       return;
     }

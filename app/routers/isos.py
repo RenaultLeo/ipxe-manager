@@ -1312,12 +1312,9 @@ async def upload_winpe_language_packs(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    locale_kind: str = Form(...),
-    locale_id: str = Form(""),
-    new_locale_id: str = Form(""),
     pack_files: list[UploadFile] = File(...),
 ):
-    """Upload de fichiers .cab dans boot/language-packs/<locale>/."""
+    """Upload .cab : locale deduite du nom de fichier, classement automatique."""
     redir = _auth(request)
     if redir:
         return redir
@@ -1343,31 +1340,37 @@ async def upload_winpe_language_packs(
 
     from app.services.winpe_language_packs import (
         rebuild_catalog,
-        resolve_locale_upload,
-        save_uploaded_cab_files,
+        save_uploaded_cab_files_auto,
     )
 
     try:
-        lid, slug, folder = resolve_locale_upload(
-            locale_kind=locale_kind,
-            locale_id=locale_id,
-            new_locale_id=new_locale_id,
-        )
-        n_saved, names = await save_uploaded_cab_files(folder, files)
+        n_saved, by_locale, skipped = await save_uploaded_cab_files_auto(files)
         if n_saved == 0:
             raise HTTPException(
                 400, detail=translate(lang, "iso.winpe_language_packs_no_files")
             )
         cat = rebuild_catalog()
-        meta = cat.get(lid) or {}
+        locales_summary = []
+        for lid, names in sorted(by_locale.items()):
+            meta = cat.get(lid) or {}
+            locales_summary.append(
+                {
+                    "id": lid,
+                    "slug": meta.get("slug"),
+                    "path": meta.get("path"),
+                    "cab_count": int(meta.get("cab_count") or 0),
+                    "saved": names,
+                }
+            )
+        redirect = f"/isos/{version_id}?msg=winpe_language_packs_uploaded"
+        if skipped:
+            redirect += "&lp_skipped=" + str(len(skipped))
         payload = {
             "ok": True,
-            "id": lid,
-            "slug": slug,
-            "path": meta.get("path") or f"language-packs/{slug}",
-            "cab_count": int(meta.get("cab_count") or 0),
-            "saved": names,
-            "redirect": f"/isos/{version_id}?msg=winpe_language_packs_uploaded",
+            "saved_count": n_saved,
+            "locales": locales_summary,
+            "skipped": skipped,
+            "redirect": redirect,
         }
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
