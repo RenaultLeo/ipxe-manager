@@ -13,7 +13,14 @@ FIRMWARE_UI_STEPS: tuple[str, ...] = (
 )
 
 # Étapes internes non affichées seules (fusionnées dans patch_ipxe_config)
-_PATCH_STEPS = frozenset({"patch_ipxe_config", "patch_ipxe_https"})
+_PATCH_STEPS = frozenset({
+    "patch_ipxe_config",
+    "patch_ipxe_https",
+    "patch_ipxe_debug",
+    "preflight_config",
+    "preflight_embed",
+    "make_clean",
+})
 
 
 def normalize_completed_steps(completed: list[str] | None) -> set[str]:
