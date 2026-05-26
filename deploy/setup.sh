@@ -417,6 +417,8 @@ if [ -f "$APP_DIR/deploy/bootstrap-https-firmware.sh" ]; then
 else
     echo "  ! bootstrap-https-firmware.sh absent — compilez depuis /firmware"
 fi
+chown -R "$APP_USER:$APP_USER" "$DATA_DIR/http/menus" 2>/dev/null || true
+chmod -R o+rX "$DATA_DIR/http/menus" 2>/dev/null || true
 
 # ── Résumé ────────────────────────────────────────────────────────────────────
 echo ""

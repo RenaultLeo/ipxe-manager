@@ -151,10 +151,32 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
                     )
 
         # Regenerate menus so this version appears immediately
+        from app.config import settings
+        from app.services.filesystem_perms import prepare_menus_dir
         from app.services.menu_generator import regenerate_all
-        regenerate_all(db)
 
-        return {"status": "ok", "paths": paths}
+        menu_warning: str | None = None
+        prepare_menus_dir(settings.menus_dir)
+        try:
+            regenerate_all(db)
+        except Exception as menu_exc:
+            logger.exception(
+                "Régénération menus après extraction (version %s)", iso_version_id
+            )
+            prepare_menus_dir(settings.menus_dir)
+            try:
+                regenerate_all(db)
+            except Exception as retry_exc:
+                menu_warning = str(retry_exc)
+                logger.exception(
+                    "Régénération menus (2e tentative) échouée pour version %s",
+                    iso_version_id,
+                )
+
+        result: dict = {"status": "ok", "paths": paths}
+        if menu_warning:
+            result["menu_warning"] = menu_warning
+        return result
 
     except SoftTimeLimitExceeded:
         logger.warning("extract_iso_task timeout (SoftTimeLimitExceeded) pour version %s", iso_version_id)
@@ -446,7 +468,11 @@ def patch_winpe_startnet_task(
 def regenerate_menus_task():
     db = SessionLocal()
     try:
+        from app.config import settings
+        from app.services.filesystem_perms import prepare_menus_dir
         from app.services.menu_generator import regenerate_all
+
+        prepare_menus_dir(settings.menus_dir)
         written = regenerate_all(db)
         return {"written": written}
     finally:

@@ -9,6 +9,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 APP_DIR="${APP_DIR:-/srv/ipxe/app}"
+DATA_DIR="${DATA_DIR:-/srv/ipxe}"
 VENV="${VENV:-/srv/ipxe/venv}"
 APP_USER="${APP_USER:-ipxe}"
 HOST="${1:-$(hostname -I | awk '{print $1}')}"
@@ -32,21 +33,27 @@ sudo -u "$APP_USER" env HOME=/srv/ipxe \
   "$VENV/bin/python" "$APP_DIR/deploy/compile_ipxe_firmware.py" \
   --menu-url "${BASE_URL}/menus/menu.ipxe"
 
-echo "==> Régénération des menus iPXE…"
+echo "==> Régénération des menus iPXE (utilisateur ${APP_USER})…"
 cd "$APP_DIR"
-"$VENV/bin/python" - <<PY
+sudo -u "$APP_USER" env HOME=/srv/ipxe \
+  "$VENV/bin/python" - <<PY
 from app.database import SessionLocal
-from app.config import persist_server_base_url, sync_settings_server_base_url_from_db
+from app.config import persist_server_base_url, sync_settings_server_base_url_from_db, settings
+from app.services.filesystem_perms import prepare_menus_dir
 from app.services.menu_generator import regenerate_all
 
 db = SessionLocal()
 try:
     persist_server_base_url(db, "${BASE_URL}")
     sync_settings_server_base_url_from_db()
+    prepare_menus_dir(settings.menus_dir)
     n = regenerate_all(db)
-    print(f"  {n} fichier(s) menu régénéré(s).")
+    print(f"  {len(n)} fichier(s) menu régénéré(s).")
 finally:
     db.close()
 PY
+
+chown -R "$APP_USER:$APP_USER" "$DATA_DIR/http/menus" 2>/dev/null || true
+chmod -R o+rX "$DATA_DIR/http/menus" 2>/dev/null || true
 
 echo "OK — firmware HTTPS + menus prêts."

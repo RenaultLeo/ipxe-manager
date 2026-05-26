@@ -1548,22 +1548,11 @@ def _find_by_priority(root: Path, names: list[str], mode: str = "extra") -> Path
 
 # ── Permissions ────────────────────────────────────────────────────────────────
 
-def _fix_permissions(path: Path):
-    """
-    Rend tous les fichiers lisibles par Nginx (www-data).
-    Dossiers → 755, fichiers → 644.
-    7z conserve parfois les permissions ISO (souvent 400/500) qui bloquent Nginx.
-    """
-    try:
-        for p in path.rglob("*"):
-            if p.is_dir():
-                p.chmod(0o755)
-            else:
-                p.chmod(0o644)
-        path.chmod(0o755)
-        logger.info("Permissions corrigées sur %s", path)
-    except Exception as exc:
-        logger.warning("Impossible de corriger les permissions sur %s : %s", path, exc)
+def _fix_permissions(path: Path) -> None:
+    from app.services.filesystem_perms import fix_tree_permissions
+
+    fix_tree_permissions(path)
+    logger.info("Permissions corrigées sur %s", path)
 
 
 # ── Nettoyage ──────────────────────────────────────────────────────────────────

@@ -15,8 +15,13 @@ from app.services.os_type_order import sort_os_types_for_ui
 from app.services.slugify import slugify
 from app.services.autoconfig_label import resolve_autoconfig_menu_label
 from app.services.autoconfig_publish import published_seed_dir_rel_path
+from app.services.filesystem_perms import prepare_menus_dir, write_text_file
 
 logger = logging.getLogger(__name__)
+
+
+def _write_menu(path: Path, content: str) -> None:
+    write_text_file(path, content, file_mode=0o664)
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
@@ -448,8 +453,13 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
         except OSError as e:
             logger.warning("Logo menu illisible (%s) — fond bleu seul.", e)
 
+    prepare_menus_dir(menus_dir)
     try:
         canvas.save(out_path, "PNG", optimize=True)
+        try:
+            out_path.chmod(0o664)
+        except OSError:
+            pass
     except OSError as e:
         logger.error("Écriture %s : %s", out_path, e)
         return False
@@ -501,7 +511,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
                     insert_at += 1
                 out.insert(insert_at, new_line)
             try:
-                path.write_text("\n".join(out) + "\n", encoding="utf-8")
+                write_text_file(path, "\n".join(out) + "\n", file_mode=0o644)
             except OSError as e:
                 logger.warning("ESXi %s non écrit %s : %s", fname, path, e)
 
@@ -537,7 +547,7 @@ def regenerate_all(db: Session) -> list[str]:
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
     cfg.server_base_url = resolve_server_base_url(db)
     _refresh_esxi_ipxe_boot_cfg_prefixes(cfg)
-    cfg.menus_dir.mkdir(parents=True, exist_ok=True)
+    prepare_menus_dir(cfg.menus_dir)
     repo_root = Path(__file__).resolve().parent.parent.parent
     has_menu_theme = _build_menu_theme_png(cfg.menus_dir)
 
@@ -630,7 +640,7 @@ def regenerate_all(db: Session) -> list[str]:
                     has_menu_theme=has_menu_theme,
                 )
                 out = cfg.menus_dir / f"{os_type.slug}.ipxe"
-                out.write_text(content, encoding="utf-8")
+                _write_menu(out, content)
                 written.append(str(out))
 
                 autres_back_target = f"{base}/menus/menu.ipxe"
@@ -652,15 +662,16 @@ def regenerate_all(db: Session) -> list[str]:
                     ]
                     hub = env.get_template("ubuntu_hub.ipxe.j2")
                     out_hub = cfg.menus_dir / "ubuntu.ipxe"
-                    out_hub.write_text(
+                    _write_menu(
+                        out_hub,
                         hub.render(server_url=base, has_menu_theme=has_menu_theme),
-                        encoding="utf-8",
                     )
                     written.append(str(out_hub))
 
                     linux_tmpl = env.get_template("linux.ipxe.j2")
                     out_desktop = cfg.menus_dir / "ubuntu_desktop.ipxe"
-                    out_desktop.write_text(
+                    _write_menu(
+                        out_desktop,
                         linux_tmpl.render(
                             os_type=os_type,
                             entries=desktop_entries,
@@ -677,14 +688,14 @@ def regenerate_all(db: Session) -> list[str]:
                                 Path(cfg.http_root) / "boot" / "ubuntu"
                             ).as_posix(),
                         ),
-                        encoding="utf-8",
                     )
                     written.append(str(out_desktop))
 
                     flat = _ubuntu_server_flat_items(server_entries)
                     server_tmpl = env.get_template("ubuntu_server.ipxe.j2")
                     out_server = cfg.menus_dir / "ubuntu_server.ipxe"
-                    out_server.write_text(
+                    _write_menu(
+                        out_server,
                         server_tmpl.render(
                             flat_items=flat,
                             default_id=flat[0]["menu_id"] if flat else "back",
@@ -692,7 +703,6 @@ def regenerate_all(db: Session) -> list[str]:
                             server_url=base,
                             has_menu_theme=has_menu_theme,
                         ),
-                        encoding="utf-8",
                     )
                     written.append(str(out_server))
 
@@ -726,7 +736,7 @@ def regenerate_all(db: Session) -> list[str]:
                         ).as_posix(),
                     )
                     out = cfg.menus_dir / f"{os_type.slug}.ipxe"
-                    out.write_text(content, encoding="utf-8")
+                    _write_menu(out, content)
                     written.append(str(out))
 
                     autres_back_target = f"{base}/menus/{os_type.slug}.ipxe"
@@ -744,7 +754,7 @@ def regenerate_all(db: Session) -> list[str]:
                     back_item_label=autres_back_item,
                 )
                 out_autres = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
-                out_autres.write_text(content_autres, encoding="utf-8")
+                _write_menu(out_autres, content_autres)
                 written.append(str(out_autres))
                 logger.info("Menu scripts iPXE généré : %s (%d entrées)", out_autres, len(custom_entries))
             else:
@@ -765,7 +775,7 @@ def regenerate_all(db: Session) -> list[str]:
         has_menu_theme=has_menu_theme,
     )
     out = cfg.menus_dir / "menu.ipxe"
-    out.write_text(content, encoding="utf-8")
+    _write_menu(out, content)
     written.append(str(out))
 
     return written

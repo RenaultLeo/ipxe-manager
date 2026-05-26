@@ -195,9 +195,10 @@ async def custom_script_save(
     if not entry or not entry.custom_ipxe_path:
         raise HTTPException(404)
 
+    from app.services.filesystem_perms import write_text_file
+
     path = Path(settings.http_root) / entry.custom_ipxe_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    write_text_file(path, content, file_mode=0o664)
 
     from app.services.menu_generator import queue_regenerate_all
 
@@ -403,8 +404,10 @@ async def save_menu_override(
     f = settings.menus_dir / filename
     if not f.suffix == ".ipxe":
         raise HTTPException(400)
-    settings.menus_dir.mkdir(parents=True, exist_ok=True)
-    f.write_text(content, encoding="utf-8")
+    from app.services.filesystem_perms import prepare_menus_dir, write_text_file
+
+    prepare_menus_dir(settings.menus_dir)
+    write_text_file(f, content, file_mode=0o664)
     from app.services.menu_generator import queue_regenerate_all
 
     queue_regenerate_all()
