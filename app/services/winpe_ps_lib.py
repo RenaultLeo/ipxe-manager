@@ -345,12 +345,100 @@ function Find-OfflineUnattendPath {{
     return $null
 }}
 
+function Get-UiLanguageById {{
+    param([string]$LanguageId)
+    if (-not $LanguageId) {{ return $null }}
+    foreach ($p in @($script:WinpeUiLanguages)) {{
+        if ($p.id -eq $LanguageId) {{ return $p }}
+    }}
+    return $null
+}}
+
+function Get-KeyboardById {{
+    param([string]$KeyboardId)
+    if (-not $KeyboardId) {{ return $null }}
+    foreach ($p in @($script:WinpeKeyboardLayouts)) {{
+        if ($p.id -eq $KeyboardId) {{ return $p }}
+    }}
+    return $null
+}}
+
+function Get-RegionById {{
+    param([string]$RegionId)
+    if (-not $RegionId) {{ return $null }}
+    foreach ($p in @($script:WinpeRegions)) {{
+        if ($p.id -eq $RegionId) {{ return $p }}
+    }}
+    return $null
+}}
+
+function Get-InternationalComponentName {{
+    param([bool]$WinPE)
+    if ($WinPE) {{ return 'Microsoft-Windows-International-Core-WinPE' }}
+    return 'Microsoft-Windows-International-Core'
+}}
+
+function Ensure-InternationalComponentForPass {{
+    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri, [bool]$WinPE)
+    $compName = Get-InternationalComponentName -WinPE $WinPE
+    $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
+    if (-not $settings) {{
+        $settings = New-UnattendElement -Doc $Doc -LocalName 'settings' -NsUri $NsUri
+        $null = $settings.SetAttribute('pass', $Pass)
+        $Doc.DocumentElement.AppendChild($settings) | Out-Null
+    }}
+    $comp = $settings.SelectSingleNode("u:component[@name='$compName']", $NsMgr)
+    if ($comp) {{ return $comp }}
+    $attrs = Get-ShellSetupTemplateAttrs -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+    $comp = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
+    $null = $comp.SetAttribute('name', $compName)
+    foreach ($k in $attrs.Keys) {{
+        if ($attrs[$k]) {{ $null = $comp.SetAttribute($k, $attrs[$k]) }}
+    }}
+    $settings.AppendChild($comp) | Out-Null
+    return $comp
+}}
+
+function Set-InternationalFieldsOnComponent {{
+    param($Comp, [xml]$Doc, [string]$NsUri, $UiLang, $Region, [string]$InputLocale, [bool]$IncludeSetupUiLanguage)
+    if ($IncludeSetupUiLanguage) {{
+        $sul = Get-UnattendDirectChild -Parent $Comp -LocalName 'SetupUILanguage'
+        if (-not $sul) {{
+            $sul = New-UnattendElement -Doc $Doc -LocalName 'SetupUILanguage' -NsUri $NsUri
+            if ($Comp.FirstChild) {{
+                $Comp.InsertBefore($sul, $Comp.FirstChild) | Out-Null
+            }} else {{
+                $Comp.AppendChild($sul) | Out-Null
+            }}
+        }}
+        Set-UnattendXmlText -Parent $sul -Doc $Doc -NsUri $NsUri -LocalName 'UILanguage' -Value $UiLang.setup_ui_language | Out-Null
+    }}
+    Set-UnattendXmlText -Parent $Comp -Doc $Doc -NsUri $NsUri -LocalName 'InputLocale' -Value $InputLocale | Out-Null
+    Set-UnattendXmlText -Parent $Comp -Doc $Doc -NsUri $NsUri -LocalName 'SystemLocale' -Value $Region.system_locale | Out-Null
+    Set-UnattendXmlText -Parent $Comp -Doc $Doc -NsUri $NsUri -LocalName 'UILanguage' -Value $UiLang.ui_language | Out-Null
+    Set-UnattendXmlText -Parent $Comp -Doc $Doc -NsUri $NsUri -LocalName 'UILanguageFallback' -Value $UiLang.ui_language_fallback | Out-Null
+    Set-UnattendXmlText -Parent $Comp -Doc $Doc -NsUri $NsUri -LocalName 'UserLocale' -Value $Region.user_locale | Out-Null
+}}
+
+function Set-UnattendLocaleSettings {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri, $UiLang, $Region, [string]$InputLocale)
+    if (-not $UiLang -or -not $Region -or -not $InputLocale) {{ return }}
+    $pe = Ensure-InternationalComponentForPass -Doc $Doc -Pass 'windowsPE' -NsMgr $NsMgr -NsUri $NsUri -WinPE $true
+    Set-InternationalFieldsOnComponent -Comp $pe -Doc $Doc -NsUri $NsUri -UiLang $UiLang -Region $Region -InputLocale $InputLocale -IncludeSetupUiLanguage $true
+    $oob = Ensure-InternationalComponentForPass -Doc $Doc -Pass 'oobeSystem' -NsMgr $NsMgr -NsUri $NsUri -WinPE $false
+    Set-InternationalFieldsOnComponent -Comp $oob -Doc $Doc -NsUri $NsUri -UiLang $UiLang -Region $Region -InputLocale $InputLocale -IncludeSetupUiLanguage $false
+}}
+
 function Update-OfflineUnattend {{
     param(
         [string]$TargetOS = 'W:\\',
         [string]$ComputerName = '',
         [string]$LocalUser = '',
-        [string]$LocalPassword = ''
+        [string]$LocalPassword = '',
+        [string]$LanguageId = '',
+        [string]$RegionId = '',
+        [string]$KeyboardId = '',
+        [string]$LocaleId = ''
     )
     $path = Find-OfflineUnattendPath -TargetOS $TargetOS
     if (-not $path) {{
@@ -363,6 +451,25 @@ function Update-OfflineUnattend {{
     $doc.Load($path)
     $nsMgr, $nsUri = Get-UnattendNsMgr -Doc $doc
     $changed = $false
+
+    $legacy = if ($LocaleId -and $LocaleId.Trim()) {{ $LocaleId.Trim() }} else {{ '' }}
+    $langId = if ($LanguageId -and $LanguageId.Trim()) {{ $LanguageId.Trim() }} elseif ($legacy) {{ $legacy }} else {{ $script:WinpeDefaultUiLanguageId }}
+    $regionId = if ($RegionId -and $RegionId.Trim()) {{ $RegionId.Trim() }} elseif ($legacy) {{ $legacy }} else {{ $script:WinpeDefaultRegionId }}
+    $kbId = if ($KeyboardId -and $KeyboardId.Trim()) {{ $KeyboardId.Trim() }} elseif ($legacy) {{ $legacy }} else {{ $script:WinpeDefaultKeyboardId }}
+    $uiLang = Get-UiLanguageById -LanguageId $langId
+    $region = Get-RegionById -RegionId $regionId
+    $keyboard = Get-KeyboardById -KeyboardId $kbId
+    if ($uiLang -and $region -and $keyboard) {{
+        Set-UnattendLocaleSettings -Doc $doc -NsMgr $nsMgr -NsUri $nsUri -UiLang $uiLang -Region $region -InputLocale $keyboard.input_locale
+        Write-Host "Langue interface : $($uiLang.label) ($($uiLang.id))" -ForegroundColor Green
+        Write-Host "Region (formats) : $($region.label) ($($region.id))" -ForegroundColor Green
+        Write-Host "Clavier : $($keyboard.label) ($($keyboard.input_locale))" -ForegroundColor Green
+        $changed = $true
+    }} else {{
+        if (-not $uiLang) {{ Write-Host "Langue interface inconnue : $langId — non modifiee." -ForegroundColor Yellow }}
+        if (-not $region) {{ Write-Host "Region inconnue : $regionId — non modifiee." -ForegroundColor Yellow }}
+        if (-not $keyboard) {{ Write-Host "Clavier inconnu : $kbId — non modifie." -ForegroundColor Yellow }}
+    }}
 
     if ($ComputerName -and $ComputerName.Trim()) {{
         $cn = $ComputerName.Trim()
@@ -420,12 +527,43 @@ if ($script:WinpeInjectCliMode) {{
 
 
 def ps_deploy_wizard(scripts_root: str, masters_file: str) -> str:
+    from app.services.winpe_locale_presets import (
+        default_keyboard_id,
+        default_region_id,
+        default_ui_language_id,
+        keyboards_for_ps_embed,
+        regions_for_ps_embed,
+        ui_languages_for_ps_embed,
+    )
+
+    ui_json = ui_languages_for_ps_embed()
+    region_json = regions_for_ps_embed()
+    kb_json = keyboards_for_ps_embed()
+    default_ui = default_ui_language_id()
+    default_region = default_region_id()
+    default_kb = default_keyboard_id()
+
     return f"""# Generated by iPXE Manager — assistant de deploiement WinPE
 $ErrorActionPreference = 'Stop'
 $ScriptsRoot = '{scripts_root}'
 $MastersFile = Join-Path $ScriptsRoot '{masters_file}'
 $TargetOS    = 'W:\\'
 $TargetWin   = 'W:\\Windows'
+$script:WinpeDefaultUiLanguageId = '{default_ui}'
+$script:WinpeDefaultRegionId = '{default_region}'
+$script:WinpeDefaultKeyboardId = '{default_kb}'
+
+$script:WinpeUiLanguages = @'
+{ui_json}
+'@ | ConvertFrom-Json
+
+$script:WinpeRegions = @'
+{region_json}
+'@ | ConvertFrom-Json
+
+$script:WinpeKeyboardLayouts = @'
+{kb_json}
+'@ | ConvertFrom-Json
 
 $injectLib = Join-Path $ScriptsRoot 'inject-drivers.ps1'
 if (-not (Test-Path -LiteralPath $injectLib)) {{
@@ -440,6 +578,24 @@ function Test-WinpeGuiAvailable {{
         Add-Type -AssemblyName System.Drawing -ErrorAction Stop
         return $true
     }} catch {{ return $false }}
+}}
+
+function Read-ConsoleMenuChoice {{
+    param($Items, [string]$Prompt, [string]$DefaultId)
+    $ids = @($Items | ForEach-Object {{ $_.id }})
+    $defIdx = [array]::IndexOf($ids, $DefaultId)
+    if ($defIdx -lt 0) {{ $defIdx = 0 }}
+    for ($k = 0; $k -lt $Items.Count; $k++) {{
+        Write-Host "[$($k+1)] $($Items[$k].label)"
+    }}
+    $idx = 0
+    while ($true) {{
+        $lc = Read-Host "$Prompt [$($defIdx+1)]"
+        if ([string]::IsNullOrWhiteSpace($lc)) {{ $idx = $defIdx; break }}
+        if ([int]::TryParse($lc, [ref]$idx) -and $idx -ge 1 -and $idx -le $Items.Count) {{ $idx--; break }}
+        Write-Host 'Choix invalide.' -ForegroundColor Red
+    }}
+    return $Items[$idx]
 }}
 
 function Show-ConsoleDeployWizard {{
@@ -471,6 +627,15 @@ function Show-ConsoleDeployWizard {{
             }}
         }}
     }}
+    Write-Host ''
+    Write-Host 'Langue interface Windows (setup + OOBE) :' -ForegroundColor Cyan
+    $uiPick = Read-ConsoleMenuChoice -Items $script:WinpeUiLanguages -Prompt 'Langue interface' -DefaultId $script:WinpeDefaultUiLanguageId
+    Write-Host ''
+    Write-Host 'Region / formats (dates, nombres, devise) :' -ForegroundColor Cyan
+    $regionPick = Read-ConsoleMenuChoice -Items $script:WinpeRegions -Prompt 'Region' -DefaultId $script:WinpeDefaultRegionId
+    Write-Host ''
+    Write-Host 'Disposition clavier :' -ForegroundColor Cyan
+    $kbPick = Read-ConsoleMenuChoice -Items $script:WinpeKeyboardLayouts -Prompt 'Clavier' -DefaultId $script:WinpeDefaultKeyboardId
     $cn = Read-Host 'Nom machine (Entree = defaut master)'
     $addUser = Read-Host 'Ajouter un utilisateur local ? (O/N)'
     $lu = ''; $lp = ''
@@ -484,6 +649,9 @@ function Show-ConsoleDeployWizard {{
     return [pscustomobject]@{{
         Master = $master
         DriverProfileKey = $driverKey
+        LanguageId = $uiPick.id
+        RegionId = $regionPick.id
+        KeyboardId = $kbPick.id
         ComputerName = $cn
         LocalUser = $lu
         LocalPassword = $lp
@@ -500,7 +668,7 @@ function Show-WinpeDeployWizard {{
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'iPXE Manager — Deploiement'
-    $form.Size = New-Object System.Drawing.Size(520, 580)
+    $form.Size = New-Object System.Drawing.Size(520, 754)
     $form.StartPosition = 'CenterScreen'
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
@@ -547,43 +715,112 @@ function Show-WinpeDeployWizard {{
     }}
     $form.Controls.Add($cmbD)
 
+    $lblLang = New-Object System.Windows.Forms.Label
+    $lblLang.Text = 'Langue interface (setup + OOBE)'
+    $lblLang.Location = New-Object System.Drawing.Point(12, 218)
+    $lblLang.Size = New-Object System.Drawing.Size(480, 20)
+    $form.Controls.Add($lblLang)
+
+    $cmbLang = New-Object System.Windows.Forms.ComboBox
+    $cmbLang.Location = New-Object System.Drawing.Point(12, 240)
+    $cmbLang.Size = New-Object System.Drawing.Size(480, 24)
+    $cmbLang.DropDownStyle = 'DropDownList'
+    foreach ($lp in @($script:WinpeUiLanguages)) {{
+        [void]$cmbLang.Items.Add($lp.label)
+    }}
+    $defLangIdx = 0
+    for ($li = 0; $li -lt $script:WinpeUiLanguages.Count; $li++) {{
+        if ($script:WinpeUiLanguages[$li].id -eq $script:WinpeDefaultUiLanguageId) {{
+            $defLangIdx = $li
+            break
+        }}
+    }}
+    $cmbLang.SelectedIndex = $defLangIdx
+    $form.Controls.Add($cmbLang)
+
+    $lblReg = New-Object System.Windows.Forms.Label
+    $lblReg.Text = 'Region / formats (dates, nombres, devise)'
+    $lblReg.Location = New-Object System.Drawing.Point(12, 272)
+    $lblReg.Size = New-Object System.Drawing.Size(480, 20)
+    $form.Controls.Add($lblReg)
+
+    $cmbReg = New-Object System.Windows.Forms.ComboBox
+    $cmbReg.Location = New-Object System.Drawing.Point(12, 294)
+    $cmbReg.Size = New-Object System.Drawing.Size(480, 24)
+    $cmbReg.DropDownStyle = 'DropDownList'
+    foreach ($rg in @($script:WinpeRegions)) {{
+        [void]$cmbReg.Items.Add($rg.label)
+    }}
+    $defRegIdx = 0
+    for ($ri = 0; $ri -lt $script:WinpeRegions.Count; $ri++) {{
+        if ($script:WinpeRegions[$ri].id -eq $script:WinpeDefaultRegionId) {{
+            $defRegIdx = $ri
+            break
+        }}
+    }}
+    $cmbReg.SelectedIndex = $defRegIdx
+    $form.Controls.Add($cmbReg)
+
+    $lblKb = New-Object System.Windows.Forms.Label
+    $lblKb.Text = 'Clavier / disposition'
+    $lblKb.Location = New-Object System.Drawing.Point(12, 326)
+    $lblKb.Size = New-Object System.Drawing.Size(480, 20)
+    $form.Controls.Add($lblKb)
+
+    $cmbKb = New-Object System.Windows.Forms.ComboBox
+    $cmbKb.Location = New-Object System.Drawing.Point(12, 348)
+    $cmbKb.Size = New-Object System.Drawing.Size(480, 24)
+    $cmbKb.DropDownStyle = 'DropDownList'
+    foreach ($kb in @($script:WinpeKeyboardLayouts)) {{
+        [void]$cmbKb.Items.Add($kb.label)
+    }}
+    $defKbIdx = 0
+    for ($ki = 0; $ki -lt $script:WinpeKeyboardLayouts.Count; $ki++) {{
+        if ($script:WinpeKeyboardLayouts[$ki].id -eq $script:WinpeDefaultKeyboardId) {{
+            $defKbIdx = $ki
+            break
+        }}
+    }}
+    $cmbKb.SelectedIndex = $defKbIdx
+    $form.Controls.Add($cmbKb)
+
     $lblCn = New-Object System.Windows.Forms.Label
     $lblCn.Text = 'Nom de la machine (vide = defaut du master)'
-    $lblCn.Location = New-Object System.Drawing.Point(12, 218)
+    $lblCn.Location = New-Object System.Drawing.Point(12, 386)
     $lblCn.Size = New-Object System.Drawing.Size(480, 20)
     $form.Controls.Add($lblCn)
 
     $txtCn = New-Object System.Windows.Forms.TextBox
-    $txtCn.Location = New-Object System.Drawing.Point(12, 240)
+    $txtCn.Location = New-Object System.Drawing.Point(12, 408)
     $txtCn.Size = New-Object System.Drawing.Size(480, 24)
     $form.Controls.Add($txtCn)
 
     $chkU = New-Object System.Windows.Forms.CheckBox
     $chkU.Text = 'Ajouter un compte local (les comptes du master ne sont pas modifies)'
-    $chkU.Location = New-Object System.Drawing.Point(12, 278)
+    $chkU.Location = New-Object System.Drawing.Point(12, 446)
     $chkU.Size = New-Object System.Drawing.Size(480, 24)
     $form.Controls.Add($chkU)
 
     $lblU = New-Object System.Windows.Forms.Label
     $lblU.Text = 'Nom utilisateur'
-    $lblU.Location = New-Object System.Drawing.Point(12, 306)
+    $lblU.Location = New-Object System.Drawing.Point(12, 474)
     $lblU.Size = New-Object System.Drawing.Size(200, 20)
     $form.Controls.Add($lblU)
 
     $txtU = New-Object System.Windows.Forms.TextBox
-    $txtU.Location = New-Object System.Drawing.Point(12, 326)
+    $txtU.Location = New-Object System.Drawing.Point(12, 494)
     $txtU.Size = New-Object System.Drawing.Size(480, 24)
     $txtU.Enabled = $false
     $form.Controls.Add($txtU)
 
     $lblP = New-Object System.Windows.Forms.Label
     $lblP.Text = 'Mot de passe'
-    $lblP.Location = New-Object System.Drawing.Point(12, 354)
+    $lblP.Location = New-Object System.Drawing.Point(12, 522)
     $lblP.Size = New-Object System.Drawing.Size(200, 20)
     $form.Controls.Add($lblP)
 
     $txtP = New-Object System.Windows.Forms.TextBox
-    $txtP.Location = New-Object System.Drawing.Point(12, 374)
+    $txtP.Location = New-Object System.Drawing.Point(12, 542)
     $txtP.Size = New-Object System.Drawing.Size(480, 24)
     $txtP.UseSystemPasswordChar = $true
     $txtP.Enabled = $false
@@ -597,7 +834,7 @@ function Show-WinpeDeployWizard {{
 
     $btnOk = New-Object System.Windows.Forms.Button
     $btnOk.Text = 'Deployer'
-    $btnOk.Location = New-Object System.Drawing.Point(12, 420)
+    $btnOk.Location = New-Object System.Drawing.Point(12, 588)
     $btnOk.Size = New-Object System.Drawing.Size(230, 36)
     $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $form.AcceptButton = $btnOk
@@ -605,7 +842,7 @@ function Show-WinpeDeployWizard {{
 
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = 'Annuler'
-    $btnCancel.Location = New-Object System.Drawing.Point(262, 420)
+    $btnCancel.Location = New-Object System.Drawing.Point(262, 588)
     $btnCancel.Size = New-Object System.Drawing.Size(230, 36)
     $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $form.CancelButton = $btnCancel
@@ -634,9 +871,24 @@ function Show-WinpeDeployWizard {{
         $lu = $txtU.Text.Trim()
         $lp = $txtP.Text
     }}
+    $languageId = $script:WinpeDefaultUiLanguageId
+    if ($cmbLang.SelectedIndex -ge 0 -and $cmbLang.SelectedIndex -lt $script:WinpeUiLanguages.Count) {{
+        $languageId = $script:WinpeUiLanguages[$cmbLang.SelectedIndex].id
+    }}
+    $regionId = $script:WinpeDefaultRegionId
+    if ($cmbReg.SelectedIndex -ge 0 -and $cmbReg.SelectedIndex -lt $script:WinpeRegions.Count) {{
+        $regionId = $script:WinpeRegions[$cmbReg.SelectedIndex].id
+    }}
+    $keyboardId = $script:WinpeDefaultKeyboardId
+    if ($cmbKb.SelectedIndex -ge 0 -and $cmbKb.SelectedIndex -lt $script:WinpeKeyboardLayouts.Count) {{
+        $keyboardId = $script:WinpeKeyboardLayouts[$cmbKb.SelectedIndex].id
+    }}
     return [pscustomobject]@{{
         Master = $master
         DriverProfileKey = $driverKey
+        LanguageId = $languageId
+        RegionId = $regionId
+        KeyboardId = $keyboardId
         ComputerName = $txtCn.Text.Trim()
         LocalUser = $lu
         LocalPassword = $lp
@@ -660,7 +912,7 @@ function Invoke-WinpeDeployment {{
 
     Install-WinpeDrivers -TargetOS $TargetOS -ProfileKey $Choice.DriverProfileKey -Quiet | Out-Null
 
-    Update-OfflineUnattend -TargetOS $TargetOS -ComputerName $Choice.ComputerName -LocalUser $Choice.LocalUser -LocalPassword $Choice.LocalPassword | Out-Null
+    Update-OfflineUnattend -TargetOS $TargetOS -ComputerName $Choice.ComputerName -LocalUser $Choice.LocalUser -LocalPassword $Choice.LocalPassword -LanguageId $Choice.LanguageId -RegionId $Choice.RegionId -KeyboardId $Choice.KeyboardId | Out-Null
 
     Write-Host 'Configuration demarrage UEFI (bcdboot)...' -ForegroundColor Cyan
     $p2 = Start-Process -FilePath 'bcdboot.exe' -ArgumentList @("$TargetWin", '/s', 'S:', '/f', 'uefi') -Wait -PassThru -NoNewWindow
