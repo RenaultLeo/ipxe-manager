@@ -155,9 +155,167 @@ function Get-UnattendDirectChild {{
 
 function Get-ShellSetupComponentsForPass {{
     param([xml]$Doc, [string]$Pass, $NsMgr)
+    $all = @()
+    foreach ($settings in @($Doc.SelectNodes("//u:settings[@pass='$Pass']", $NsMgr))) {{
+        $all += @($settings.SelectNodes('u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr))
+    }}
+    return $all
+}}
+
+function Merge-UnattendSettingsPasses {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    $root = $Doc.DocumentElement
+    if (-not $root) {{ return }}
+    $primaryByPass = @{{}}
+    foreach ($settings in @($root.SelectNodes('u:settings', $NsMgr))) {{
+        $pass = $settings.GetAttribute('pass')
+        if (-not $pass) {{ continue }}
+        if (-not $primaryByPass.ContainsKey($pass)) {{
+            $primaryByPass[$pass] = $settings
+            continue
+        }}
+        $primary = $primaryByPass[$pass]
+        foreach ($child in @($settings.ChildNodes)) {{
+            if ($child.NodeType -ne [System.Xml.XmlNodeType]::Element) {{ continue }}
+            $null = $primary.AppendChild($Doc.ImportNode($child, $true))
+        }}
+        $null = $root.RemoveChild($settings)
+    }}
+}}
+
+function Merge-InternationalCoreComponents {{
+    param([xml]$Doc, $NsMgr, [string]$Pass, [string]$CompName, [string]$NsUri)
     $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
-    if (-not $settings) {{ return @() }}
-    return @($settings.SelectNodes('u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr))
+    if (-not $settings) {{ return }}
+    $comps = @($settings.SelectNodes("u:component[@name='$CompName']", $NsMgr))
+    if ($comps.Count -le 1) {{ return }}
+    Write-Host "Fusion de $($comps.Count) composants $CompName ($Pass)." -ForegroundColor Yellow
+    $primary = $comps[0]
+    for ($i = 1; $i -lt $comps.Count; $i++) {{
+        foreach ($c in @($comps[$i].ChildNodes)) {{
+            if ($c.NodeType -ne [System.Xml.XmlNodeType]::Element) {{ continue }}
+            Set-UnattendXmlText -Parent $primary -Doc $Doc -NsUri $NsUri -LocalName $c.LocalName -Value $c.InnerText | Out-Null
+        }}
+        $null = $settings.RemoveChild($comps[$i])
+    }}
+}}
+
+function Merge-UserAccountsNodes {{
+    param($PrimaryUA, $ExtraUA, [xml]$Doc, [string]$NsUri)
+    if (-not $PrimaryUA -or -not $ExtraUA) {{ return }}
+    $primaryLA = Get-UnattendDirectChild -Parent $PrimaryUA -LocalName 'LocalAccounts'
+    $extraLA = Get-UnattendDirectChild -Parent $ExtraUA -LocalName 'LocalAccounts'
+    if (-not $extraLA) {{ return }}
+    if (-not $primaryLA) {{
+        $null = $PrimaryUA.AppendChild($Doc.ImportNode($extraLA, $true))
+        return
+    }}
+    foreach ($acct in @($extraLA.ChildNodes)) {{
+        if ($acct.NodeType -ne [System.Xml.XmlNodeType]::Element) {{ continue }}
+        if ($acct.LocalName -ne 'LocalAccount') {{ continue }}
+        $name = Get-UnattendDirectChild -Parent $acct -LocalName 'Name'
+        $exists = $false
+        if ($name) {{
+            foreach ($pa in @($primaryLA.ChildNodes)) {{
+                if ($pa.NodeType -ne [System.Xml.XmlNodeType]::Element) {{ continue }}
+                $pn = Get-UnattendDirectChild -Parent $pa -LocalName 'Name'
+                if ($pn -and $pn.InnerText -ieq $name.InnerText) {{ $exists = $true; break }}
+            }}
+        }}
+        if (-not $exists) {{
+            $null = $primaryLA.AppendChild($Doc.ImportNode($acct, $true))
+        }}
+    }}
+}}
+
+function Merge-OobeShellSetupComponents {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    $settings = $Doc.SelectSingleNode("//u:settings[@pass='oobeSystem']", $NsMgr)
+    if (-not $settings) {{ return $null }}
+    $shells = @($settings.SelectNodes('u:component[@name="Microsoft-Windows-Shell-Setup"]', $NsMgr))
+    if ($shells.Count -le 1) {{
+        if ($shells.Count -eq 1) {{ Ensure-WcmOnShellComponent -Shell $shells[0] }}
+        return $shells[0]
+    }}
+    Write-Host "Fusion de $($shells.Count) composants Shell-Setup oobeSystem en un seul." -ForegroundColor Yellow
+    $primary = $shells[0]
+    Ensure-WcmOnShellComponent -Shell $primary
+    for ($i = 1; $i -lt $shells.Count; $i++) {{
+        $extra = $shells[$i]
+        foreach ($localName in @('OOBE', 'UserAccounts', 'AutoLogon')) {{
+            $src = Get-UnattendDirectChild -Parent $extra -LocalName $localName
+            if (-not $src) {{ continue }}
+            $dst = Get-UnattendDirectChild -Parent $primary -LocalName $localName
+            if (-not $dst) {{
+                $null = $primary.AppendChild($Doc.ImportNode($src, $true))
+                continue
+            }}
+            if ($localName -eq 'OOBE') {{
+                foreach ($c in @($src.ChildNodes)) {{
+                    if ($c.NodeType -eq [System.Xml.XmlNodeType]::Element) {{
+                        Set-UnattendXmlText -Parent $dst -Doc $Doc -NsUri $NsUri -LocalName $c.LocalName -Value $c.InnerText | Out-Null
+                    }}
+                }}
+            }} elseif ($localName -eq 'UserAccounts') {{
+                Merge-UserAccountsNodes -PrimaryUA $dst -ExtraUA $src -Doc $Doc -NsUri $NsUri
+            }} elseif ($localName -eq 'AutoLogon') {{
+                if ($dst) {{ $null = $primary.RemoveChild($dst) }}
+                $null = $primary.AppendChild($Doc.ImportNode($src, $true))
+            }}
+        }}
+        $null = $settings.RemoveChild($extra)
+    }}
+    return $primary
+}}
+
+function Repair-UnattendDocumentStructure {{
+    param([xml]$Doc, $NsMgr, [string]$NsUri)
+    Ensure-WcmOnUnattendRoot -Doc $Doc
+    Merge-UnattendSettingsPasses -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+    Merge-InternationalCoreComponents -Doc $Doc -NsMgr $NsMgr -Pass 'windowsPE' -CompName 'Microsoft-Windows-International-Core-WinPE' -NsUri $NsUri
+    Merge-InternationalCoreComponents -Doc $Doc -NsMgr $NsMgr -Pass 'oobeSystem' -CompName 'Microsoft-Windows-International-Core' -NsUri $NsUri
+    return (Merge-OobeShellSetupComponents -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri)
+}}
+
+function Test-UnattendOobeStructureValid {{
+    param([xml]$Doc, $NsMgr)
+    $shellCount = @($Doc.SelectNodes("//u:settings[@pass='oobeSystem']/u:component[@name='Microsoft-Windows-Shell-Setup']", $NsMgr)).Count
+    if ($shellCount -gt 1) {{
+        Write-Host "ERREUR structure : $shellCount composants Shell-Setup dans oobeSystem (max 1)." -ForegroundColor Red
+        return $false
+    }}
+    $intlCount = @($Doc.SelectNodes("//u:settings[@pass='oobeSystem']/u:component[@name='Microsoft-Windows-International-Core']", $NsMgr)).Count
+    if ($intlCount -gt 1) {{
+        Write-Host "ERREUR structure : $intlCount composants International-Core dans oobeSystem (max 1)." -ForegroundColor Red
+        return $false
+    }}
+    return $true
+}}
+
+function Ensure-ShellSetupForPass {{
+    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri)
+    if ($Pass -eq 'oobeSystem') {{
+        Repair-UnattendDocumentStructure -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri | Out-Null
+        $merged = Merge-OobeShellSetupComponents -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+        if ($merged) {{ return $merged }}
+    }}
+    $shells = Get-ShellSetupComponentsForPass -Doc $Doc -Pass $Pass -NsMgr $NsMgr
+    if ($shells.Count -gt 0) {{ return $shells[0] }}
+    $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
+    if (-not $settings) {{
+        $settings = New-UnattendElement -Doc $Doc -LocalName 'settings' -NsUri $NsUri
+        $null = $settings.SetAttribute('pass', $Pass)
+        $Doc.DocumentElement.AppendChild($settings) | Out-Null
+    }}
+    $attrs = Get-ShellSetupTemplateAttrs -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
+    $shell = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
+    $null = $shell.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
+    foreach ($k in $attrs.Keys) {{
+        if ($attrs[$k]) {{ $null = $shell.SetAttribute($k, $attrs[$k]) }}
+    }}
+    Ensure-WcmOnShellComponent -Shell $shell
+    $settings.AppendChild($shell) | Out-Null
+    return $shell
 }}
 
 function Get-ShellSetupTemplateAttrs {{
@@ -177,26 +335,6 @@ function Get-ShellSetupTemplateAttrs {{
         language = 'neutral'
         versionScope = 'nonSxS'
     }}
-}}
-
-function Ensure-ShellSetupForPass {{
-    param([xml]$Doc, [string]$Pass, $NsMgr, [string]$NsUri)
-    $shells = Get-ShellSetupComponentsForPass -Doc $Doc -Pass $Pass -NsMgr $NsMgr
-    if ($shells.Count -gt 0) {{ return $shells[0] }}
-    $settings = $Doc.SelectSingleNode("//u:settings[@pass='$Pass']", $NsMgr)
-    if (-not $settings) {{
-        $settings = New-UnattendElement -Doc $Doc -LocalName 'settings' -NsUri $NsUri
-        $null = $settings.SetAttribute('pass', $Pass)
-        $Doc.DocumentElement.AppendChild($settings) | Out-Null
-    }}
-    $attrs = Get-ShellSetupTemplateAttrs -Doc $Doc -NsMgr $NsMgr -NsUri $NsUri
-    $shell = New-UnattendElement -Doc $Doc -LocalName 'component' -NsUri $NsUri
-    $null = $shell.SetAttribute('name', 'Microsoft-Windows-Shell-Setup')
-    foreach ($k in $attrs.Keys) {{
-        if ($attrs[$k]) {{ $null = $shell.SetAttribute($k, $attrs[$k]) }}
-    }}
-    $settings.AppendChild($shell) | Out-Null
-    return $shell
 }}
 
 function Set-UnattendXmlText {{
@@ -418,6 +556,7 @@ function Ensure-OobeBypassForLocalAccount {{
         @('HideOEMRegistrationScreen', 'true'),
         @('HideOnlineAccountScreens', 'true'),
         @('HideWirelessSetupInOOBE', 'true'),
+        @('HideLocalAccountScreen', 'false'),
         @('NetworkLocation', 'Work'),
         @('ProtectYourPC', '3'),
         @('SkipMachineOOBE', 'true'),
@@ -429,9 +568,12 @@ function Ensure-OobeBypassForLocalAccount {{
 
 function Save-UnattendDocument {{
     param([xml]$Doc, [string]$Path)
+    $Doc.PreserveWhitespace = $false
     $settings = New-Object System.Xml.XmlWriterSettings
     $settings.Encoding = New-Object System.Text.UTF8Encoding $true
     $settings.Indent = $true
+    $settings.IndentChars = '  '
+    $settings.NewLineChars = "`r`n"
     $settings.OmitXmlDeclaration = $false
     $writer = [System.Xml.XmlWriter]::Create($Path, $settings)
     try {{ $Doc.Save($writer) }} finally {{ $writer.Close() }}
@@ -597,6 +739,7 @@ function Update-OfflineUnattend {{
     $doc, $path = Get-OrCreateOfflineUnattendDocument -TargetOS $TargetOS
     Write-Host "Personnalisation : $path" -ForegroundColor Cyan
     $nsMgr, $nsUri = Get-UnattendNsMgr -Doc $doc
+    Repair-UnattendDocumentStructure -Doc $doc -NsMgr $nsMgr -NsUri $nsUri | Out-Null
     $changed = $false
     $userRequested = ($LocalUser -and $LocalUser.Trim())
     $userReady = $false
@@ -667,6 +810,11 @@ function Update-OfflineUnattend {{
     }}
 
     if ($changed) {{
+        Repair-UnattendDocumentStructure -Doc $doc -NsMgr $nsMgr -NsUri $nsUri | Out-Null
+        if (-not (Test-UnattendOobeStructureValid -Doc $doc -NsMgr $nsMgr)) {{
+            Write-Host 'ERREUR : structure oobeSystem invalide (composants dupliques).' -ForegroundColor Red
+            return $false
+        }}
         Save-UnattendDocument -Doc $doc -Path $path
         Write-Host "Unattend enregistre : $path" -ForegroundColor Green
     }} elseif (-not $userRequested) {{
