@@ -789,6 +789,8 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
 
     winpe_drivers_catalog: list = []
     winpe_drivers_root = ""
+    winpe_language_packs_catalog: list = []
+    winpe_language_packs_root = ""
     winpe_scripts_dir = ""
     if version.os_type.boot_type == "windows":
         try:
@@ -799,6 +801,13 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
 
             winpe_drivers_catalog = catalog_for_template()
             winpe_drivers_root = str(drivers_root())
+            from app.services.winpe_language_packs import (
+                catalog_for_template as language_packs_catalog_for_template,
+                packs_root,
+            )
+
+            winpe_language_packs_catalog = language_packs_catalog_for_template()
+            winpe_language_packs_root = str(packs_root())
             from app.services.winpe_scripts import scripts_dir
 
             winpe_scripts_dir = str(scripts_dir(version))
@@ -816,6 +825,8 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             winpe_installs_root=winpe_installs_root,
             winpe_drivers_catalog=winpe_drivers_catalog,
             winpe_drivers_root=winpe_drivers_root,
+            winpe_language_packs_catalog=winpe_language_packs_catalog,
+            winpe_language_packs_root=winpe_language_packs_root,
             winpe_scripts_dir=winpe_scripts_dir,
             extract_error_msg=extract_error_msg,
             extract_warning_msg=extract_warning_msg,
@@ -1269,6 +1280,103 @@ async def upload_winpe_drivers(
                 507, detail=translate(lang, "iso.upload.disk_full")
             ) from exc
         logger.warning("Erreur I/O upload drivers WinPE : %s", exc)
+        raise HTTPException(
+            500, detail=translate(lang, "iso.upload.io_error")
+        ) from exc
+
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JSONResponse(payload)
+    return RedirectResponse(payload["redirect"], status_code=302)
+
+
+@router.get("/{version_id}/winpe-language-packs/catalog")
+async def winpe_language_packs_catalog_route(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Catalogue language-packs.json (locales, chemins, nombre de .cab)."""
+    if _auth(request):
+        raise HTTPException(401)
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_view_or_404(db, request, version_id)
+    _winpe_windows_version(version, lang)
+    from app.services.winpe_language_packs import catalog_for_template
+
+    return JSONResponse({"languages": catalog_for_template()})
+
+
+@router.post("/{version_id}/winpe-language-packs/upload")
+async def upload_winpe_language_packs(
+    version_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    locale_kind: str = Form(...),
+    locale_id: str = Form(""),
+    new_locale_id: str = Form(""),
+    pack_files: list[UploadFile] = File(...),
+):
+    """Upload de fichiers .cab dans boot/language-packs/<locale>/."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    lang = getattr(request.state, "locale", "fr")
+    version = _get_version_modify_with_os(db, request, version_id)
+    _winpe_windows_version(version, lang)
+
+    files = [f for f in (pack_files or []) if f and (f.filename or "").strip()]
+    if not files:
+        raise HTTPException(
+            400, detail=translate(lang, "iso.winpe_language_packs_no_files")
+        )
+
+    mf0 = _minimum_free_near_upload_roots()
+    total_decl = 0
+    for f in files:
+        decl = _multipart_part_declared_bytes(f)
+        if isinstance(decl, int) and decl > 0:
+            total_decl += decl
+    blocked = _multipart_upload_blocked(lang, mf=mf0, expected_file_bytes=total_decl)
+    if blocked:
+        raise HTTPException(status_code=blocked[0], detail=blocked[1])
+
+    from app.services.winpe_language_packs import (
+        rebuild_catalog,
+        resolve_locale_upload,
+        save_uploaded_cab_files,
+    )
+
+    try:
+        lid, slug, folder = resolve_locale_upload(
+            locale_kind=locale_kind,
+            locale_id=locale_id,
+            new_locale_id=new_locale_id,
+        )
+        n_saved, names = await save_uploaded_cab_files(folder, files)
+        if n_saved == 0:
+            raise HTTPException(
+                400, detail=translate(lang, "iso.winpe_language_packs_no_files")
+            )
+        cat = rebuild_catalog()
+        meta = cat.get(lid) or {}
+        payload = {
+            "ok": True,
+            "id": lid,
+            "slug": slug,
+            "path": meta.get("path") or f"language-packs/{slug}",
+            "cab_count": int(meta.get("cab_count") or 0),
+            "saved": names,
+            "redirect": f"/isos/{version_id}?msg=winpe_language_packs_uploaded",
+        }
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    except OSError as exc:
+        if exc.errno in (errno.ENOSPC, errno.EDQUOT):
+            raise HTTPException(
+                507, detail=translate(lang, "iso.upload.disk_full")
+            ) from exc
+        logger.warning("Erreur I/O upload language packs WinPE : %s", exc)
         raise HTTPException(
             500, detail=translate(lang, "iso.upload.io_error")
         ) from exc

@@ -131,7 +131,11 @@ def locale_preset_by_id(locale_id: str) -> dict[str, str] | None:
 
 
 def ui_languages_for_ps_embed() -> str:
-    return json.dumps(UI_LANGUAGES, ensure_ascii=False, indent=2)
+    """Langues interface du wizard = catalogue language-packs sur le serveur."""
+    from app.services.winpe_language_packs import ui_languages_for_deploy_embed
+
+    langs = ui_languages_for_deploy_embed()
+    return json.dumps(langs, ensure_ascii=False, indent=2)
 
 
 def regions_for_ps_embed() -> str:
@@ -147,6 +151,13 @@ def locale_presets_for_ps_embed() -> str:
 
 
 def default_ui_language_id() -> str:
+    from app.services.winpe_language_packs import (
+        default_deploy_ui_language_id,
+        load_catalog,
+    )
+
+    if load_catalog():
+        return default_deploy_ui_language_id()
     return DEFAULT_UI_LANGUAGE_ID
 
 

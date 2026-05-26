@@ -529,6 +529,103 @@
           <p class="small text-muted mb-0">—</p>
           {% endif %}
         </div>
+
+        <div class="pt-4 mt-2 border-top border-secondary">
+          <h6 class="text-muted small text-uppercase mb-2">
+            <i class="bi bi-translate me-1"></i>{{ t('iso.winpe_language_packs_title') }}
+          </h6>
+          <p class="small text-muted mb-3">{{ t('iso.winpe_language_packs_intro') }}</p>
+          {% if request.query_params.get('msg') == 'winpe_language_packs_uploaded' %}
+          <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_language_packs_uploaded') }}</div>
+          {% endif %}
+          {% if winpe_smb_host %}
+          <p class="small mb-3">
+            <strong>{{ t('iso.winpe_language_packs_smb') }}</strong>
+            <code class="ms-1">\\{{ winpe_smb_host }}\{{ winpe_smb_share }}\language-packs\&lt;locale&gt;\</code>
+            {% if winpe_language_packs_root %}
+            <span class="d-block text-muted mt-1 font-monospace">{{ winpe_language_packs_root }}</span>
+            {% endif %}
+          </p>
+          {% endif %}
+
+          {% if can_modify %}
+          <form method="post" action="/isos/{{ version.id }}/winpe-language-packs/upload" enctype="multipart/form-data"
+                id="winpe-language-packs-form" class="row g-2 mb-4"
+                data-version-id="{{ version.id }}"
+                data-msg-progress="{{ t('iso.winpe_language_packs_progress') }}"
+                data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
+                data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
+            <div class="col-12">
+              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_locale') }}</label>
+              <select name="locale_kind" id="winpe-language-packs-kind" class="form-select form-select-sm" required>
+                <option value="existing">{{ t('iso.winpe_language_packs_existing') }}</option>
+                <option value="new">{{ t('iso.winpe_language_packs_new') }}</option>
+              </select>
+            </div>
+            <div class="col-12" id="winpe-language-packs-existing-wrap">
+              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_existing') }}</label>
+              <select name="locale_id" id="winpe-language-packs-id" class="form-select form-select-sm">
+                <option value="">{{ t('common.choose') }}</option>
+                {% for lp in winpe_language_packs_catalog %}
+                <option value="{{ lp.id }}">{{ lp.label }} ({{ lp.id }}) — {{ lp.cab_count }} {{ t('iso.winpe_language_packs_count') }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 d-none" id="winpe-language-packs-new-wrap">
+              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_new_id') }}</label>
+              <input type="text" name="new_locale_id" id="winpe-language-packs-new-id"
+                     class="form-control form-control-sm" placeholder="{{ t('iso.winpe_language_packs_new_ph') }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_files') }}</label>
+              <input type="file" name="pack_files" id="winpe-language-packs-files" class="form-control form-control-sm"
+                     multiple accept=".cab" required>
+              <div class="form-text text-muted">{{ t('iso.winpe_language_packs_files_hint') }}</div>
+            </div>
+            <div id="winpe-language-packs-progress-wrap" class="col-12 d-none">
+              <div class="d-flex justify-content-between small mb-1">
+                <span id="winpe-language-packs-progress-label">{{ t('iso.winpe_language_packs_progress') }}</span>
+                <span id="winpe-language-packs-progress-pct">0%</span>
+              </div>
+              <div class="progress" style="height:14px">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                     id="winpe-language-packs-progress-bar" role="progressbar" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-info btn-sm" id="winpe-language-packs-submit-btn">
+                <i class="bi bi-cloud-upload me-1"></i>{{ t('iso.winpe_language_packs_upload') }}
+              </button>
+            </div>
+          </form>
+          {% endif %}
+
+          <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_language_packs_catalog') }}</h6>
+          {% if winpe_language_packs_catalog %}
+          <div class="table-responsive">
+            <table class="table table-sm table-dark table-borderless mb-0" id="winpe-language-packs-catalog-table">
+              <thead>
+                <tr class="text-muted small">
+                  <th>Locale</th>
+                  <th>{{ t('iso.winpe_language_packs_path') }}</th>
+                  <th class="text-end">{{ t('iso.winpe_language_packs_count') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for lp in winpe_language_packs_catalog %}
+                <tr>
+                  <td>{{ lp.label }} <span class="text-muted">({{ lp.id }})</span></td>
+                  <td class="font-monospace small">{{ lp.path }}/</td>
+                  <td class="text-end">{{ lp.cab_count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="small text-warning mb-0">{{ t('iso.winpe_language_packs_empty') }}</p>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
@@ -1246,6 +1343,105 @@
     xhr.addEventListener('load', function () {
       if (xhr.status >= 200 && xhr.status < 400) {
         var url = '/isos/' + versionId + '?msg=winpe_drivers_uploaded';
+        try {
+          var j = JSON.parse(xhr.responseText || '{}');
+          if (j.redirect) url = j.redirect;
+        } catch (err) {}
+        window.location.href = url;
+        return;
+      }
+      if (btn) btn.disabled = false;
+      if (wrap) wrap.classList.add('d-none');
+      var detail = msgXhrStatus.replace('{status}', xhr.statusText || String(xhr.status));
+      try {
+        var j2 = JSON.parse(xhr.responseText || '{}');
+        if (j2.detail !== undefined && j2.detail !== null) {
+          detail = parseDetail(j2.detail);
+        }
+      } catch (err) {}
+      alert(detail || msgXhr);
+    });
+
+    xhr.addEventListener('error', function () {
+      if (btn) btn.disabled = false;
+      if (wrap) wrap.classList.add('d-none');
+      alert(msgXhr);
+    });
+
+    xhr.open('POST', form.action);
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.send(data);
+  });
+})();
+
+(function () {
+  var form = document.getElementById('winpe-language-packs-form');
+  if (!form) return;
+  var kindSel = document.getElementById('winpe-language-packs-kind');
+  var existingWrap = document.getElementById('winpe-language-packs-existing-wrap');
+  var newWrap = document.getElementById('winpe-language-packs-new-wrap');
+  var idSel = document.getElementById('winpe-language-packs-id');
+  var newId = document.getElementById('winpe-language-packs-new-id');
+  var fileInput = document.getElementById('winpe-language-packs-files');
+  var versionId = form.dataset.versionId || '';
+  var msgProgress = form.dataset.msgProgress || '…';
+  var msgXhr = form.dataset.msgXhr || 'Error';
+  var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
+  var wrap = document.getElementById('winpe-language-packs-progress-wrap');
+  var bar = document.getElementById('winpe-language-packs-progress-bar');
+  var pct = document.getElementById('winpe-language-packs-progress-pct');
+  var btn = document.getElementById('winpe-language-packs-submit-btn');
+
+  function syncKind() {
+    var isNew = kindSel && kindSel.value === 'new';
+    if (existingWrap) existingWrap.classList.toggle('d-none', isNew);
+    if (newWrap) newWrap.classList.toggle('d-none', !isNew);
+    if (idSel) idSel.required = !isNew;
+    if (newId) newId.required = !!isNew;
+  }
+  if (kindSel) {
+    kindSel.addEventListener('change', syncKind);
+    syncKind();
+  }
+
+  function parseDetail(detail) {
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail.length && detail[0].msg) return detail[0].msg;
+    return String(detail);
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!fileInput || !fileInput.files || !fileInput.files.length) {
+      alert(msgXhr);
+      return;
+    }
+    if (kindSel.value === 'existing' && idSel && !idSel.value) {
+      alert(msgXhr);
+      return;
+    }
+    if (kindSel.value === 'new' && newId && !newId.value.trim()) {
+      alert(msgXhr);
+      return;
+    }
+
+    var data = new FormData(form);
+    var xhr = new XMLHttpRequest();
+    if (wrap) wrap.classList.remove('d-none');
+    if (btn) btn.disabled = true;
+
+    xhr.upload.addEventListener('progress', function (ev) {
+      if (ev.lengthComputable && bar && pct) {
+        var p = Math.round(ev.loaded / ev.total * 100);
+        bar.style.width = p + '%';
+        pct.textContent = p + '%';
+      }
+    });
+
+    xhr.addEventListener('load', function () {
+      if (xhr.status >= 200 && xhr.status < 400) {
+        var url = '/isos/' + versionId + '?msg=winpe_language_packs_uploaded';
         try {
           var j = JSON.parse(xhr.responseText || '{}');
           if (j.redirect) url = j.redirect;

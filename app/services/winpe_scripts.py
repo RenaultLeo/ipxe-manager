@@ -57,6 +57,10 @@ def z_drivers_root() -> str:
     return "Z:\\drivers"
 
 
+def z_language_packs_root() -> str:
+    return "Z:\\language-packs"
+
+
 def build_masters_catalog(
     version: IsoVersion, installs: list[WinpeInstall]
 ) -> list[dict]:
@@ -87,7 +91,13 @@ def generate_deploy_ps1(version: IsoVersion) -> str:
 
 def generate_inject_drivers_ps1(version: IsoVersion) -> str:
     drivers_json = f"{z_drivers_root()}\\drivers.json"
-    return ps_inject_drivers_lib(drivers_json, z_drivers_root())
+    lp_json = f"{z_language_packs_root()}\\language-packs.json"
+    return ps_inject_drivers_lib(
+        drivers_json,
+        z_drivers_root(),
+        language_packs_json=lp_json,
+        language_packs_root=z_language_packs_root(),
+    )
 
 
 def generate_startnet_cmd(version: IsoVersion) -> str:
@@ -195,6 +205,13 @@ net use Z: /delete /y >nul 2>&1
 
 def write_all_scripts(version: IsoVersion, installs: list[WinpeInstall]) -> Path:
     """Écrit masters.json, deploy.ps1, inject-drivers.ps1 sur le disque."""
+    try:
+        from app.services.winpe_language_packs import rebuild_catalog
+
+        rebuild_catalog()
+    except OSError as exc:
+        logger.warning("language-packs.json non mis a jour : %s", exc)
+
     sdir = scripts_dir(version)
     (sdir / MASTERS_JSON).write_text(
         generate_masters_json(version, installs) + "\n",
