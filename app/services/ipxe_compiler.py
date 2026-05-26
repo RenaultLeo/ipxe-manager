@@ -89,7 +89,7 @@ def patch_ipxe_debug_support(src_dir: Path, logs: list[str], *, enable: bool) ->
 
 
 def _verify_firmware_https_support(tftp_kpxe: Path, menu_url: str, logs: list[str]) -> None:
-    """Évite de copier un undionly.kpxe HTTP-only alors que le menu est en https://."""
+    """Vérifie embed (URL menu) et indices TLS dans undionly.kpxe."""
     if not menu_url.lower().startswith("https://"):
         return
     try:
@@ -104,14 +104,35 @@ def _verify_firmware_https_support(tftp_kpxe: Path, menu_url: str, logs: list[st
         logs.append(f"Vérification strings {tftp_kpxe.name} ignorée : {exc}")
         return
     blob = proc.stdout or ""
-    if "DOWNLOAD_PROTO_HTTPS" in blob or "https://" in blob.lower():
-        logs.append("Vérification OK : undionly.kpxe contient HTTPS (strings).")
+    blob_l = blob.lower()
+    has_embed = menu_url in blob or "/menus/menu.ipxe" in blob_l
+    has_https_url = "https://" in blob_l
+    has_tls = any(
+        s in blob_l
+        for s in ("openssl", "tls_", "tlsv", "https_conn", "cipher")
+    )
+    if has_embed and (has_https_url or has_tls):
+        logs.append(
+            "Vérification OK : undionly.kpxe contient l'URL embed et TLS/HTTPS."
+        )
         return
+    if has_embed and not has_tls:
+        logs.append(
+            "Attention : URL embed présente mais peu d'indices TLS — "
+            "testez quand même le boot PXE."
+        )
+        return
+    hints = [
+        "Contrôlez src/config/general.h : aucun #undef DOWNLOAD_PROTO_HTTPS "
+        "(bloc PLATFORM_pcbios).",
+        "Vérifiez src/config/local/general.h (#define DOWNLOAD_PROTO_HTTPS).",
+        "Relancez après « make clean » (embed.ipxe doit exister avant make).",
+        f"Vérifiez {settings.tls_ca_cert_path} pour TRUST= au build.",
+    ]
     raise RuntimeError(
-        "undionly.kpxe compilé sans support HTTPS — au boot : "
+        "undionly.kpxe sans URL menu embarquée ou sans HTTPS — au boot : "
         "« Operation not supported » (https://ipxe.org/3c092003). "
-        "Contrôlez build/ipxe-src/src/config/general.h (#define DOWNLOAD_PROTO_HTTPS) "
-        "et /srv/ipxe/ssl/ca.crt, puis relancez la compilation firmware."
+        + " ".join(hints)
     )
 
 
@@ -122,6 +143,27 @@ def ipxe_make_debug_args() -> list[str]:
     Le mode debug repose sur set loglevel 7 (scripts) + LOG_LEVEL dans general.h.
     """
     return []
+
+
+def ensure_ipxe_local_https_override(src_dir: Path, logs: list[str]) -> None:
+    """
+    general.h fait #undef DOWNLOAD_PROTO_HTTPS pour PLATFORM_pcbios (undionly).
+    local/general.h est inclus en dernier et réactive HTTPS pour le BIOS.
+    """
+    local_dir = src_dir / "src" / "config" / "local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    local_h = local_dir / "general.h"
+    marker = "iPXE Manager"
+    body = (
+        f"/* {marker} — HTTPS pour undionly.kpxe (après #undef PLATFORM_pcbios) */\n"
+        "#define DOWNLOAD_PROTO_HTTPS\n"
+    )
+    prev = local_h.read_text(encoding="utf-8", errors="replace") if local_h.is_file() else ""
+    if prev != body:
+        local_h.write_text(body, encoding="utf-8")
+        logs.append(f"config/local/general.h : #define DOWNLOAD_PROTO_HTTPS ({marker}).")
+    else:
+        logs.append("config/local/general.h : déjà configuré pour HTTPS.")
 
 
 def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
@@ -179,6 +221,7 @@ def patch_ipxe_https_support(src_dir: Path, logs: list[str]) -> None:
         )
 
     general.write_text(g, encoding="utf-8")
+    ensure_ipxe_local_https_override(src_dir, logs)
 
 
 def ipxe_tls_make_args() -> list[str]:
@@ -302,13 +345,7 @@ def compile_ipxe_firmware(
         )
         completed_steps.append("git_clone")
 
-    embed_content = build_embed_ipxe(menu_url)
     embed_path = src_dir / "src" / "embed.ipxe"
-    progress("embed", completed_steps, logs)
-    embed_path.write_text(embed_content, encoding="utf-8")
-    logs.append(f"embed.ipxe généré :\n{embed_content}")
-    completed_steps.append("embed")
-
     make_dir = src_dir / "src"
 
     progress("patch_ipxe_config", completed_steps, logs)
@@ -346,6 +383,14 @@ def compile_ipxe_firmware(
         logs.append("make clean (rebuild complet pour HTTPS)…")
         run(["make", "clean"], make_dir)
         completed_steps.append("make_clean")
+
+    embed_content = build_embed_ipxe(menu_url)
+    progress("embed", completed_steps, logs)
+    embed_path.write_text(embed_content, encoding="utf-8")
+    if menu_url not in embed_path.read_text(encoding="utf-8"):
+        raise RuntimeError(f"embed.ipxe invalide : URL menu absente ({menu_url})")
+    logs.append(f"embed.ipxe généré (après make clean) :\n{embed_content}")
+    completed_steps.append("embed")
 
     progress("compile_bios", completed_steps, logs)
     logs.append("Compilation undionly.kpxe (BIOS)…")

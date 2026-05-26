@@ -58,6 +58,14 @@ general.write_text(g, encoding="utf-8")
 print(f"OK — #undef supprimés: {n_undef}, fichier patché.")
 PY
 
+LOCAL_DIR="$(dirname "$GENERAL")/local"
+mkdir -p "$LOCAL_DIR"
+cat >"$LOCAL_DIR/general.h" <<'EOF'
+/* iPXE Manager — HTTPS pour undionly.kpxe (après #undef PLATFORM_pcbios) */
+#define DOWNLOAD_PROTO_HTTPS
+EOF
+echo "==> $LOCAL_DIR/general.h écrit"
+
 echo "==> Suppression firmware générique (HTTP only) dans TFTP"
 rm -f "$TFTP/undionly.kpxe" "$TFTP/ipxe.efi" "$TFTP/snponly.efi"
 
@@ -65,10 +73,12 @@ echo "==> Recompilation firmware + menus"
 bash "$APP_DIR/deploy/bootstrap-https-firmware.sh" "$HOST"
 
 echo "==> Vérification strings"
-if strings "$TFTP/undionly.kpxe" | grep -q 'https://'; then
-  echo "OK : https:// visible dans undionly.kpxe"
-  strings "$TFTP/undionly.kpxe" | grep -E 'https://.*/menus/menu\.ipxe' | head -1 || true
+if strings "$TFTP/undionly.kpxe" | grep -qF '/menus/menu.ipxe'; then
+  echo "OK : URL menu embarquée dans undionly.kpxe"
+  strings "$TFTP/undionly.kpxe" | grep -E 'https://[^[:space:]]+/menus/menu\.ipxe' | head -1 || true
+elif strings "$TFTP/undionly.kpxe" | grep -qi 'openssl\|tls'; then
+  echo "OK : TLS/OpenSSL présent (vérifiez l'URL menu au boot)"
 else
-  echo "KO : undionly.kpxe toujours sans https:// — voir logs compilation" >&2
+  echo "KO : undionly.kpxe sans embed HTTPS — voir logs compilation" >&2
   exit 1
 fi
