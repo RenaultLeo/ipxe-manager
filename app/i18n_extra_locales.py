@@ -8,8 +8,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _value_tuple(code: str) -> tuple[str, ...]:
+def _value_tuple(code: str, en: dict[str, str]) -> tuple[str, ...]:
     p = Path(__file__).resolve().parent / "locale_values" / f"{code}.list.json"
+    if not p.is_file():
+        logger.warning(
+            "i18n : %s absent — locale %s reprend l’anglais "
+            "(node tools/extract_en_list.mjs && node tools/build_locale_lists.mjs).",
+            p.name,
+            code,
+        )
+        return tuple(en.values())
     raw = json.loads(p.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise TypeError(f"{p}: expected JSON array")
@@ -33,7 +41,7 @@ def merge_extra_locales(messages: dict[str, dict[str, str]]) -> None:
     n = len(keys)
     assert len(values_en) == n
     for code in ("de", "es", "it", "pt"):
-        vals = list(_value_tuple(code))
+        vals = list(_value_tuple(code, en))
         if len(vals) < n:
             missing = n - len(vals)
             logger.warning(

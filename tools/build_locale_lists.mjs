@@ -94,10 +94,6 @@ const PAIRS_DE = [
   ["Dashboard", "Übersicht"],
   ["Date", "Datum"],
   ["Delete", "Löschen"],
-  [
-    "Delete this ISO and its files?",
-    "Diese ISO und ihre Dateien löschen?",
-  ],
   ["Delete this configuration?", "Diese Konfiguration löschen?"],
   [
     "Delete {name} and all its ISOs?",
@@ -354,7 +350,7 @@ const PAIRS_DE = [
     "Quellen bleiben erhalten — der nächste Build setzt mit git pull fort ohne alles neu zu klonen.",
   ],
   [
-    "Delete script “{filename}”?\\nThe file will be removed and the menu regenerated.",
+    "Delete script “{filename}”? The file will be removed and the menu regenerated.",
     "Skript „{filename}“ löschen?\\nDie Datei wird entfernt und das Menü neu erzeugt.",
   ],
   [
@@ -774,10 +770,6 @@ const PAIRS_ES = [
     "Scan finished — {updated} release(s) updated, {skipped} skipped",
     "Escaneo terminado — {updated} versión(es) actualizada(s), {skipped} ignorada(s)",
   ],
-  [
-    "Delete this ISO and its files?",
-    "¿Eliminar esta ISO y sus archivos?",
-  ],
   ["Delete this configuration?", "¿Eliminar esta configuración?"],
   [
     "Delete {name} and all its ISOs?",
@@ -1004,7 +996,7 @@ const PAIRS_ES = [
     "Se conservan las fuentes: la siguiente compilación sigue con git pull sin reclonar todo.",
   ],
   [
-    "Delete script “{filename}”?\\nThe file will be removed and the menu regenerated.",
+    "Delete script “{filename}”? The file will be removed and the menu regenerated.",
     "¿Eliminar el script «{filename}»?\\nSe borrará el archivo y se regenerará el menú.",
   ],
   [
@@ -1383,10 +1375,6 @@ const PAIRS_IT = [
     "No generated menus yet. Add ISOs then click Regenerate all menus.",
     "Nessun menu generato. Aggiungi le ISO e fai clic su Rigenera tutti i menu.",
   ],
-  [
-    "Delete this ISO and its files?",
-    "Eliminare questa ISO e i relativi file?",
-  ],
   ["Delete this configuration?", "Eliminare questa configurazione?"],
   [
     "Delete {name} and all its ISOs?",
@@ -1615,7 +1603,7 @@ const PAIRS_IT = [
     "Le sorgenti sono conservate: la build successiva continua con git pull senza reclonare tutto.",
   ],
   [
-    "Delete script “{filename}”?\\nThe file will be removed and the menu regenerated.",
+    "Delete script “{filename}”? The file will be removed and the menu regenerated.",
     "Eliminare lo script \"{filename}\"?\\nIl file sarà rimosso e il menu rigenerato.",
   ],
   [
@@ -2007,10 +1995,6 @@ const PAIRS_PT = [
     "Scan finished — {updated} release(s) updated, {skipped} skipped",
     "Análise concluída — {updated} versão(ões) atualizada(s), {skipped} ignorada(s)",
   ],
-  [
-    "Delete this ISO and its files?",
-    "Eliminar esta ISO e os respetivos ficheiros?",
-  ],
   ["Delete this configuration?", "Eliminar esta configuração?"],
   [
     "Delete {name} and all its ISOs?",
@@ -2232,7 +2216,7 @@ const PAIRS_PT = [
     "As fontes são conservadas: a seguinte continua com git pull sem reclonar tudo.",
   ],
   [
-    "Delete script “{filename}”?\\nThe file will be removed and the menu regenerated.",
+    "Delete script “{filename}”? The file will be removed and the menu regenerated.",
     "Eliminar o script «{filename}»?\\nO ficheiro será removido e o menu regenerado.",
   ],
   [

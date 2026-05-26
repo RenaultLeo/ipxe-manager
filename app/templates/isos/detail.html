@@ -8,20 +8,10 @@
     <i class="{{ version.os_type.icon }} me-2 text-primary"></i>
     {{ version.os_type.label }} {{ version.version_label }}
   </h2>
-  {% if version.status == 'ready' %}
-    <span class="badge bg-success ms-auto">Prêt</span>
-  {% elif version.status == 'extracting' %}
-    <span class="badge bg-warning text-dark ms-auto"
-          hx-get="/isos/{{ version.id }}/status-fragment?align=end"
-          hx-trigger="every 8s"
-          hx-swap="outerHTML">
-      <i class="bi bi-arrow-repeat spin me-1"></i>Extraction en cours…
-    </span>
-  {% elif version.status == 'error' %}
-    <span class="badge bg-danger ms-auto">Erreur</span>
-  {% else %}
-    <span class="badge bg-secondary ms-auto">Uploadé</span>
-  {% endif %}
+  {% set status = version.status %}
+  {% set version_id = version.id %}
+  {% set pull_end = true %}
+  {% include "isos/status_badge.html" %}
 </div>
 
 {% if not can_modify %}
@@ -45,11 +35,11 @@
   <!-- Info -->
   <div class="col-md-5">
     <div class="card border-secondary h-100">
-      <div class="card-header"><i class="bi bi-info-circle me-2"></i>Informations</div>
+      <div class="card-header"><i class="bi bi-info-circle me-2"></i>{{ t('iso.detail.info_card') }}</div>
       <div class="card-body">
         <dl class="row mb-0">
           <dt class="col-5 text-muted">ID</dt><dd class="col-7">{{ version.id }}</dd>
-          <dt class="col-5 text-muted">Taille ISO</dt><dd class="col-7">{{ fmt_size(version.iso_size) }}</dd>
+          <dt class="col-5 text-muted">{{ t('iso.col_iso_size') }}</dt><dd class="col-7">{{ fmt_size(version.iso_size) }}</dd>
           <dt class="col-5 text-muted">{{ t('iso.detail_iso_http_url') }}</dt>
           <dd class="col-7 font-monospace small text-break">
             {% set iso_u = iso_public_http_url(version.iso_path) %}
@@ -69,10 +59,10 @@
             {% endif %}
           </dd>
           {% endif %}
-          <dt class="col-5 text-muted">Ajouté le</dt>
+          <dt class="col-5 text-muted">{{ t('iso.detail.added_on') }}</dt>
           <dd class="col-7">{{ version.created_at | fmt_dt }}</dd>
           {% if version.notes %}
-          <dt class="col-5 text-muted">Notes</dt><dd class="col-7">{{ version.notes }}</dd>
+          <dt class="col-5 text-muted">{{ t('iso.detail.notes_label') }}</dt><dd class="col-7">{{ version.notes }}</dd>
           {% endif %}
         </dl>
       </div>
@@ -83,7 +73,7 @@
   <div class="col-md-7">
     <div class="card border-secondary h-100">
       <div class="card-header">
-        <span class="fw-medium"><i class="bi bi-cpu me-2"></i>Fichiers de boot</span>
+        <span class="fw-medium"><i class="bi bi-cpu me-2"></i>{{ t('iso.detail.boot_files_title') }}</span>
       </div>
       <div class="card-body">
         {% if can_modify and version.iso_path and version.status != 'extracting' %}
@@ -96,13 +86,13 @@
                   {% endif %}>
               <button class="btn btn-outline-warning btn-sm"
                       {% if not iso_file_exists %}type="button" disabled title="{{ t('iso.extract_missing_iso') }}"{% else %}type="submit"{% endif %}>
-                <i class="bi bi-box-arrow-in-down me-1"></i>Extraire depuis l'ISO
+                <i class="bi bi-box-arrow-in-down me-1"></i>{{ t('iso.detail.extract_from_iso') }}
               </button>
             </form>
             {% if version.os_type.boot_type == 'windows' %}
             <button class="btn btn-outline-info btn-sm" type="button"
                     onclick="document.getElementById('wim-replace-form').classList.toggle('d-none')">
-              <i class="bi bi-recycle me-1"></i>Remplacer boot.wim
+              <i class="bi bi-recycle me-1"></i>{{ t('iso.detail.replace_boot_wim') }}
             </button>
             {% endif %}
             <div class="iso-boot-toggles ms-md-auto d-flex flex-wrap align-items-center">
@@ -255,9 +245,9 @@
 
         {% else %}
         <p class="text-muted mb-0">
-          Aucun fichier de boot extrait.
+          {{ t('iso.detail.no_boot_files') }}
           {% if can_modify %}
-          <a href="/boot-files">Uploader manuellement</a> ou lancer l'extraction.
+          <a href="/boot-files">{{ t('iso.detail.upload_manual') }}</a> {{ t('iso.detail.or_run_extract') }}
           {% else %}
           {{ t('iso.readonly_no_boot') }}
           {% endif %}
@@ -269,15 +259,14 @@
         <div id="wim-replace-form" class="d-none mt-3 pt-3 border-top border-secondary">
           <p class="text-info small mb-2">
             <i class="bi bi-recycle me-1"></i>
-            Remplace uniquement <code>boot.wim</code> — tous les autres fichiers Windows restent intacts.
-            L'ancien fichier est sauvegardé en <code>.wim.bak</code>.
+            {{ t('iso.detail.replace_wim_hint') }}
           </p>
           <form method="post" action="/boot-files/{{ version.id }}/replace-wim"
                 enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
             <input type="file" name="file_boot_wim" class="form-control form-control-sm"
                    accept=".wim" required style="max-width:320px">
             <button class="btn btn-info btn-sm">
-              <i class="bi bi-upload me-1"></i>Uploader et remplacer
+              <i class="bi bi-upload me-1"></i>{{ t('iso.detail.upload_replace_wim') }}
             </button>
           </form>
         </div>
@@ -404,9 +393,9 @@
           <table class="table table-sm table-dark table-borderless mb-0">
             <thead>
               <tr class="text-muted small">
-                <th>Dossier</th>
-                <th>Libellé</th>
-                <th>Index</th>
+                <th>{{ t('iso.detail.winpe_th_folder') }}</th>
+                <th>{{ t('iso.detail.winpe_th_label') }}</th>
+                <th>{{ t('iso.detail.winpe_th_index') }}</th>
                 <th></th>
               </tr>
             </thead>
@@ -759,7 +748,7 @@
         {% if version.autoconfigs %}
         <table class="table table-dark table-hover mb-0">
           <thead><tr>
-            <th>Type</th><th>Label</th><th>Fichier</th>
+            <th>{{ t('iso.detail.cfg_th_type') }}</th><th>{{ t('iso.detail.cfg_th_label') }}</th><th>{{ t('iso.detail.cfg_th_file') }}</th>
             {% if (version.os_type.slug == 'ubuntu' and version.ubuntu_variant != 'server') or version.os_type.slug == 'proxmox' %}<th class="text-center">{{ t('iso.active_config_col') }}</th>{% endif %}
             <th class="text-end">Actions</th>
           </tr></thead>
@@ -797,7 +786,7 @@
           </tbody>
         </table>
         {% else %}
-        <p class="text-muted p-3 mb-0">Aucune configuration automatique pour cette version.</p>
+        <p class="text-muted p-3 mb-0">{{ t('iso.detail.no_autoconfig_version') }}</p>
         {% endif %}
       </div>
     </div>
@@ -812,7 +801,7 @@
         data-confirm-title="{{ t('iso.delete_title')|e }}"
         data-confirm-variant="danger">
     <button class="btn btn-outline-danger">
-      <i class="bi bi-trash me-1"></i>Supprimer cette version
+      <i class="bi bi-trash me-1"></i>{{ t('iso.detail.delete_this_version') }}
     </button>
   </form>
 </div>

@@ -21,18 +21,17 @@
 {% if status.tls_https_url %}
 <div class="alert alert-info py-2 small mb-4">
   <i class="bi bi-shield-lock me-1"></i>
-  <strong>HTTPS actif</strong> — <code>SERVER_BASE_URL</code> en <code>https://</code>.
+  <strong>{{ t('fw.https_banner_active') }}</strong>
   {% if status.tls_ready %}
-  Recompilez le firmware pour embarquer <code>CERT/TRUST={{ status.tls_ca_path }}</code>
-  et activer <code>DOWNLOAD_PROTO_HTTPS</code> dans iPXE.
+  {{ t('fw.https_banner_rebuild', ca_path=status.tls_ca_path) }}
   {% else %}
-  Certificat CA absent : <code>sudo bash /srv/ipxe/app/deploy/enable-https.sh</code>
+  {{ t('fw.https_banner_ca_missing') }}
   {% endif %}
 </div>
 {% elif status.tls_ready %}
 <div class="alert alert-warning py-2 small mb-4">
   <i class="bi bi-exclamation-triangle me-1"></i>
-  CA présente (<code>{{ status.tls_ca_path }}</code>) mais <code>SERVER_BASE_URL</code> est encore en HTTP.
+  {{ t('fw.https_banner_http_url', ca_path=status.tls_ca_path) }}
 </div>
 {% endif %}
 
