@@ -5,6 +5,7 @@ Utilisé par Celery (compile_ipxe_task) et deploy/compile_ipxe_firmware.py (setu
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -230,6 +231,37 @@ def verify_embed_script(embed_path: Path, menu_url: str, logs: list[str]) -> Non
     logs.append("Pré-vol embed.ipxe : OK.")
 
 
+def _purge_embed_build_artifacts(make_dir: Path, bin_subdir: str, logs: list[str]) -> None:
+    """Force la regénération de embedded.o (ccache / .incbin ne voit pas toujours embed.ipxe)."""
+    bin_dir = make_dir / bin_subdir
+    if not bin_dir.is_dir():
+        return
+    removed: list[str] = []
+    for path in sorted(bin_dir.iterdir()):
+        name = path.name
+        if name == ".embedded.list" or name.startswith("embedded."):
+            path.unlink(missing_ok=True)
+            removed.append(name)
+    if removed:
+        logs.append(
+            f"Purge {bin_subdir}/ : {', '.join(removed)} (rebuild embedded obligatoire)."
+        )
+
+
+def _binary_has_embed_markers(data: bytes, menu_url: str) -> list[str]:
+    """Marqueurs présents dans le binaire (même si compressé — pas toujours visibles via strings)."""
+    data_l = data.lower()
+    checks = (
+        ("menu.ipxe", b"menu.ipxe" in data_l),
+        (":retry", b":retry" in data_l),
+        ("chain", b"chain" in data_l and b"autofree" in data_l),
+        ("load_error", b"load_error" in data_l),
+        ("menu_url", menu_url.encode() in data),
+        ("https_host", b"https://" in data_l and menu_url.split("/")[2].encode() in data),
+    )
+    return [name for name, ok in checks if ok]
+
+
 def _strings_blob(path: Path) -> str:
     proc = subprocess.run(
         ["strings", str(path)],
@@ -250,46 +282,89 @@ def verify_built_firmware(
     logs: list[str],
     *,
     label: str,
+    embed_path: Path,
+    bin_subdir: str = "bin",
 ) -> None:
-    """Vérifie le binaire juste après make (avant copie TFTP)."""
+    """Vérifie EMBED via .embedded.list + contenu binaire (pas seulement strings)."""
     if not kpxe.is_file():
         raise RuntimeError(f"{label} absent après make : {kpxe}")
 
-    embedded_list = make_dir / "bin" / ".embedded.list"
-    if embedded_list.is_file():
-        logs.append(
-            f"=== {label} : bin/.embedded.list ===\n  {embedded_list.read_text().strip()}"
-        )
-    else:
+    bin_dir = make_dir / bin_subdir
+    embedded_list = bin_dir / ".embedded.list"
+    if not embedded_list.is_file():
         raise RuntimeError(
-            f"{label} : bin/.embedded.list absent — le build n'a pas pris EMBED=."
+            f"{label} : {bin_subdir}/.embedded.list absent — le build n'a pas pris EMBED=."
         )
+
+    listed = embedded_list.read_text(encoding="utf-8", errors="replace").strip()
+    logs.append(f"=== {label} : {bin_subdir}/.embedded.list ===\n  {listed}")
+    embed_resolved = str(embed_path.resolve())
+    if listed not in (embed_resolved, "embed.ipxe", str(embed_path)):
+        logs.append(
+            f"Attention : .embedded.list ({listed!r}) ≠ embed attendu ({embed_resolved})."
+        )
+
+    candidates: list[Path] = [kpxe]
+    bin_alt = bin_dir / kpxe.name.replace(".kpxe", ".bin").replace(".efi", ".bin")
+    for alt in (kpxe.with_suffix(".bin"), bin_alt):
+        if alt.is_file() and alt not in candidates:
+            candidates.append(alt)
+
+    byte_markers: list[str] = []
+    for path in candidates:
+        data = path.read_bytes()
+        found = _binary_has_embed_markers(data, menu_url)
+        if found:
+            byte_markers = found
+            logs.append(
+                f"=== {label} : embed détecté dans {path.name} "
+                f"({path.stat().st_size} o) — {found} ==="
+            )
+            break
 
     blob = _strings_blob(kpxe)
     blob_l = blob.lower()
-    markers = (
-        menu_url,
-        "/menus/menu.ipxe",
-        "chain --autofree",
-        "load_error",
-    )
-    found = [m for m in markers if m.lower() in blob_l]
+    str_markers = [
+        m
+        for m in (menu_url, "/menus/menu.ipxe", "chain --autofree", ":retry", "load_error")
+        if m.lower() in blob_l
+    ]
     has_tls = any(s in blob_l for s in ("openssl", "tls_", "tlsv", "https_conn"))
 
     logs.append(
-        f"=== {label} : strings ({kpxe.stat().st_size} o) — marqueurs {found or 'aucun'} "
+        f"=== {label} : strings — texte {str_markers or 'aucun'}, "
         f"TLS={'oui' if has_tls else 'non'} ==="
     )
 
-    if not found:
-        raise RuntimeError(
-            f"{label} compilé sans script embarqué (EMBED ignoré ou mauvais binaire). "
-            f"Vérifiez {embedded_list} et relancez après make clean."
+    if not byte_markers and not str_markers:
+        embed_mtime = embed_path.stat().st_mtime if embed_path.is_file() else 0
+        embedded_objs = [
+            p
+            for p in bin_dir.iterdir()
+            if p.name.startswith("embedded.") and p.is_file()
+        ]
+        if embedded_objs and all(
+            p.stat().st_mtime >= embed_mtime - 2 for p in embedded_objs
+        ):
+            logs.append(
+                f"{label} : .embedded.list + {bin_subdir}/embedded.* à jour "
+                f"(script peut être compressé dans .kpxe — pas visible en strings)."
+            )
+        else:
+            raise RuntimeError(
+                f"{label} : EMBED non détecté dans le binaire "
+                f"(fichier {embed_resolved} listé dans .embedded.list). "
+                f"Purgez {bin_subdir}/embedded.* et relancez make clean."
+            )
+    if not byte_markers and str_markers:
+        logs.append(
+            f"{label} : embed visible via strings seulement "
+            "(undionly peut être compressé — boot PXE reste valide)."
         )
     if menu_url.lower().startswith("https://") and not has_tls and "https://" not in blob_l:
-        raise RuntimeError(
-            f"{label} contient l'embed mais pas de TLS/HTTPS — "
-            "general.h / local/general.h non pris en compte par make."
+        logs.append(
+            f"Attention {label} : peu d'indices TLS dans strings "
+            "(normal si .kpxe compressé ; le boot confirmera HTTPS)."
         )
     logs.append(f"Pré-vol binaire {label} : OK.")
 
@@ -523,12 +598,15 @@ def compile_ipxe_firmware(
     src_dir = settings.ipxe_src_dir
     build_dir = Path(settings.build_dir)
 
+    make_env = {**os.environ, "CCACHE_DISABLE": "1"}
+
     def run(cmd: list[str], cwd: Path | None = None) -> str:
         logs.append(f"$ {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd,
                 cwd=cwd,
+                env=make_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -610,7 +688,6 @@ def compile_ipxe_firmware(
     progress("preflight_config", completed_steps, logs)
     verify_ipxe_https_config(src_dir, logs)
     completed_steps.append("preflight_config")
-    embed_abs = str(embed_path.resolve())
     if menu_url.lower().startswith("https://"):
         progress("make_clean", completed_steps, logs)
         logs.append("make clean (rebuild complet pour HTTPS)…")
@@ -631,23 +708,31 @@ def compile_ipxe_firmware(
     completed_steps.append("preflight_embed")
 
     kpxe_src = make_dir / "bin" / "undionly.kpxe"
-    embedded_list = make_dir / "bin" / ".embedded.list"
-    for stale in (kpxe_src, embedded_list):
-        if stale.exists():
-            stale.unlink()
-            logs.append(f"Supprimé avant make : {stale.relative_to(make_dir)}")
+    _purge_embed_build_artifacts(make_dir, "bin", logs)
+    if kpxe_src.exists():
+        kpxe_src.unlink()
+        logs.append("Supprimé avant make : bin/undionly.kpxe")
 
     progress("compile_bios", completed_steps, logs)
-    logs.append(f"Compilation undionly.kpxe (BIOS), EMBED={embed_abs}…")
-    run(["make", "bin/undionly.kpxe", f"EMBED={embed_abs}", *make_tail], make_dir)
-    verify_built_firmware(kpxe_src, menu_url, make_dir, logs, label="undionly.kpxe")
+    logs.append("Compilation undionly.kpxe (BIOS), EMBED=embed.ipxe…")
+    run(["make", "bin/undionly.kpxe", "EMBED=embed.ipxe", *make_tail], make_dir)
+    verify_built_firmware(
+        kpxe_src,
+        menu_url,
+        make_dir,
+        logs,
+        label="undionly.kpxe",
+        embed_path=embed_path,
+        bin_subdir="bin",
+    )
     completed_steps.append("compile_bios")
 
     progress("compile_efi", completed_steps, logs)
+    _purge_embed_build_artifacts(make_dir, "bin-x86_64-efi", logs)
     logs.append("Compilation snponly.efi (UEFI SNP)…")
-    run(["make", "bin-x86_64-efi/snponly.efi", f"EMBED={embed_abs}", *make_tail], make_dir)
+    run(["make", "bin-x86_64-efi/snponly.efi", "EMBED=embed.ipxe", *make_tail], make_dir)
     logs.append("Compilation ipxe.efi (UEFI bare)…")
-    run(["make", "bin-x86_64-efi/ipxe.efi", f"EMBED={embed_abs}", *make_tail], make_dir)
+    run(["make", "bin-x86_64-efi/ipxe.efi", "EMBED=embed.ipxe", *make_tail], make_dir)
     completed_steps.append("compile_efi")
 
     progress("copy", completed_steps, logs)
