@@ -652,22 +652,35 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(f"/isos/{version.id}", status_code=302)
 
 
-def _last_extract_error_msg(db: Session, version: IsoVersion) -> str:
-    """Dernier message d'échec Celery (table uploads, type extraction)."""
-    iso_name = Path((version.iso_path or "").strip()).name
-    if not iso_name:
-        return ""
-    row = (
+def _last_extraction_upload(db: Session, version_id: int) -> Upload | None:
+    return (
         db.query(Upload)
         .filter(
+            Upload.iso_version_id == version_id,
             Upload.file_type == "extraction",
-            Upload.status == "error",
-            Upload.filename == iso_name,
         )
         .order_by(Upload.created_at.desc())
         .first()
     )
-    return (row.error_msg or "").strip() if row else ""
+
+
+def _last_extract_error_msg(db: Session, version: IsoVersion) -> str:
+    """Dernier message d'échec Celery (table uploads, type extraction)."""
+    row = _last_extraction_upload(db, version.id)
+    if not row or row.status != "error":
+        return ""
+    return (row.error_msg or "").strip()
+
+
+def _last_extract_warning_msg(db: Session, version: IsoVersion) -> str:
+    """Avertissement après extraction OK (ex. menus non régénérés)."""
+    row = _last_extraction_upload(db, version.id)
+    if not row or row.status != "done":
+        return ""
+    msg = (row.error_msg or "").strip()
+    if not msg or "menus iPXE" not in msg:
+        return ""
+    return msg
 
 
 # ── Detail ────────────────────────────────────────────────────────────────────
@@ -751,8 +764,11 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
                     proxmox_netboot_autoinstall_iso_path = ""
 
     extract_error_msg = ""
+    extract_warning_msg = ""
     if version.status == "error":
         extract_error_msg = _last_extract_error_msg(db, version)
+    else:
+        extract_warning_msg = _last_extract_warning_msg(db, version)
 
     winpe_smb_host = ""
     winpe_smb_share = ""
@@ -802,6 +818,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             winpe_drivers_root=winpe_drivers_root,
             winpe_scripts_dir=winpe_scripts_dir,
             extract_error_msg=extract_error_msg,
+            extract_warning_msg=extract_warning_msg,
             fmt_size=fmt_size,
             basename_report=basename_report,
             basename_report_items=basename_report_items,

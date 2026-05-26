@@ -282,6 +282,10 @@ def extract_iso(
 
     dest = settings.boot_dir / os_slug / version_slug
     dest.mkdir(parents=True, exist_ok=True)
+    from app.services.filesystem_perms import fix_tree_permissions, prepare_writable_dir
+
+    prepare_writable_dir(dest.parent)
+    prepare_writable_dir(dest)
 
     logger.info("Extraction %s → %s", iso.name, dest)
 

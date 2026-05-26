@@ -29,6 +29,12 @@
   <p class="mb-0 mt-2 small">{{ t('iso.extract_error_no_detail') }}</p>
   {% endif %}
 </div>
+{% elif extract_warning_msg %}
+<div class="alert alert-warning mb-4">
+  <strong><i class="bi bi-exclamation-triangle me-2"></i>{{ t('iso.extract_warning_title') }}</strong>
+  <pre class="mt-2 mb-0 small text-break" style="white-space:pre-wrap">{{ extract_warning_msg }}</pre>
+  <p class="mb-0 mt-2 small">{{ t('iso.extract_warning_hint') }}</p>
+</div>
 {% endif %}
 
 <div class="row g-4">

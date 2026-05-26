@@ -10,6 +10,8 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from celery.exceptions import SoftTimeLimitExceeded
 
+from sqlalchemy.orm import joinedload
+
 from app.tasks.celery_app import celery
 from app.database import SessionLocal
 from app.models.models import IsoVersion, BootEntry, Upload, AutoConfig
@@ -23,11 +25,17 @@ logger = logging.getLogger(__name__)
 def extract_iso_task(self, iso_version_id: int, upload_id: int):
     db = SessionLocal()
     try:
-        version: IsoVersion = db.query(IsoVersion).get(iso_version_id)
-        upload: Upload = db.query(Upload).get(upload_id)
+        version: IsoVersion | None = (
+            db.query(IsoVersion)
+            .options(joinedload(IsoVersion.os_type))
+            .get(iso_version_id)
+        )
+        upload: Upload | None = db.query(Upload).get(upload_id)
 
         if not version:
             raise ValueError(f"IsoVersion {iso_version_id} introuvable")
+        if not version.os_type:
+            raise ValueError(f"IsoVersion {iso_version_id} : type d'OS introuvable")
 
         version.status = "extracting"
         if upload:
@@ -95,6 +103,7 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         version.iso_was_extracted = True
         if upload:
             upload.status = "done"
+            upload.error_msg = ""
 
         if getattr(version, "delete_iso_after_next_extract", False) and version.iso_path:
             iso_to_remove = Path(version.iso_path)
@@ -172,6 +181,15 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
                     "Régénération menus (2e tentative) échouée pour version %s",
                     iso_version_id,
                 )
+
+        if menu_warning and upload_id:
+            upl = db.query(Upload).get(upload_id)
+            if upl:
+                upl.error_msg = (
+                    "Extraction réussie, mais régénération des menus iPXE échouée : "
+                    + menu_warning
+                )[:4000]
+                db.commit()
 
         result: dict = {"status": "ok", "paths": paths}
         if menu_warning:
