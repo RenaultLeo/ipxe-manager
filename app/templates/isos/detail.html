@@ -162,22 +162,14 @@
         <div id="boot-files-wrap" class="boot-files-wrap">
         <dl class="row mb-0" id="boot-files-list">
           {% if is_esxi %}
-          {# ESXi : UEFI = mboot.efi ; Legacy = mboot.c32 ; même ipxe-boot.cfg / esxi_modules #}
+          {# ESXi : EFI only (mboot.efi) + ipxe-boot.cfg #}
           {% if be.esxi_efi_boot_path %}
           <dt class="col-4 text-muted">{{ t('boot.esxi_loader_uefi_mboot') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_efi_boot_path }}</dd>
           {% endif %}
-          {% if be.kernel_path %}
-          <dt class="col-4 text-muted">{{ t('boot.esxi_loader_legacy_mboot') }}</dt>
-          <dd class="col-8 font-monospace small text-break">{{ be.kernel_path }}</dd>
-          {% endif %}
           {% if be.esxi_boot_cfg_path %}
           <dt class="col-4 text-muted">{{ t('boot.esxi_ipxe_boot_cfg') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_path }}</dd>
-          {% endif %}
-          {% if be.esxi_boot_cfg_legacy_path %}
-          <dt class="col-4 text-muted">ipxe-boot-legacy.cfg</dt>
-          <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_legacy_path }}</dd>
           {% endif %}
           {% if be.esxi_modules %}
           <dt class="col-4 text-muted">{{ t('boot.esxi_modules_ipxe') }}</dt>

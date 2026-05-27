@@ -53,15 +53,8 @@ def _target_boot_cfg_paths(version: IsoVersion) -> list[Path]:
     be = version.boot_entry
     if not be:
         return []
-    targets: list[Path] = []
     efi = _cfg_path_from_rel(getattr(be, "esxi_boot_cfg_path", None))
-    legacy = _cfg_path_from_rel(
-        getattr(be, "esxi_boot_cfg_legacy_path", None) or getattr(be, "esxi_boot_cfg_path", None)
-    )
-    for p in (efi, legacy):
-        if p and p not in targets:
-            targets.append(p)
-    return targets
+    return [efi] if efi else []
 
 
 def activate_esxi_kickstart(db, version: IsoVersion, cfg: AutoConfig) -> None:

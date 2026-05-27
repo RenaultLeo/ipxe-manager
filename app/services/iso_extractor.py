@@ -846,7 +846,7 @@ def _esxi_ensure_lowercase_http_mirrors(dest: Path, files: Iterable[Path]) -> No
 
 
 def _esxi_link_or_copy(src: Path, dst: Path) -> None:
-    """Publie un fichier ESXi dans un dossier de profil (legacy/efi), via hardlink puis copie."""
+    """Publie un fichier ESXi via hardlink puis copie."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.is_file():
         try:
@@ -861,46 +861,38 @@ def _esxi_link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def _esxi_materialize_profiles(dest: Path) -> tuple[Path, Path]:
+def _esxi_materialize_lowercase_tree(dest: Path) -> None:
     """
-    Construit deux arborescences complètes sous ``boot/esxi/<version>/`` :
-    - ``legacy/`` : extraction source (casse OEM conservée)
-    - ``efi/``    : duplication complète en chemins minuscules
+    Construit une extraction ESXi unique en minuscules sous ``dest``.
     """
-    legacy = dest / "legacy"
-    efi = dest / "efi"
-    if legacy.exists():
-        shutil.rmtree(legacy, ignore_errors=True)
-    if efi.exists():
-        shutil.rmtree(efi, ignore_errors=True)
-    legacy.mkdir(parents=True, exist_ok=True)
-    efi.mkdir(parents=True, exist_ok=True)
+    tmp = dest.parent / f".{dest.name}.lowercase"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True, exist_ok=True)
 
-    for child in sorted(dest.iterdir()):
-        if child in (legacy, efi):
-            continue
-        target = legacy / child.name
-        if target.exists():
-            if target.is_dir() and child.is_dir():
-                for sub in child.iterdir():
-                    sub.rename(target / sub.name)
-                child.rmdir()
-            else:
-                target.unlink(missing_ok=True)
-                child.rename(target)
-        else:
-            child.rename(target)
-
-    for src in sorted(legacy.rglob("*")):
-        rel = src.relative_to(legacy)
+    files = [p for p in sorted(dest.rglob("*")) if p.is_file()]
+    for src in files:
+        rel = src.relative_to(dest)
         rel_lower = Path(*[seg.lower() for seg in rel.parts])
-        dst = efi / rel_lower
-        if src.is_dir():
-            dst.mkdir(parents=True, exist_ok=True)
-        elif src.is_file():
-            _esxi_link_or_copy(src, dst)
+        dst = tmp / rel_lower
+        if dst.exists():
+            try:
+                if dst.samefile(src):
+                    continue
+            except OSError:
+                pass
+            logger.warning("ESXi : collision lowercase ignorée (%s)", rel_lower)
+            continue
+        _esxi_link_or_copy(src, dst)
 
-    return legacy, efi
+    for child in list(dest.iterdir()):
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
+    for child in list(tmp.iterdir()):
+        child.rename(dest / child.name)
+    tmp.rmdir()
 
 
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
@@ -1055,102 +1047,50 @@ def _esxi_boot_cfg_http_payload(
 
 def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) -> dict:
     """
-    Après extraction 7z dans ``dest`` (arborescence ISO inchangée) :
-    un seul ``ipxe-boot.cfg`` + JSON ``esxi_modules`` (chemins HTTP minuscules, miroirs lien dur),
-    utilisés à la fois par mboot.efi et mboot.c32 ; précharge ``crypto64.efi`` si présent ;
-    alias ``crypto64.efi`` racine HTTP conservé.
+    Après extraction ESXi : une seule arborescence HTTP, entièrement en minuscules.
     """
     base = f"boot/{os_slug}/{version_slug}"
-    legacy_root, efi_root = _esxi_materialize_profiles(dest)
+    _esxi_materialize_lowercase_tree(dest)
+    iso_lower = _esxi_index_files_casefold(dest)
+    _esxi_ensure_crypto64_lowercase_http_alias(iso_lower, dest)
 
-    iso_lower_legacy = _esxi_index_files_casefold(legacy_root)
-    iso_lower_efi = _esxi_index_files_casefold(efi_root)
-    _esxi_ensure_crypto64_lowercase_http_alias(iso_lower_efi, efi_root)
-
-    src_cfg_legacy = _pick_esxi_boot_cfg_any(legacy_root, iso_lower_legacy)
-    if not src_cfg_legacy:
-        raise ExtractionError("ESXi : aucun boot.cfg trouvé dans legacy/.")
-    src_cfg_efi = _pick_esxi_boot_cfg_any(efi_root, iso_lower_efi)
-    if not src_cfg_efi:
-        raise ExtractionError("ESXi : aucun boot.cfg trouvé dans efi/.")
-
-    mboot_pool = iso_lower_legacy.get("mboot.c32", [])
-    if not mboot_pool:
-        raise ExtractionError("ESXi : mboot.c32 / MBOOT.C32 introuvable dans legacy/.")
-    mboot_path = _esxi_pick_preferred_path(
-        mboot_pool,
-        legacy_root,
-        prefer_original_case=True,
-    )
-    if not mboot_path.is_file():
-        raise ExtractionError("ESXi : mboot.c32 introuvable dans legacy/.")
-    # Legacy : conserver la casse OEM (souvent MBOOT.C32) — imgargs doit utiliser le même basename.
-    mboot_publish = legacy_root / mboot_path.name
-    if mboot_path.resolve() != mboot_publish.resolve():
-        _esxi_link_or_copy(mboot_path, mboot_publish)
-    mboot_rel = _esxi_rel_from_dest(legacy_root, mboot_publish)
+    src_cfg = _pick_esxi_boot_cfg_any(dest, iso_lower)
+    if not src_cfg:
+        raise ExtractionError("ESXi : aucun boot.cfg trouvé.")
 
     from app.config import resolve_server_base_url
 
     base_url = resolve_server_base_url().rstrip("/")
-    legacy_http_prefix = f"{base_url}/{base}/legacy/"
-    efi_http_prefix = f"{base_url}/{base}/efi/"
-
-    managed_legacy, preload_legacy = _esxi_boot_cfg_http_payload(
-        legacy_root,
-        iso_lower_legacy,
-        src_cfg_legacy,
-        legacy_http_prefix,
-        profile_label="Legacy",
-        lowercase_paths=False,
-    )
-    preload_legacy = [f"legacy/{p.lstrip('/')}" for p in preload_legacy]
-    (legacy_root / "ipxe-boot.cfg").write_text(managed_legacy, encoding="utf-8")
-
+    http_prefix = f"{base_url}/{base}/"
     managed, preload = _esxi_boot_cfg_http_payload(
-        efi_root,
-        iso_lower_efi,
-        src_cfg_efi,
-        efi_http_prefix,
+        dest,
+        iso_lower,
+        src_cfg,
+        http_prefix,
         profile_label="EFI",
         lowercase_paths=True,
     )
-    preload = [f"efi/{p.lstrip('/')}" for p in preload]
     managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
-    (efi_root / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
-
+    (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
     modules_json = json.dumps(preload, separators=(",", ":"))
-    modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))
 
-    efi_boot_pool = iso_lower_efi.get("bootx64.efi", [])
-    esxi_efi_boot_http: str | None = None
-    if efi_boot_pool:
-        efi_chosen = _esxi_pick_preferred_path(efi_boot_pool, efi_root)
-        if efi_chosen.is_file():
-            mboot_efi = efi_root / "mboot.efi"
-            _esxi_link_or_copy(efi_chosen, mboot_efi)
-            esxi_efi_boot_http = f"{base}/efi/mboot.efi"
-        else:
-            logger.warning("ESXi : bootx64.efi illisible — entrée menu UEFI absente.")
-    else:
-        logger.warning("ESXi : bootx64.efi absent — entrée menu UEFI absente.")
+    efi_boot_pool = iso_lower.get("bootx64.efi", [])
+    if not efi_boot_pool:
+        raise ExtractionError("ESXi : bootx64.efi introuvable (EFI requis).")
+    efi_chosen = _esxi_pick_preferred_path(efi_boot_pool, dest)
+    if not efi_chosen.is_file():
+        raise ExtractionError("ESXi : bootx64.efi illisible (EFI requis).")
+    mboot_efi = dest / "mboot.efi"
+    _esxi_link_or_copy(efi_chosen, mboot_efi)
+    mboot_rel = _esxi_rel_from_dest(dest, mboot_efi)
 
-    logger.info(
-        "ESXi OK — duplication complète legacy/efi, modules legacy=%d efi=%d",
-        len(preload_legacy),
-        len(preload),
-    )
-
-    out_paths: dict = {
-        "kernel_path": f"{base}/legacy/{mboot_rel}",
-        "esxi_boot_cfg_path": f"{base}/efi/ipxe-boot.cfg",
-        "esxi_boot_cfg_legacy_path": f"{base}/legacy/ipxe-boot.cfg",
+    logger.info("ESXi OK — extraction full lowercase, modules=%d", len(preload))
+    return {
+        "kernel_path": f"{base}/{mboot_rel}",
+        "esxi_boot_cfg_path": f"{base}/ipxe-boot.cfg",
+        "esxi_efi_boot_path": f"{base}/{mboot_rel}",
         "esxi_modules": modules_json,
-        "esxi_modules_legacy": modules_legacy_json,
     }
-    if esxi_efi_boot_http:
-        out_paths["esxi_efi_boot_path"] = esxi_efi_boot_http
-    return out_paths
 
 
 def _find_linux(src: Path, dest: Path, os_slug: str, version_slug: str, rule: dict) -> dict:

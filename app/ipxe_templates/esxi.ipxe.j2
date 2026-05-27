@@ -2,7 +2,7 @@
 {% include '_ipxe_debug.inc.j2' %}
 
 ########################################
-# Sous-menu {{ os_type.label }} — UEFI : mboot.efi (copie bootx64.efi, doc VMware) ; Legacy : mboot.c32
+# Sous-menu {{ os_type.label }} — EFI only : mboot.efi (copie bootx64.efi, doc VMware)
 # imgargs : basename chargeur ; -c URL ipxe-boot.cfg ; BOOTIF=01-${net0/mac:hexhyp} (obligatoire depuis iPXE/gPXE).
 # Si « No NIC found » avec cette MAC : virtio sous QEMU → mettre la carte en e1000 ou vmxnet3 (Proxmox).
 ########################################
@@ -24,7 +24,7 @@ goto ${selected}
 
 {% for e in entries %}
 :{{ e.ipxe_item_tag }}
-{% set mbasename = e.esxi_mboot_basename or 'mboot.c32' %}
+{% set mbasename = e.esxi_mboot_basename or 'mboot.efi' %}
 {% set esxi_bootif_arg = "BOOTIF=01-${net0/mac:hexhyp}" %}
 {% if e.autoconfigs %}
   menu {{ e.label }} — Fichier d'installation automatique
