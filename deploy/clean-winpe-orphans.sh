@@ -58,6 +58,11 @@ if [ ! -f "$DB_PATH" ]; then
   echo "ERREUR: base SQLite introuvable : $DB_PATH" >&2
   exit 1
 fi
+if [ ! -d "$APP_DIR" ]; then
+  echo "ERREUR: APP_DIR introuvable : $APP_DIR" >&2
+  exit 1
+fi
+cd "$APP_DIR"
 
 echo "==> [2/8] Arrêt des services"
 if [ "$DRY_RUN" != "1" ]; then
@@ -134,7 +139,7 @@ try:
 
     if dry:
         print("  [dry-run] suppression BDD ignorée")
-    else:
+    elif versions:
         for v in list(versions):
             v.active_winpe_install_id = None
             v.active_autoconfig_id = None
@@ -142,13 +147,18 @@ try:
             db.delete(v)
         db.commit()
         print("  BDD : versions WinPE supprimées (boot_entries, autoconfigs, winpe_installs en cascade)")
+    else:
+        print("  BDD : rien à supprimer — poursuite nettoyage fichiers résiduels")
 finally:
     db.close()
 PY
 
 echo "==> [5/8] Fichiers liés aux versions WinPE supprimées"
-if [ -s "$PATHS_FILE" ]; then
-  sudo -u "$APP_USER" "$VENV_PY" - <<PY
+if grep -q '"id"' "$PATHS_FILE" 2>/dev/null; then
+  while IFS= read -r p; do
+    [ -n "$p" ] && rm_path "$p"
+  done < <(
+    sudo -u "$APP_USER" "$VENV_PY" - <<PY
 import json
 from pathlib import Path
 
@@ -173,9 +183,10 @@ for row in todo:
         (cfg_root, f"winpe/{vid}"),
     ):
         print(str(base / rel))
-PY | while read -r p; do
-    rm_path "$p"
-  done
+PY
+  )
+else
+  echo "  Aucun chemin BDD — skip"
 fi
 
 echo "==> [6/8] Arborescences WinPE legacy + menus obsolètes"
@@ -186,7 +197,10 @@ done
 
 if [ "$CLEAN_ORPHAN_BOOT" = "1" ]; then
   echo "  Dossiers boot/windows/* orphelins (WinPE sans ISO en BDD)..."
-  sudo -u "$APP_USER" "$VENV_PY" - <<PY | while read -r p; do rm_path "$p"; done
+  while IFS= read -r p; do
+    [ -n "$p" ] && rm_path "$p"
+  done < <(
+    sudo -u "$APP_USER" "$VENV_PY" - <<PY
 import sqlite3
 from pathlib import Path
 
@@ -210,6 +224,7 @@ for d in sorted(boot_win.iterdir()):
     if looks_winpe and d.name.lower() not in known:
         print(d)
 PY
+  )
 fi
 
 if [ "$CLEAN_MASTERS" = "1" ]; then
@@ -246,7 +261,8 @@ violations = cur.execute("PRAGMA foreign_key_check").fetchall()
 print(f"  FK violations restantes : {len(violations)}")
 con.close()
 PY
-  sudo -u "$APP_USER" "$VENV_PY" - <<'PY'
+  if sudo -u "$APP_USER" "$VENV_PY" - <<'PY'
+import sys
 from app.database import SessionLocal
 from app.services.menu_generator import regenerate_all
 
@@ -257,6 +273,11 @@ finally:
     db.close()
 print("menus regenerated")
 PY
+  then
+    :
+  else
+    echo "  ! regenerate_all a echoue — relancer depuis l'UI : Menus iPXE -> Regenerer" >&2
+  fi
 fi
 
 echo "==> [8/8] Redémarrage"
