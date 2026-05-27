@@ -251,16 +251,15 @@
 const UBUNTU_HINT = {{ t('iso.upload.hint_ubuntu_full')|tojson }};
 const OS_EXTRACT_META = {{ os_extract_meta|tojson }};
 const LINUX_UPLOAD_OPT = {{ t('iso.upload.optional')|tojson }};
-const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows', 'proxmox', 'rocky', 'alma', 'centos', 'fedora', 'esxi']);
 
 const DISTRO_HINTS = {
   debian:  { kernel: 'vmlinuz',    initrd: 'initrd.gz',      hint: 'vmlinuz + initrd.gz' },
   ubuntu:  { kernel: 'vmlinuz',    initrd: 'initrd',         hint: UBUNTU_HINT, fullExtract: true },
-  centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
-  rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
-  alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img (ISO complète → inst.repo)', fullExtract: true },
-  fedora:  { kernel: 'vmlinuz ou linux', initrd: 'initrd', hint: 'ISO complète ; option Live près du fichier ISO', fullExtract: true },
-  proxmox: { kernel: 'linux26 / vmlinuz', initrd: 'initrd.img', hint: 'ISO complète — boot/linux26 ou vmlinuz + initrd.img ; answer.toml en config auto', fullExtract: true },
+  centos:  { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  rocky:   { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  alma:    { kernel: 'vmlinuz',    initrd: 'initrd.img',     hint: 'vmlinuz + initrd.img' },
+  fedora:  { kernel: 'vmlinuz ou linux', initrd: 'initrd', hint: 'Option Live disponible près du fichier ISO' },
+  proxmox: { kernel: 'linux26 / vmlinuz', initrd: 'initrd.img', hint: 'boot/linux26 ou vmlinuz + initrd.img ; answer.toml en config auto' },
   winpe:   { kernel: '—', initrd: '—', hint: 'ISO complète — wimboot : BCD, boot.sdi, boot.wim (sources/ ou boot/)', fullExtract: true },
   windows: { kernel: '—', initrd: '—', hint: 'ISO complète — wimboot (BCD, boot.sdi, boot.wim)', fullExtract: true },
   alpine:  { kernel: 'vmlinuz-lts', initrd: 'initramfs-lts', hint: 'vmlinuz-lts + initramfs-lts + modloop-lts', modloop: true },
@@ -310,7 +309,7 @@ function updateLinuxFields() {
   const terms = Array.isArray(meta.search_terms) ? meta.search_terms : [];
   const metaFull = !!meta.extract_full;
   const info  = DISTRO_HINTS[slug] || {};
-  const isUbuntuStyle = !!info.fullExtract || FULL_EXTRACT_SLUGS.has(slug);
+  const isUbuntuStyle = (slug === 'ubuntu');
 
   rebuildLinuxManualSlots(slug, terms);
 
