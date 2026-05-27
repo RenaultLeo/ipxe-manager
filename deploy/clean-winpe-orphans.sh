@@ -27,8 +27,7 @@ CLEAN_MASTERS="${CLEAN_MASTERS:-0}"
 CLEAN_ORPHAN_BOOT="${CLEAN_ORPHAN_BOOT:-1}"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
-PATHS_FILE="$(mktemp)"
-trap 'rm -f "$PATHS_FILE"' EXIT
+PATHS_FILE=""
 
 run() {
   if [ "$DRY_RUN" = "1" ]; then
@@ -63,6 +62,11 @@ if [ ! -d "$APP_DIR" ]; then
   exit 1
 fi
 cd "$APP_DIR"
+
+PATHS_FILE="$(mktemp "/tmp/ipxe-winpe-clean.${STAMP}.XXXXXX")"
+chown "$APP_USER:$APP_USER" "$PATHS_FILE"
+chmod 600 "$PATHS_FILE"
+trap 'rm -f "$PATHS_FILE"' EXIT
 
 echo "==> [2/8] Arrêt des services"
 if [ "$DRY_RUN" != "1" ]; then
