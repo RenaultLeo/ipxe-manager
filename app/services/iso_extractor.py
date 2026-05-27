@@ -845,6 +845,48 @@ def _esxi_link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def _esxi_materialize_profiles(dest: Path) -> tuple[Path, Path]:
+    """
+    Construit deux arborescences complètes sous ``boot/esxi/<version>/`` :
+    - ``legacy/`` : extraction source (casse OEM conservée)
+    - ``efi/``    : duplication complète en chemins minuscules
+    """
+    legacy = dest / "legacy"
+    efi = dest / "efi"
+    if legacy.exists():
+        shutil.rmtree(legacy, ignore_errors=True)
+    if efi.exists():
+        shutil.rmtree(efi, ignore_errors=True)
+    legacy.mkdir(parents=True, exist_ok=True)
+    efi.mkdir(parents=True, exist_ok=True)
+
+    for child in sorted(dest.iterdir()):
+        if child in (legacy, efi):
+            continue
+        target = legacy / child.name
+        if target.exists():
+            if target.is_dir() and child.is_dir():
+                for sub in child.iterdir():
+                    sub.rename(target / sub.name)
+                child.rmdir()
+            else:
+                target.unlink(missing_ok=True)
+                child.rename(target)
+        else:
+            child.rename(target)
+
+    for src in sorted(legacy.rglob("*")):
+        rel = src.relative_to(legacy)
+        rel_lower = Path(*[seg.lower() for seg in rel.parts])
+        dst = efi / rel_lower
+        if src.is_dir():
+            dst.mkdir(parents=True, exist_ok=True)
+        elif src.is_file():
+            _esxi_link_or_copy(src, dst)
+
+    return legacy, efi
+
+
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
     """Chemin relatif POSIX depuis ``dest`` vers ``file_path`` (casse identique au disque après 7z)."""
     dest_r = dest.resolve()
@@ -1003,23 +1045,26 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     alias ``crypto64.efi`` racine HTTP conservé.
     """
     base = f"boot/{os_slug}/{version_slug}"
-    iso_lower = _esxi_index_files_casefold(dest)
-    _esxi_ensure_crypto64_lowercase_http_alias(iso_lower, dest)
+    legacy_root, efi_root = _esxi_materialize_profiles(dest)
 
-    src_cfg = _pick_esxi_boot_cfg_any(dest, iso_lower)
-    if not src_cfg:
-        raise ExtractionError("ESXi : aucun boot.cfg trouvé après extraction complète de l'ISO.")
+    iso_lower_legacy = _esxi_index_files_casefold(legacy_root)
+    iso_lower_efi = _esxi_index_files_casefold(efi_root)
+    _esxi_ensure_crypto64_lowercase_http_alias(iso_lower_efi, efi_root)
 
-    mboot_pool = iso_lower.get("mboot.c32", [])
+    src_cfg_legacy = _pick_esxi_boot_cfg_any(legacy_root, iso_lower_legacy)
+    if not src_cfg_legacy:
+        raise ExtractionError("ESXi : aucun boot.cfg trouvé dans legacy/.")
+    src_cfg_efi = _pick_esxi_boot_cfg_any(efi_root, iso_lower_efi)
+    if not src_cfg_efi:
+        raise ExtractionError("ESXi : aucun boot.cfg trouvé dans efi/.")
+
+    mboot_pool = iso_lower_legacy.get("mboot.c32", [])
     if not mboot_pool:
-        raise ExtractionError("ESXi : mboot.c32 introuvable dans l'ISO.")
-    mboot_path = _esxi_pick_preferred_path(mboot_pool, dest)
+        raise ExtractionError("ESXi : mboot.c32 introuvable dans legacy/.")
+    mboot_path = _esxi_pick_preferred_path(mboot_pool, legacy_root)
     if not mboot_path.is_file():
-        raise ExtractionError("ESXi : mboot.c32 introuvable.")
-    legacy_dir = dest / "legacy"
-    efi_dir = dest / "efi"
-    legacy_mboot = legacy_dir / "mboot.c32"
-    _esxi_link_or_copy(mboot_path, legacy_mboot)
+        raise ExtractionError("ESXi : mboot.c32 introuvable dans legacy/.")
+    _esxi_link_or_copy(mboot_path, legacy_root / "mboot.c32")
 
     from app.config import resolve_server_base_url
 
@@ -1027,39 +1072,38 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     legacy_http_prefix = f"{base_url}/{base}/legacy/"
     efi_http_prefix = f"{base_url}/{base}/efi/"
 
-    # Legacy d'abord : mboot.c32 lit les fichiers extraits en MAJUSCULES à la racine ;
-    # la génération EFI crée ensuite les miroirs minuscules (k.b00) pour mboot.efi.
     managed_legacy, preload_legacy = _esxi_boot_cfg_http_payload(
-        dest,
-        iso_lower,
-        src_cfg,
+        legacy_root,
+        iso_lower_legacy,
+        src_cfg_legacy,
         legacy_http_prefix,
         profile_label="Legacy",
         lowercase_paths=False,
-        profile_subdir="legacy",
     )
-    (legacy_dir / "ipxe-boot.cfg").write_text(managed_legacy, encoding="utf-8")
+    preload_legacy = [f"legacy/{p.lstrip('/')}" for p in preload_legacy]
+    (legacy_root / "ipxe-boot.cfg").write_text(managed_legacy, encoding="utf-8")
 
     managed, preload = _esxi_boot_cfg_http_payload(
-        dest,
-        iso_lower,
-        src_cfg,
+        efi_root,
+        iso_lower_efi,
+        src_cfg_efi,
         efi_http_prefix,
         profile_label="EFI",
-        profile_subdir="efi",
+        lowercase_paths=True,
     )
+    preload = [f"efi/{p.lstrip('/')}" for p in preload]
     managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
-    (efi_dir / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
+    (efi_root / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
 
     modules_json = json.dumps(preload, separators=(",", ":"))
     modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))
 
-    efi_boot_pool = iso_lower.get("bootx64.efi", [])
+    efi_boot_pool = iso_lower_efi.get("bootx64.efi", [])
     esxi_efi_boot_http: str | None = None
     if efi_boot_pool:
-        efi_chosen = _esxi_pick_preferred_path(efi_boot_pool, dest)
+        efi_chosen = _esxi_pick_preferred_path(efi_boot_pool, efi_root)
         if efi_chosen.is_file():
-            mboot_efi = efi_dir / "mboot.efi"
+            mboot_efi = efi_root / "mboot.efi"
             _esxi_link_or_copy(efi_chosen, mboot_efi)
             esxi_efi_boot_http = f"{base}/efi/mboot.efi"
         else:
@@ -1067,7 +1111,11 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     else:
         logger.warning("ESXi : bootx64.efi absent — entrée menu UEFI absente.")
 
-    logger.info("ESXi OK — legacy=%d modules efi=%d", len(preload_legacy), len(preload))
+    logger.info(
+        "ESXi OK — duplication complète legacy/efi, modules legacy=%d efi=%d",
+        len(preload_legacy),
+        len(preload),
+    )
 
     out_paths: dict = {
         "kernel_path": f"{base}/legacy/mboot.c32",

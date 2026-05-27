@@ -685,23 +685,23 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
         if not d.is_dir():
             continue
         ver = d.name
-        http_prefix = f"{base}/boot/esxi/{ver}/"
-        new_line = f"prefix={http_prefix}"
-        iso_lower = _esxi_index_files_casefold(d)
-        src_cfg = _pick_esxi_boot_cfg_any(d, iso_lower)
+        base_prefix = f"{base}/boot/esxi/{ver}/"
+        legacy_prefix = f"{base_prefix}legacy/"
+        efi_prefix = f"{base_prefix}efi/"
+        iso_lower_legacy = _esxi_index_files_casefold(d / "legacy") if (d / "legacy").is_dir() else {}
+        src_cfg_legacy = _pick_esxi_boot_cfg_any(d / "legacy", iso_lower_legacy) if iso_lower_legacy else None
         legacy_path = d / "legacy" / "ipxe-boot.cfg"
         if not legacy_path.is_file():
             legacy_path = d / "ipxe-boot-legacy.cfg"
-        if src_cfg and legacy_path.is_file():
+        if src_cfg_legacy and legacy_path.is_file():
             try:
                 managed_legacy, _ = _esxi_boot_cfg_http_payload(
-                    d,
-                    iso_lower,
-                    src_cfg,
-                    f"{http_prefix}legacy/",
+                    d / "legacy",
+                    iso_lower_legacy,
+                    src_cfg_legacy,
+                    legacy_prefix,
                     profile_label="Legacy",
                     lowercase_paths=False,
-                    profile_subdir="legacy",
                 )
                 write_text_file(legacy_path, managed_legacy, file_mode=0o644)
             except Exception as exc:
@@ -730,7 +730,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             replaced_prefix = False
             for line in lines:
                 if _ESXI_IPXE_PREFIX_LINE_RE.match(line):
-                    out.append(new_line)
+                    out.append(f"prefix={legacy_prefix}" if path == legacy_path else f"prefix={efi_prefix}")
                     replaced_prefix = True
                 else:
                     out.append(line)
@@ -738,7 +738,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
                 insert_at = 0
                 while insert_at < len(out) and out[insert_at].strip().startswith("#"):
                     insert_at += 1
-                out.insert(insert_at, new_line)
+                out.insert(insert_at, f"prefix={legacy_prefix}" if path == legacy_path else f"prefix={efi_prefix}")
             try:
                 write_text_file(path, "\n".join(out) + "\n", file_mode=0o644)
             except OSError as e:
