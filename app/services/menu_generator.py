@@ -508,7 +508,7 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
 
 def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
     """
-    Réécrit ``prefix=`` dans chaque ``ipxe-boot.cfg`` ESXi (EFI only) ;
+    Réécrit ``prefix=`` dans chaque ``ipxe-boot.cfg`` ESXi ;
     normalise ``kernel=`` / ``modules=`` en minuscules.
     """
     from app.services.iso_extractor import normalize_esxi_ipxe_boot_cfg_paths
@@ -548,10 +548,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
                     replaced_prefix = True
                 elif _ESXI_IPXE_KERNELOPT_LINE_RE.match(line):
                     cur = line.split("=", 1)[1].strip() if "=" in line else ""
-                    kopt = _normalize_esxi_network_kernelopt(
-                        cur,
-                        lowercase_paths=True,
-                    )
+                    kopt = _normalize_esxi_network_kernelopt(cur)
                     out.append(f"kernelopt={kopt}")
                 else:
                     out.append(line)

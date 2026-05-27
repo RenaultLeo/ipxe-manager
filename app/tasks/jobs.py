@@ -91,8 +91,6 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
         be.esxi_boot_cfg_manual_path = paths.get("esxi_boot_cfg_manual_path")
         be.esxi_efi_boot_path = paths.get("esxi_efi_boot_path")
         be.esxi_modules       = paths.get("esxi_modules") or ""
-        be.esxi_boot_cfg_legacy_path = ""
-        be.esxi_modules_legacy = ""
         if extra_linux is not None:
             if isinstance(extra_linux, list):
                 be.extra_linux_paths_json = json.dumps(extra_linux, ensure_ascii=False)

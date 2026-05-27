@@ -116,14 +116,12 @@ class BootEntry(Base):
     # Upload manuel : artefacts Linux au-delà de kernel/initrd (ex. NixOS « init »)
     extra_linux_paths_json = Column(Text, default="[]")  # [{"basename":"init","path":"boot/os/ver/init"},…]
 
-    # VMware ESXi — EFI only : esxi_efi_boot_path → mboot.efi (copie de bootx64.efi).
-    # ESXi : ipxe-boot.cfg + JSON esxi_modules (chemins HTTP en minuscules).
+    # VMware ESXi (EFI) : esxi_efi_boot_path → mboot.efi (copie de bootx64.efi).
+    # ipxe-boot.cfg / ipxe-boot-manual.cfg + JSON esxi_modules (chemins HTTP en minuscules).
     esxi_boot_cfg_path = Column(String(512))
     esxi_boot_cfg_manual_path = Column(String(512))
-    esxi_boot_cfg_legacy_path = Column(String(512))
     esxi_efi_boot_path = Column(String(512))
     esxi_modules = Column(Text, default="")
-    esxi_modules_legacy = Column(Text, default="")
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -74,7 +74,7 @@
         {% elif v.os_type.slug == 'esxi' or v.os_type.boot_type == 'esxi' %}
           {% set esxi_manual_cfg = be.esxi_boot_cfg_manual_path or (be.esxi_boot_cfg_path|replace('/ipxe-boot.cfg', '/ipxe-boot-manual.cfg') if be.esxi_boot_cfg_path else '') %}
           {% for label_key, path_esxi in [
-              ('boot.esxi_loader_uefi_mboot',    be.esxi_efi_boot_path),
+              ('boot.esxi_loader_mboot',    be.esxi_efi_boot_path),
               ('boot.esxi_ipxe_boot_cfg',  be.esxi_boot_cfg_path),
               ('boot.esxi_ipxe_boot_cfg_manual', esxi_manual_cfg),
           ] %}
