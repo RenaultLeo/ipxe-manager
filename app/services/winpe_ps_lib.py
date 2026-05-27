@@ -1209,6 +1209,12 @@ function Show-WinpeDeployWizard {{
     $lstM = New-Object System.Windows.Forms.ListBox
     $lstM.Location = New-Object System.Drawing.Point(12, 34)
     $lstM.Size = New-Object System.Drawing.Size(480, 100)
+    # Force un affichage vertical item-par-item (pas de colonnes "stackees").
+    $lstM.MultiColumn = $false
+    $lstM.IntegralHeight = $false
+    $lstM.SelectionMode = [System.Windows.Forms.SelectionMode]::One
+    $lstM.ColumnWidth = 480
+    $lstM.HorizontalScrollbar = $true
     foreach ($m in $Masters) {{ [void]$lstM.Items.Add("$($m.label)  [$($m.slug)]") }}
     if ($lstM.Items.Count -gt 0) {{ $lstM.SelectedIndex = 0 }}
     $form.Controls.Add($lstM)
