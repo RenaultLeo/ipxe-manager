@@ -16,9 +16,11 @@ PACKS_DIRNAME = "language-packs"
 CATALOG_FILENAME = "language-packs.json"
 _LOCALE_ID_RE = re.compile(r"^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$")
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
-_IGNORE_REGION = frozenset(
+# Segments a ignorer (architecture, mots Microsoft) — pas des locales.
+_IGNORE_LOCALE_PART = frozenset(
     {
         "amd64",
+        "x64",
         "x86",
         "arm64",
         "wow64",
@@ -28,25 +30,21 @@ _IGNORE_REGION = frozenset(
         "windows",
         "package",
         "cab",
+        "client",
+        "basic",
     }
 )
-# Ordre : motifs les plus fiables en premier (noms .cab Windows Languages).
-_CAB_LOCALE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(
-        r"Client-Language-Pack[_-](?P<lang>[a-z]{2,3})[_-](?P<reg>[a-z0-9]{2,8})",
-        re.I,
-    ),
-    re.compile(
-        r"Language[_-]?Pack[_-](?P<lang>[a-z]{2,3})[_-](?P<reg>[a-z0-9]{2,8})",
-        re.I,
-    ),
-    re.compile(
-        r"LanguageFeatures[_-][A-Za-z]+[_-](?P<lang>[a-z]{2,3})[_-](?P<reg>[a-z0-9]{2,8})",
-        re.I,
-    ),
-    re.compile(r"~(?P<lang>[a-z]{2,3})-(?P<reg>[a-zA-Z0-9]{2,8})~", re.I),
-    re.compile(r"[_-](?P<lang>[a-z]{2,3})-(?P<reg>[a-zA-Z0-9]{2,8})[_-]", re.I),
-    re.compile(r"[_-](?P<lang>[a-z]{2,3})[_-](?P<reg>[a-z0-9]{2,8})[_-]", re.I),
+# fr-fr, en-us, pt-br, zh-cn … (tiret ou underscore, insensible a la casse).
+_LOCALE_TOKEN_RE = re.compile(
+    r"(?<![a-zA-Z0-9])(?P<lang>[a-z]{2,3})(?:[-_])(?P<reg>[a-zA-Z0-9]{2,8})(?![a-zA-Z0-9])",
+    re.I,
+)
+# Si plusieurs locales dans le nom, privilegier celle apres ces marqueurs.
+_PREFER_AFTER_MARKERS = (
+    "language-pack",
+    "language-features",
+    "language-experience",
+    "client-language",
 )
 
 
@@ -67,7 +65,7 @@ def normalize_locale_parts(lang: str, region: str) -> str:
     if not language or not reg:
         raise ValueError("locale incomplete")
     reg_lower = reg.lower()
-    if reg_lower in _IGNORE_REGION:
+    if reg_lower in _IGNORE_LOCALE_PART:
         raise ValueError("region ignored")
     if len(reg) == 2 and reg.isalpha():
         region_norm = reg.upper()
@@ -99,25 +97,58 @@ def canonical_locale_id(locale_id: str) -> str:
     return raw
 
 
+def _locale_from_match(lang: str, reg: str) -> str | None:
+    if not lang or not reg:
+        return None
+    lang_l = lang.lower()
+    reg_l = reg.lower()
+    if lang_l in _IGNORE_LOCALE_PART or reg_l in _IGNORE_LOCALE_PART:
+        return None
+    try:
+        return canonical_locale_id(normalize_locale_parts(lang, reg))
+    except ValueError:
+        return None
+
+
+def _locale_candidates_in_stem(stem: str) -> list[tuple[int, str]]:
+    """Toutes les locales reconnues dans le nom (position, id normalise)."""
+    found: list[tuple[int, str]] = []
+    seen_ids: set[str] = set()
+    for match in _LOCALE_TOKEN_RE.finditer(stem):
+        locale_id = _locale_from_match(match.group("lang"), match.group("reg"))
+        if not locale_id or locale_id in seen_ids:
+            continue
+        seen_ids.add(locale_id)
+        found.append((match.start(), locale_id))
+    return found
+
+
+def _pick_best_locale_candidate(stem: str, candidates: list[tuple[int, str]]) -> str | None:
+    if not candidates:
+        return None
+    stem_l = stem.lower()
+    for marker in _PREFER_AFTER_MARKERS:
+        pos = stem_l.find(marker)
+        if pos < 0:
+            continue
+        after = pos + len(marker)
+        following = [c for c in candidates if c[0] >= after]
+        if following:
+            return following[-1][1]
+    return candidates[-1][1]
+
+
 def locale_id_from_cab_filename(filename: str) -> str | None:
-    """Extrait fr-FR, en-US, etc. depuis un nom de .cab Language Pack."""
+    """
+    Extrait fr-FR, en-US, de-DE, etc. depuis le nom du .cab.
+    Cherche tout token ``xx-yy`` / ``xx_yy`` (ex. fr-fr, en-us).
+    """
     name = Path(filename or "").name
     if not name.lower().endswith(".cab"):
         return None
     stem = name[:-4]
-    for pattern in _CAB_LOCALE_PATTERNS:
-        for match in pattern.finditer(stem):
-            lang = match.group("lang")
-            reg = match.group("reg")
-            if not lang or not reg:
-                continue
-            if reg.lower() in _IGNORE_REGION:
-                continue
-            try:
-                return canonical_locale_id(normalize_locale_parts(lang, reg))
-            except ValueError:
-                continue
-    return None
+    candidates = _locale_candidates_in_stem(stem)
+    return _pick_best_locale_candidate(stem, candidates)
 
 
 def locale_id_to_slug(locale_id: str) -> str:
