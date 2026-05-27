@@ -889,8 +889,10 @@ def _esxi_boot_cfg_http_payload(
         kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
         mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
     else:
-        kernel_rel = _esxi_rel_from_dest(dest, k_path)
-        mod_rels = [_esxi_rel_from_dest(dest, p) for p in mod_paths]
+        # Legacy: conserver la casse/forme du boot.cfg source (ex: B.B00, UC_*.V00),
+        # seulement normaliser séparateurs et slash de tête.
+        kernel_rel = _esxi_normalize_path(kernel_ref)
+        mod_rels = [_esxi_normalize_path(ref) for ref in mod_refs]
 
     managed = _rewrite_esxi_boot_cfg_http(
         raw_cfg=raw_cfg,
