@@ -29,7 +29,7 @@ OS_CONFIG_TYPE: dict[str, str] = {
     "alma":     "kickstart",
     "fedora":   "kickstart",
     "proxmox":  "proxmox-answer",   # answer.toml
-    "esxi":     "kickstart",        # ks.cfg
+    "esxi":     "esxi-kickstart",   # ks.cfg (injecté dans ipxe-boot.cfg/kernelopt)
     "alpine":   "alpine-answer",    # answers / apkovl
     "tools":    "custom",
 }
@@ -104,9 +104,9 @@ FORCED_CONFIGS: dict[str, dict] = {
         "multi_file":  False,
     },
     "esxi": {
-        "type":        "kickstart",
+        "type":        "esxi-kickstart",
         "filenames":   ["ks.cfg"],
-        "description": "ks.cfg (ESXi kickstart)",
+        "description": "ks.cfg (ESXi kickstart, injecté dans ipxe-boot.cfg)",
         "ext":         "cfg",
         "multi_file":  False,
     },
@@ -163,8 +163,9 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
     elif config_type == "kickstart":
         if os_slug in ("fedora", "rocky", "alma", "centos"):
             return f"inst.ks={url}"
-        else:  # esxi…
-            return f"ks={url}"
+        return f"ks={url}"
+    elif config_type == "esxi-kickstart":
+        return f"ks={url}"
     elif config_type == "cloud-init":
         # Ubuntu autoinstall (nocloud-net) — URL du dossier seed, toujours avec / final
         base_url = url.rstrip("/") + "/"
@@ -283,6 +284,8 @@ def scan_and_import(db: Session) -> dict:
                     or EXT_TYPE.get(f.suffix.lower())
                     or "custom"
                 )
+                if os_slug == "esxi" and cfg_type == "kickstart":
+                    cfg_type = "esxi-kickstart"
                 try:
                     content = f.read_text(encoding="utf-8", errors="replace")
                     stem_l = f.stem.lower()

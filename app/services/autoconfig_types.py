@@ -13,6 +13,7 @@ from app.models.models import AutoConfig, OsType
 CONFIG_TYPES = [
     "preseed",
     "kickstart",
+    "esxi-kickstart",
     "unattend",
     "cloud-init",
     "proxmox-answer",

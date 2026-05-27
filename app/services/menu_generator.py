@@ -37,6 +37,7 @@ MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 
 # VMware / OEM : parfois ``prefix-http=`` ou espaces ; sans ça la mise à jour pouvait tout ignorer (bug silencieux).
 _ESXI_IPXE_PREFIX_LINE_RE = re.compile(r"^\s*prefix(?:-http)?\s*=", re.I)
+_ESXI_IPXE_KERNELOPT_LINE_RE = re.compile(r"^\s*kernelopt\s*=", re.I)
 
 # Fichier embarqué (app/resources/default_menu_logo.png) si pas d’upload utilisateur.
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
@@ -58,6 +59,91 @@ def _esxi_kernel_basename_from_boot_cfg(boot_cfg: Path) -> str | None:
             val = line.split("=", 1)[1].strip().strip("\"'")
             return Path(val.replace("\\", "/")).name
     return None
+
+
+def _esxi_kernelopt_merge(existing: str, boot_arg: str) -> str:
+    """Fusionne les options kernelopt ESXi (en forçant runweasel + ks=...)."""
+    tokens: list[str] = []
+    for tok in (existing or "").split():
+        t = tok.strip()
+        if not t:
+            continue
+        if t.lower() == "cdromboot":
+            continue
+        tokens.append(t)
+    if not any(t.lower() == "runweasel" for t in tokens):
+        tokens.insert(0, "runweasel")
+    for tok in (boot_arg or "").split():
+        t = tok.strip()
+        if not t:
+            continue
+        if t not in tokens:
+            tokens.append(t)
+    return " ".join(tokens).strip()
+
+
+def _esxi_boot_cfg_with_boot_arg(text: str, boot_arg: str) -> str:
+    """Injecte ``ks=...`` dans kernelopt d'un ``ipxe-boot.cfg`` ESXi."""
+    lines = text.splitlines()
+    out: list[str] = []
+    replaced = False
+    for line in lines:
+        if _ESXI_IPXE_KERNELOPT_LINE_RE.match(line):
+            cur = line.split("=", 1)[1].strip() if "=" in line else ""
+            merged = _esxi_kernelopt_merge(cur, boot_arg)
+            out.append(f"kernelopt={merged}" if merged else "kernelopt=")
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        merged = _esxi_kernelopt_merge("", boot_arg)
+        insert_at = 0
+        for i, raw in enumerate(out):
+            s = raw.strip().lower()
+            if s.startswith("#") or not s:
+                continue
+            insert_at = i + 1 if s.startswith("kernel=") else i
+            break
+        out.insert(insert_at, f"kernelopt={merged}" if merged else "kernelopt=")
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _materialize_esxi_autoconfig_boot_cfgs(
+    cfg: Settings,
+    be: BootEntry,
+    autoconfigs: list[dict],
+) -> list[dict]:
+    """Crée un boot.cfg dérivé par config ESXi et renvoie les URLs HTTP correspondantes."""
+    rel = (getattr(be, "esxi_boot_cfg_path", None) or "").strip().lstrip("/")
+    if not rel:
+        return autoconfigs
+    src = cfg.http_root and (Path(cfg.http_root) / rel)
+    if not src or not src.is_file():
+        return autoconfigs
+    try:
+        base_text = src.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return autoconfigs
+
+    out: list[dict] = []
+    version_dir = src.parent
+    for ac in autoconfigs:
+        boot_arg = (ac.get("boot_arg") or "").strip()
+        if not boot_arg:
+            out.append(ac)
+            continue
+        ac_id = ac.get("id")
+        if not ac_id:
+            out.append(ac)
+            continue
+        dst = version_dir / f"ipxe-boot-ac{int(ac_id)}.cfg"
+        try:
+            write_text_file(dst, _esxi_boot_cfg_with_boot_arg(base_text, boot_arg), file_mode=0o644)
+            rel_cfg = dst.relative_to(Path(cfg.http_root)).as_posix()
+            out.append({**ac, "esxi_boot_cfg": _http(rel_cfg, cfg)})
+        except OSError:
+            out.append(ac)
+    return out
 
 
 def _jinja_env() -> Environment:
@@ -338,12 +424,16 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             esxi_mboot_basename = (
                 be.kernel_path.replace("\\", "/").rstrip("/").split("/")[-1]
             )
-
     ubuntu_variant = ""
     if slug_l == "ubuntu":
         ubuntu_variant = (getattr(v, "ubuntu_variant", None) or "desktop").lower()
         if ubuntu_variant not in ("desktop", "server"):
             ubuntu_variant = "desktop"
+    autoconfigs = _menu_autoconfig_entries(
+        v, os_type, h, ubuntu_variant=ubuntu_variant or "desktop"
+    )
+    if be and (slug_l == "esxi" or bt_l == "esxi") and autoconfigs:
+        autoconfigs = _materialize_esxi_autoconfig_boot_cfgs(cfg, be, autoconfigs)
 
     winpe_active_label = ""
     mode_suffix = ""
@@ -385,9 +475,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         ),
         "boot_type":   os_type.boot_type or "linux",
         "ubuntu_variant": ubuntu_variant,
-        "autoconfigs": _menu_autoconfig_entries(
-            v, os_type, h, ubuntu_variant=ubuntu_variant or "desktop"
-        ),
+        "autoconfigs": autoconfigs,
         "ipxe_item_tag": f"v{v.id}",
         "ubuntu_nfs_boot": use_ubuntu_nfs,
         "ubuntu_direct_boot": (

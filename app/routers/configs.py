@@ -423,6 +423,7 @@ def _write_config_file(cfg: AutoConfig, version: IsoVersion, content: str,
     ext_map = {
         "preseed":          "cfg",
         "kickstart":        "cfg",
+        "esxi-kickstart":   "cfg",
         "unattend":         "xml",
         "cloud-init":       "",
         "proxmox-answer":   "toml",
