@@ -624,6 +624,27 @@ def _esxi_boot_cfg_lowercase_if_path_like(val: str) -> str:
     return t
 
 
+def _normalize_esxi_network_kernelopt(
+    kopt: str,
+    *,
+    lowercase_paths: bool = True,
+) -> str:
+    """
+    Boot réseau ESXi : retire ``cdromBoot`` (ISO locale) et impose ``runweasel``.
+    Sans ``runweasel``, mboot.c32 charge les modules puis reste sur écran noir (curseur clignotant).
+    """
+    cleaned = re.sub(r"\bcdromBoot\b", "", kopt or "", flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if lowercase_paths and cleaned:
+        cleaned = " ".join(
+            _esxi_boot_cfg_lowercase_kernelopt_token(tok) for tok in cleaned.split()
+        )
+    tokens = [t for t in cleaned.split() if t]
+    if not any(t.lower() == "runweasel" for t in tokens):
+        tokens.insert(0, "runweasel")
+    return " ".join(tokens)
+
+
 def _esxi_boot_cfg_lowercase_kernelopt_token(tok: str) -> str:
     """Un jeton kernelopt : préserve ``clé=valeur`` ; valeur mise en minuscules si chemin/URL."""
     t = tok.strip()
@@ -685,16 +706,11 @@ def _rewrite_esxi_boot_cfg_http(
         if _RE_ESXI_LINE_KERNELOPT.match(stripped):
             _, _, rest = stripped.partition("=")
             val_s = rest.strip()
-            kopt = val_s
-            if kopt:
-                kopt = re.sub(r"\bcdromBoot\b", "", kopt, flags=re.I)
-                kopt = re.sub(r"\s+", " ", kopt).strip()
-                if lowercase_paths:
-                    kopt = " ".join(
-                        _esxi_boot_cfg_lowercase_kernelopt_token(tok)
-                        for tok in kopt.split(" ")
-                    )
-            lines_out.append(f"kernelopt={kopt}" if kopt else "kernelopt=")
+            kopt = _normalize_esxi_network_kernelopt(
+                val_s,
+                lowercase_paths=lowercase_paths,
+            )
+            lines_out.append(f"kernelopt={kopt}")
             continue
 
         mm = _RE_ESXI_LINE_MODULES.match(stripped)
@@ -1014,6 +1030,10 @@ def _esxi_boot_cfg_http_payload(
         lowercase_paths=lowercase_paths,
     )
 
+    # Préchargement iPXE (``module``) : utile pour mboot.efi (UEFI).
+    # Legacy (mboot.c32) : ne pas précharger via iPXE — mboot lit ``ipxe-boot.cfg`` et
+    # charge kernel + modules via ``prefix=`` ; précharger (surtout kernel=) provoque
+    # souvent écran noir après chargement des modules.
     preload_rels: list[str] = []
     if profile_label.casefold() == "efi":
         if crypto_path_opt is not None:
@@ -1031,8 +1051,10 @@ def _esxi_boot_cfg_http_payload(
                     "ESXi (%s) : crypto64.efi en tête du préchargement iPXE (HTTP minuscules).",
                     profile_label,
                 )
-    preload_rels.append(kernel_rel)
-    preload_rels.extend(mod_rels)
+        preload_rels.append(kernel_rel)
+        preload_rels.extend(mod_rels)
+    else:
+        preload_rels = list(mod_rels)
 
     return managed, preload_rels
 

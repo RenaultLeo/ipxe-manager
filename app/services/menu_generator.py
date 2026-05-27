@@ -570,6 +570,8 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
         "esxi_module_urls_legacy": esxi_module_urls_legacy,
+        # mboot.c32 (Legacy) : pas de ``module`` iPXE — mboot charge via boot.cfg + prefix=
+        "esxi_ipxe_preload_modules": True,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
         "kernel_args": _build_kernel_args(
             be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
@@ -700,8 +702,11 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             except OSError as e:
                 logger.warning("ESXi %s illisible %s : %s", fname, path, e)
                 continue
-            if path.name == "ipxe-boot.cfg" and path.parent.name != "legacy":
+            is_efi_cfg = path.name == "ipxe-boot.cfg" and path.parent.name != "legacy"
+            if is_efi_cfg:
                 text = normalize_esxi_ipxe_boot_cfg_paths(text)
+            from app.services.iso_extractor import _normalize_esxi_network_kernelopt
+
             lines = text.splitlines()
             out: list[str] = []
             replaced_prefix = False
@@ -709,6 +714,13 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
                 if _ESXI_IPXE_PREFIX_LINE_RE.match(line):
                     out.append(f"prefix={legacy_prefix}" if path == legacy_path else f"prefix={efi_prefix}")
                     replaced_prefix = True
+                elif _ESXI_IPXE_KERNELOPT_LINE_RE.match(line):
+                    cur = line.split("=", 1)[1].strip() if "=" in line else ""
+                    kopt = _normalize_esxi_network_kernelopt(
+                        cur,
+                        lowercase_paths=is_efi_cfg,
+                    )
+                    out.append(f"kernelopt={kopt}")
                 else:
                     out.append(line)
             if not replaced_prefix:
@@ -831,6 +843,7 @@ def regenerate_all(db: Session) -> list[str]:
                                 "esxi_boot_cfg": cfg_http,
                                 "esxi_mboot_basename": kb,
                                 "esxi_module_urls": entry["esxi_module_urls"],
+                                "esxi_ipxe_preload_modules": True,
                                 "ipxe_item_tag": f"v{v.id}_uefi",
                             }
                         )
@@ -853,18 +866,31 @@ def regenerate_all(db: Session) -> list[str]:
                         )
                         if not legacy_modules:
                             legacy_modules = entry.get("esxi_module_urls_legacy") or []
-                        rows.append(
-                            {
-                                **entry,
-                                "label": f"{entry['label']}{leg_suffix}",
-                                "kernel": _http(kp, cfg),
-                                "esxi_boot_cfg": legacy_cfg_http,
-                                "esxi_mboot_basename": kb,
-                                "esxi_module_urls": legacy_modules,
-                                "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
-                            }
-                        )
+                        leg_row = {
+                            **entry,
+                            "label": f"{entry['label']}{leg_suffix}",
+                            "kernel": _http(kp, cfg),
+                            "esxi_boot_cfg": legacy_cfg_http,
+                            "esxi_mboot_basename": kb,
+                            "esxi_module_urls": legacy_modules,
+                            "esxi_ipxe_preload_modules": False,
+                            "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
+                        }
+                        if leg_row.get("autoconfigs"):
+                            leg_row["autoconfigs"] = _materialize_esxi_autoconfig_boot_cfgs(
+                                cfg,
+                                legacy_cfg_rel,
+                                leg_row["autoconfigs"],
+                            )
+                        rows.append(leg_row)
                     if rows:
+                        for row in rows:
+                            if row.get("autoconfigs") and "leg" not in (row.get("ipxe_item_tag") or ""):
+                                row["autoconfigs"] = _materialize_esxi_autoconfig_boot_cfgs(
+                                    cfg,
+                                    getattr(be, "esxi_boot_cfg_path", None) or "",
+                                    row["autoconfigs"],
+                                )
                         standard_entries.extend(rows)
                         continue
 
