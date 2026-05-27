@@ -905,6 +905,9 @@
         {% endif %}
         {% if version.os_type.slug == 'esxi' and version.autoconfigs %}
         <p class="small text-muted mb-2">{{ t('iso.active_config_intro') }}</p>
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.esxi_efi_only_notice') }}
+        </div>
         {% if can_modify and version.boot_entry %}
         <div class="row g-2 align-items-end mb-3 pb-3 border-bottom border-secondary">
           <div class="col-md-8">
