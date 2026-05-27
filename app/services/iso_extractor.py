@@ -428,6 +428,7 @@ def _esxi_resolve_file(
     ref: str,
     *,
     iso_index_by_lower: dict[str, list[Path]] | None = None,
+    prefer_original_case: bool = False,
 ) -> Path | None:
     """Résout une entrée kernel/module VMware vers un fichier sous ``iso_root`` (extract 7z tel quel)."""
     ref = _esxi_normalize_path(ref)
@@ -444,6 +445,7 @@ def _esxi_resolve_file(
     candidates.append(boot_cfg_dir / PurePosixPath(rel).name)
     candidates.append(iso_root / PurePosixPath(rel).name)
     seen: set[str] = set()
+    resolved: list[Path] = []
     for c in candidates:
         key = str(c.resolve()) if c.exists() else str(c)
         if key in seen:
@@ -454,12 +456,24 @@ def _esxi_resolve_file(
         except ValueError:
             continue
         if c.is_file():
-            return c
+            resolved.append(c)
+    if resolved:
+        if len(resolved) == 1:
+            return resolved[0]
+        return _esxi_pick_preferred_path(
+            resolved,
+            iso_root,
+            prefer_original_case=prefer_original_case,
+        )
     basename = PurePosixPath(rel).name
     if basename and iso_index_by_lower:
         pool = iso_index_by_lower.get(basename.lower(), [])
         if pool:
-            return _esxi_pick_preferred_path(pool, iso_root)
+            return _esxi_pick_preferred_path(
+                pool,
+                iso_root,
+                prefer_original_case=prefer_original_case,
+            )
     return None
 
 
@@ -475,8 +489,23 @@ def _esxi_index_files_casefold(iso_root: Path) -> dict[str, list[Path]]:
     return idx
 
 
-def _esxi_pick_preferred_path(paths: list[Path], iso_root: Path) -> Path:
-    """Choisit un candidat lorsque plusieurs chemins ont le même nom (préfère le plus peu profond sous l’ISO)."""
+def _esxi_pick_preferred_path(
+    paths: list[Path],
+    iso_root: Path,
+    *,
+    prefer_original_case: bool = False,
+) -> Path:
+    """Choisit un candidat lorsque plusieurs chemins ont le même nom (préfère le plus peu profond sous l’ISO).
+
+    ``prefer_original_case`` : mboot Legacy charge les fichiers extraits en MAJUSCULES à la racine
+    (ex. ``K.B00``) ; les miroirs minuscules HTTP (``k.b00``) servent surtout au boot UEFI.
+    """
+    pool = paths
+    if prefer_original_case and len(pool) > 1:
+        mixed = [p for p in pool if p.name != p.name.lower()]
+        if mixed:
+            pool = mixed
+
     def sort_key(q: Path) -> tuple[int, int, str]:
         try:
             rel = q.relative_to(iso_root)
@@ -485,7 +514,7 @@ def _esxi_pick_preferred_path(paths: list[Path], iso_root: Path) -> Path:
             depth = 999
         return (depth, len(str(q)), str(q))
 
-    return min(paths, key=sort_key)
+    return min(pool, key=sort_key)
 
 
 def _esxi_ensure_crypto64_lowercase_http_alias(
@@ -826,7 +855,8 @@ def _esxi_boot_cfg_http_payload(
     Lit un boot.cfg VMware source et produit le corps HTTP ``ipxe-boot.cfg``
     + liste ordonnée des chemins relatifs pour préchargement iPXE (**sans dédoublonnage**, ordre VMware inchangé).
 
-    Les chemins ``kernel=`` / ``modules=`` sont toujours en **minuscules** (HTTP mboot), avec **miroirs** lien dur sur disque.
+    Les chemins ``kernel=`` / ``modules=`` sont en **minuscules** pour UEFI (``lowercase_paths=True``),
+    ou tels qu’extraits à la racine HTTP pour Legacy (``K.B00``, …).
     ``crypto64.efi`` est préfixé au JSON lorsque ``profile_label`` est **EFI** (mboot.efi).
     """
     raw_cfg = src_boot_cfg.read_text(encoding="utf-8", errors="replace")
@@ -845,12 +875,14 @@ def _esxi_boot_cfg_http_payload(
             f"ESXi ({profile_label}) : aucun module (modules= / module=) dans « {src_boot_cfg.relative_to(dest)} »."
         )
 
+    prefer_original = not lowercase_paths
     k_path = _esxi_resolve_file(
         dest,
         cfg_dir,
         old_prefix,
         kernel_ref,
         iso_index_by_lower=iso_lower,
+        prefer_original_case=prefer_original,
     )
     if not k_path or not k_path.is_file():
         raise ExtractionError(
@@ -866,6 +898,7 @@ def _esxi_boot_cfg_http_payload(
             old_prefix,
             ref,
             iso_index_by_lower=iso_lower,
+            prefer_original_case=prefer_original,
         )
         if not p or not p.is_file():
             raise ExtractionError(f"ESXi ({profile_label}) : module « {ref} » introuvable.")
@@ -889,10 +922,10 @@ def _esxi_boot_cfg_http_payload(
         kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
         mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
     else:
-        # Legacy: conserver la casse/forme du boot.cfg source (ex: B.B00, UC_*.V00),
-        # seulement normaliser séparateurs et slash de tête.
-        kernel_rel = _esxi_normalize_path(kernel_ref)
-        mod_rels = [_esxi_normalize_path(ref) for ref in mod_refs]
+        # Legacy (mboot.c32) : chemins réels sous la racine HTTP de la version (K.B00, …),
+        # pas les miroirs minuscules créés pour le boot UEFI.
+        kernel_rel = _esxi_rel_from_dest(dest, k_path)
+        mod_rels = [_esxi_rel_from_dest(dest, p) for p in mod_paths]
 
     managed = _rewrite_esxi_boot_cfg_http(
         raw_cfg=raw_cfg,
@@ -952,11 +985,8 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
 
     http_prefix = resolve_server_base_url().rstrip("/") + f"/{base}/"
 
-    managed, preload = _esxi_boot_cfg_http_payload(
-        dest, iso_lower, src_cfg, http_prefix, profile_label="EFI"
-    )
-    managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
-    (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
+    # Legacy d'abord : mboot.c32 lit les fichiers extraits en MAJUSCULES à la racine ;
+    # la génération EFI crée ensuite les miroirs minuscules (k.b00) pour mboot.efi.
     managed_legacy, preload_legacy = _esxi_boot_cfg_http_payload(
         dest,
         iso_lower,
@@ -966,6 +996,12 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
         lowercase_paths=False,
     )
     (dest / "ipxe-boot-legacy.cfg").write_text(managed_legacy, encoding="utf-8")
+
+    managed, preload = _esxi_boot_cfg_http_payload(
+        dest, iso_lower, src_cfg, http_prefix, profile_label="EFI"
+    )
+    managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
+    (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
 
     modules_json = json.dumps(preload, separators=(",", ":"))
     modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))

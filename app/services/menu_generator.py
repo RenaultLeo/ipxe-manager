@@ -641,11 +641,16 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
 
 def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
     """
-    Réécrit ``prefix=`` / ``prefix-http=`` → ``prefix=`` dans chaque ``ipxe-boot.cfg`` ESXi,
-    normalise ``kernel=`` / ``modules=`` / ``module=`` en minuscules, reflète ``server_base_url``.
-    Import local évite tout cycle au chargement du module menus.
+    Réécrit ``prefix=`` dans chaque ``ipxe-boot.cfg`` / ``ipxe-boot-legacy.cfg`` ESXi,
+    normalise ``kernel=`` / ``modules=`` en minuscules uniquement pour UEFI,
+    régénère ``ipxe-boot-legacy.cfg`` (casse disque, racine version) depuis le boot.cfg VMware.
     """
-    from app.services.iso_extractor import normalize_esxi_ipxe_boot_cfg_paths
+    from app.services.iso_extractor import (
+        _esxi_boot_cfg_http_payload,
+        _esxi_index_files_casefold,
+        _pick_esxi_boot_cfg_any,
+        normalize_esxi_ipxe_boot_cfg_paths,
+    )
 
     esxi_root = cfg.boot_dir / "esxi"
     if not esxi_root.is_dir():
@@ -655,8 +660,29 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
         if not d.is_dir():
             continue
         ver = d.name
-        new_line = f"prefix={base}/boot/esxi/{ver}/"
-        candidates = (d / "ipxe-boot.cfg", d / "ipxe-boot-legacy.cfg")
+        http_prefix = f"{base}/boot/esxi/{ver}/"
+        new_line = f"prefix={http_prefix}"
+        iso_lower = _esxi_index_files_casefold(d)
+        src_cfg = _pick_esxi_boot_cfg_any(d, iso_lower)
+        legacy_path = d / "ipxe-boot-legacy.cfg"
+        if src_cfg and legacy_path.is_file():
+            try:
+                managed_legacy, _ = _esxi_boot_cfg_http_payload(
+                    d,
+                    iso_lower,
+                    src_cfg,
+                    http_prefix,
+                    profile_label="Legacy",
+                    lowercase_paths=False,
+                )
+                write_text_file(legacy_path, managed_legacy, file_mode=0o644)
+            except Exception as exc:
+                logger.warning(
+                    "ESXi ipxe-boot-legacy.cfg non régénéré %s : %s",
+                    legacy_path,
+                    exc,
+                )
+        candidates = (d / "ipxe-boot.cfg", legacy_path)
         for path in candidates:
             if not path.is_file():
                 continue
@@ -813,12 +839,12 @@ def regenerate_all(db: Session) -> list[str]:
                             legacy_cfg_rel,
                             cfg,
                         )
-                        legacy_modules = entry.get("esxi_module_urls_legacy") or []
+                        legacy_modules = _esxi_module_urls_from_cfg_http(
+                            legacy_cfg_rel,
+                            lambda rel: _http(rel, cfg),
+                        )
                         if not legacy_modules:
-                            legacy_modules = _esxi_module_urls_from_cfg_http(
-                                legacy_cfg_rel,
-                                lambda rel: _http(rel, cfg),
-                            )
+                            legacy_modules = entry.get("esxi_module_urls_legacy") or []
                         rows.append(
                             {
                                 **entry,
@@ -826,7 +852,7 @@ def regenerate_all(db: Session) -> list[str]:
                                 "kernel": _http(kp, cfg),
                                 "esxi_boot_cfg": legacy_cfg_http,
                                 "esxi_mboot_basename": kb,
-                                "esxi_module_urls": legacy_modules or entry["esxi_module_urls"],
+                                "esxi_module_urls": legacy_modules,
                                 "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
                             }
                         )

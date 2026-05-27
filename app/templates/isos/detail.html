@@ -1059,7 +1059,7 @@
     cursor: pointer;
   }
   .boot-paths-wrap.is-collapsed {
-    max-height: 20rem;
+    max-height: var(--boot-paths-collapsed-px, 12rem);
     overflow: hidden;
     position: relative;
   }
@@ -1081,8 +1081,11 @@
   var toggleWrap = document.getElementById('boot-paths-toggle-wrap');
   var btn = document.getElementById('boot-paths-toggle-btn');
   if (!wrap || !list || !toggleWrap || !btn) return;
-  var entries = list.querySelectorAll('dt');
-  if (!entries || entries.length <= 15) return;
+  var lineHeight = parseFloat(window.getComputedStyle(list).lineHeight || '16');
+  if (!isFinite(lineHeight) || lineHeight <= 0) lineHeight = 16;
+  var collapsedPx = Math.round(lineHeight * 8 + 8);
+  wrap.style.setProperty('--boot-paths-collapsed-px', collapsedPx + 'px');
+  if (wrap.scrollHeight <= collapsedPx + 4) return;
   wrap.classList.add('is-collapsed');
   toggleWrap.classList.remove('d-none');
   btn.addEventListener('click', function () {
