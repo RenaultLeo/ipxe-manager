@@ -29,7 +29,7 @@ goto ${selected}
 {% if e.autoconfigs %}
   menu {{ e.label }} — Fichier d'installation automatique
   {% for ac in e.autoconfigs %}
-  item ac{{ ac.id }} {{ ac.label }}
+  item ac{{ e.ipxe_item_tag }}_{{ ac.id }} {{ ac.label }}
   {% endfor %}
   item --gap
   item manual_{{ e.ipxe_item_tag }} Installation manuelle (sans kickstart / args supplémentaires)
@@ -38,7 +38,7 @@ goto ${selected}
   goto ${conf}
 
   {% for ac in e.autoconfigs %}
-  :ac{{ ac.id }}
+  :ac{{ e.ipxe_item_tag }}_{{ ac.id }}
     kernel {{ e.kernel }}
     imgargs {{ mbasename }} -c {{ ac.esxi_boot_cfg or e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
