@@ -1215,7 +1215,10 @@ function Show-WinpeDeployWizard {{
     $lstM.SelectionMode = [System.Windows.Forms.SelectionMode]::One
     $lstM.ColumnWidth = 480
     $lstM.HorizontalScrollbar = $true
-    foreach ($m in $Masters) {{ [void]$lstM.Items.Add("$($m.label)  [$($m.slug)]") }}
+    foreach ($m in $Masters) {{
+        $disp = if ($m.label -and $m.label -ne $m.slug) {{ "$($m.slug) — $($m.label)" }} else {{ "$($m.slug)" }}
+        [void]$lstM.Items.Add($disp)
+    }}
     if ($lstM.Items.Count -gt 0) {{ $lstM.SelectedIndex = 0 }}
     $form.Controls.Add($lstM)
 

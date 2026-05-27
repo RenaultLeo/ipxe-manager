@@ -66,15 +66,39 @@ def build_masters_catalog(
 ) -> list[dict]:
     prefix = z_boot_prefix(version)
     rows: list[dict] = []
-    for wi in sorted(installs, key=lambda x: (x.label or x.slug).lower()):
-        if not install_wim_path(version, wi.slug).is_file():
+    by_slug: dict[str, WinpeInstall] = {}
+    for wi in installs:
+        slug = (wi.slug or "").strip()
+        if not slug:
             continue
+        by_slug[slug] = wi
+
+    # Source de vérité: les dossiers réels sur disque.
+    # Si 2 dossiers existent sous installs/, on génère 2 lignes dans masters.json.
+    root = installs_root(version)
+    if root.is_dir():
+        slugs = sorted(
+            [
+                p.name
+                for p in root.iterdir()
+                if p.is_dir() and (p / INSTALL_WIM_FILENAME).is_file()
+            ],
+            key=str.casefold,
+        )
+    else:
+        slugs = sorted(by_slug.keys(), key=str.casefold)
+
+    for slug in slugs:
+        wi = by_slug.get(slug)
+        raw_label = (wi.label if wi else "") or slug
+        label = " ".join(str(raw_label).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()) or slug
+        wim_index = max(1, int((wi.wim_index if wi else 1) or 1))
         rows.append(
             {
-                "slug": wi.slug,
-                "label": (wi.label or wi.slug).strip() or wi.slug,
-                "wimPath": f"Z:\\{prefix}\\installs\\{wi.slug}\\{INSTALL_WIM_FILENAME}",
-                "dismIndex": max(1, int(wi.wim_index or 1)),
+                "slug": slug,
+                "label": label,
+                "wimPath": f"Z:\\{prefix}\\installs\\{slug}\\{INSTALL_WIM_FILENAME}",
+                "dismIndex": wim_index,
             }
         )
     return rows

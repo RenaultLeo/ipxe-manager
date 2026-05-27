@@ -358,7 +358,7 @@ def upload_winpe_install_task(
             dest.unlink()
         os.replace(part, dest)
 
-        label_s = (label or slug).strip() or slug
+        label_s = " ".join((label or slug).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()) or slug
         row = (
             db.query(WinpeInstall)
             .filter(
