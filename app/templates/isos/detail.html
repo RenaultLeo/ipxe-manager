@@ -176,6 +176,11 @@
           <dt class="col-4 text-muted">{{ t('boot.esxi_ipxe_boot_cfg') }}</dt>
           <dd class="col-8 font-monospace small text-break">{{ be.esxi_boot_cfg_path }}</dd>
           {% endif %}
+          {% set esxi_manual_cfg = be.esxi_boot_cfg_manual_path or (be.esxi_boot_cfg_path|replace('/ipxe-boot.cfg', '/ipxe-boot-manual.cfg') if be.esxi_boot_cfg_path else '') %}
+          {% if esxi_manual_cfg %}
+          <dt class="col-4 text-muted">{{ t('boot.esxi_ipxe_boot_cfg_manual') }}</dt>
+          <dd class="col-8 font-monospace small text-break">{{ esxi_manual_cfg }}</dd>
+          {% endif %}
           {% if be.esxi_modules %}
           <dt class="col-4 text-muted">{{ t('boot.esxi_modules_ipxe') }}</dt>
           <dd class="col-8 font-monospace small text-muted text-break" title="{{ t('boot.esxi_modules_ipxe_hint') }}">{{ be.esxi_modules }}</dd>

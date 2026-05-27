@@ -119,6 +119,7 @@ class BootEntry(Base):
     # VMware ESXi — EFI only : esxi_efi_boot_path → mboot.efi (copie de bootx64.efi).
     # ESXi : ipxe-boot.cfg + JSON esxi_modules (chemins HTTP en minuscules).
     esxi_boot_cfg_path = Column(String(512))
+    esxi_boot_cfg_manual_path = Column(String(512))
     esxi_boot_cfg_legacy_path = Column(String(512))
     esxi_efi_boot_path = Column(String(512))
     esxi_modules = Column(Text, default="")

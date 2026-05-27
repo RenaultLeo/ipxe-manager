@@ -1090,6 +1090,7 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     return {
         "kernel_path": f"{base}/{mboot_rel}",
         "esxi_boot_cfg_path": f"{base}/ipxe-boot.cfg",
+        "esxi_boot_cfg_manual_path": f"{base}/ipxe-boot-manual.cfg",
         "esxi_efi_boot_path": f"{base}/{mboot_rel}",
         "esxi_modules": modules_json,
     }

@@ -347,10 +347,13 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     bt_l = (os_type.boot_type or "linux").lower()
     if be and (slug_l == "esxi" or bt_l == "esxi"):
         esxi_boot_http = h(getattr(be, "esxi_boot_cfg_path", None))
-        esxi_boot_http_manual = esxi_boot_http.replace(
-            "/ipxe-boot.cfg",
-            "/ipxe-boot-manual.cfg",
-        )
+        manual_rel = getattr(be, "esxi_boot_cfg_manual_path", None) or ""
+        esxi_boot_http_manual = h(manual_rel) if manual_rel else ""
+        if not esxi_boot_http_manual and esxi_boot_http:
+            esxi_boot_http_manual = esxi_boot_http.replace(
+                "/ipxe-boot.cfg",
+                "/ipxe-boot-manual.cfg",
+            )
         raw_mods = getattr(be, "esxi_modules", "") or ""
         seg = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
         esxi_vr = f"boot/{os_type.slug}/{seg}".replace("\\", "/")

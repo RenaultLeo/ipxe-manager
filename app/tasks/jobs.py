@@ -88,6 +88,7 @@ def extract_iso_task(self, iso_version_id: int, upload_id: int):
             )
         be.modloop_path  = paths.get("modloop_path")
         be.esxi_boot_cfg_path = paths.get("esxi_boot_cfg_path")
+        be.esxi_boot_cfg_manual_path = paths.get("esxi_boot_cfg_manual_path")
         be.esxi_efi_boot_path = paths.get("esxi_efi_boot_path")
         be.esxi_modules       = paths.get("esxi_modules") or ""
         be.esxi_boot_cfg_legacy_path = ""

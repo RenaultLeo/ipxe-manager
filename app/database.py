@@ -100,6 +100,8 @@ def _migrate_columns():
     _add_column_if_missing("boot_entries", "custom_ipxe_path",   "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "extra_linux_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("boot_entries", "esxi_boot_cfg_path", "VARCHAR(512)")
+    _add_column_if_missing("boot_entries", "esxi_boot_cfg_manual_path", "VARCHAR(512)")
+    _backfill_esxi_boot_cfg_manual_path()
     _add_column_if_missing("boot_entries", "esxi_boot_cfg_legacy_path", "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "esxi_efi_boot_path", "VARCHAR(512)")
     _add_column_if_missing("boot_entries", "esxi_modules",       "TEXT DEFAULT ''")
@@ -244,6 +246,29 @@ def _backfill_iso_was_extracted() -> None:
             conn.commit()
     except Exception:
         logger.exception("Migration : backfill iso_was_extracted")
+
+
+def _backfill_esxi_boot_cfg_manual_path() -> None:
+    """Dérivé de ipxe-boot.cfg pour les ISO ESXi déjà extraites avant la colonne dédiée."""
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE boot_entries
+                    SET esxi_boot_cfg_manual_path = REPLACE(
+                        esxi_boot_cfg_path, '/ipxe-boot.cfg', '/ipxe-boot-manual.cfg'
+                    )
+                    WHERE COALESCE(esxi_boot_cfg_path, '') <> ''
+                      AND COALESCE(esxi_boot_cfg_manual_path, '') = ''
+                    """
+                )
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Migration : backfill esxi_boot_cfg_manual_path")
 
 
 def _backfill_ubuntu_variant_desktop() -> None:
