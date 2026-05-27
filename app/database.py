@@ -268,137 +268,79 @@ def _backfill_ubuntu_variant_desktop() -> None:
 
 def _backfill_windows_modes() -> None:
     """Compat: anciennes versions de l'OS slug 'winpe' => windows_mode=winpe."""
-    if "sqlite" not in settings.database_url:
-        return
     try:
-        with engine.connect() as conn:
-            conn.execute(
-                text(
-                    """
-                    UPDATE iso_versions
-                    SET windows_mode = 'winpe'
-                    WHERE id IN (
-                        SELECT iv.id
-                        FROM iso_versions iv
-                        JOIN os_types ot ON ot.id = iv.os_type_id
-                        WHERE LOWER(COALESCE(ot.slug, '')) = 'winpe'
-                    )
-                    """
-                )
-            )
-            conn.execute(
-                text(
-                    """
-                    UPDATE iso_versions
-                    SET winpe_mode = 'master'
-                    WHERE winpe_mode IS NULL OR TRIM(winpe_mode) = ''
-                    """
-                )
-            )
-            conn.commit()
+        from app.models.models import IsoVersion, OsType
+
+        db = SessionLocal()
+        try:
+            winpe_ids = {
+                ot.id
+                for ot in db.query(OsType).all()
+                if (ot.slug or "").strip().lower() == "winpe"
+            }
+            for iv in db.query(IsoVersion).all():
+                if iv.os_type_id in winpe_ids and (iv.windows_mode or "desktop").lower() == "desktop":
+                    iv.windows_mode = "winpe"
+                if not (iv.winpe_mode or "").strip():
+                    iv.winpe_mode = "master"
+            db.commit()
+        finally:
+            db.close()
     except Exception:
         logger.exception("Migration : backfill windows_mode/winpe_mode")
 
 
 def _ensure_windows_os_type_consistency() -> None:
     """Consolide le modèle WinPE=mode Windows (slug winpe legacy -> windows)."""
-    if "sqlite" not in settings.database_url:
-        return
     try:
-        with engine.connect() as conn:
-            win_row = conn.execute(
-                text(
-                    """
-                    SELECT id FROM os_types
-                    WHERE LOWER(COALESCE(slug, '')) = 'windows'
-                    LIMIT 1
-                    """
-                )
-            ).fetchone()
-            winpe_row = conn.execute(
-                text(
-                    """
-                    SELECT id FROM os_types
-                    WHERE LOWER(COALESCE(slug, '')) = 'winpe'
-                    LIMIT 1
-                    """
-                )
-            ).fetchone()
-            windows_id = int(win_row[0]) if win_row else None
-            winpe_id = int(winpe_row[0]) if winpe_row else None
+        from app.models.models import IsoVersion, OsType
 
-            # DB legacy contenant seulement winpe -> renommage direct.
-            if windows_id is None and winpe_id is not None:
-                conn.execute(
-                    text(
-                        """
-                        UPDATE os_types
-                        SET slug='windows',
-                            label='Windows',
-                            boot_type='windows',
-                            is_builtin=1,
-                            extract_full_iso=1
-                        WHERE id = :id
-                        """
-                    ),
-                    {"id": winpe_id},
-                )
-                windows_id = winpe_id
-                winpe_id = None
+        db = SessionLocal()
+        try:
+            os_types = list(db.query(OsType).all())
+            windows = next((ot for ot in os_types if (ot.slug or "").strip().lower() == "windows"), None)
+            winpe = next((ot for ot in os_types if (ot.slug or "").strip().lower() == "winpe"), None)
 
-            # DB fraîche / incomplète -> garantir la présence de windows.
-            if windows_id is None:
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO os_types
-                            (slug, label, icon, boot_type, is_builtin, extract_full_iso, ui_sort_order, show_on_dashboard, created_at)
-                        VALUES
-                            ('windows', 'Windows', 'bi-windows', 'windows', 1, 1, 0, 1, CURRENT_TIMESTAMP)
-                        """
-                    )
-                )
-                windows_id = int(conn.execute(text("SELECT last_insert_rowid()")).scalar() or 0)
+            # Legacy DB avec seulement winpe -> renommage direct.
+            if windows is None and winpe is not None:
+                winpe.slug = "windows"
+                winpe.label = "Windows"
+                winpe.boot_type = "windows"
+                winpe.is_builtin = True
+                winpe.extract_full_iso = True
+                windows = winpe
+                winpe = None
 
-            # Si les deux existent, migrer les versions vers windows puis supprimer winpe.
-            if windows_id and winpe_id and winpe_id != windows_id:
-                conn.execute(
-                    text(
-                        """
-                        UPDATE iso_versions
-                        SET windows_mode='winpe'
-                        WHERE os_type_id = :winpe_id
-                          AND LOWER(COALESCE(windows_mode, 'desktop')) = 'desktop'
-                        """
-                    ),
-                    {"winpe_id": winpe_id},
+            # DB fraîche / incomplète -> garantir l'OS windows.
+            if windows is None:
+                windows = OsType(
+                    slug="windows",
+                    label="Windows",
+                    icon="bi-windows",
+                    boot_type="windows",
+                    is_builtin=True,
+                    extract_full_iso=True,
+                    ui_sort_order=0,
+                    show_on_dashboard=True,
                 )
-                conn.execute(
-                    text(
-                        """
-                        UPDATE iso_versions
-                        SET os_type_id = :windows_id
-                        WHERE os_type_id = :winpe_id
-                        """
-                    ),
-                    {"windows_id": windows_id, "winpe_id": winpe_id},
-                )
-                conn.execute(
-                    text("DELETE FROM os_types WHERE id = :winpe_id"),
-                    {"winpe_id": winpe_id},
-                )
+                db.add(windows)
+                db.flush()
 
-            conn.execute(
-                text(
-                    """
-                    UPDATE os_types
-                    SET label='Windows', boot_type='windows', is_builtin=1, extract_full_iso=1
-                    WHERE id = :windows_id
-                    """
-                ),
-                {"windows_id": windows_id},
-            )
-            conn.commit()
+            # Si winpe legacy existe encore séparément, migrer ses versions puis le retirer.
+            if winpe is not None and winpe.id != windows.id:
+                for iv in db.query(IsoVersion).filter(IsoVersion.os_type_id == winpe.id).all():
+                    if (iv.windows_mode or "desktop").lower() == "desktop":
+                        iv.windows_mode = "winpe"
+                    iv.os_type_id = windows.id
+                db.delete(winpe)
+
+            windows.label = "Windows"
+            windows.boot_type = "windows"
+            windows.is_builtin = True
+            windows.extract_full_iso = True
+            db.commit()
+        finally:
+            db.close()
     except Exception:
         logger.exception("Migration : ensure windows os_type consistency")
 

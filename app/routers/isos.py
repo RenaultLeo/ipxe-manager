@@ -989,8 +989,6 @@ async def iso_activate_config(
     version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
-    lang = getattr(request.state, "locale", "fr")
-    _winpe_master_mode_required(version, lang)
     user = get_session_user(request)
     if not can_modify_iso_version(user, version):
         raise HTTPException(403)

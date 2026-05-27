@@ -220,10 +220,14 @@ async def replace_boot_wim(
 
     be.boot_wim_path = rel_under_version(dest, os_slug, version_slug)
     if (version.os_type.boot_type or "").lower() == "windows":
+        windows_mode = (getattr(version, "windows_mode", None) or "desktop").lower()
+        winpe_mode = (getattr(version, "winpe_mode", None) or "master").lower()
+        should_regen_winpe = windows_mode == "winpe" and winpe_mode == "master"
         try:
-            from app.tasks.jobs import regenerate_winpe_scripts_task
+            if should_regen_winpe:
+                from app.tasks.jobs import regenerate_winpe_scripts_task
 
-            regenerate_winpe_scripts_task.delay(version.id)
+                regenerate_winpe_scripts_task.delay(version.id)
         except Exception:
             pass
     db.commit()

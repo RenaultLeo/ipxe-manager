@@ -71,7 +71,7 @@
   "iso.winpe_scripts_done": "WinPE-Skripte et boot.wim aktualisiert avec succès.",
   "iso.winpe_scripts_stale": "Des Master vorhanden, aber les scripts n'ont pas encore été générés — cliquez sur « Mettre à jour scripts WinPE ».",
   "iso.winpe_scripts_last": "Skripte erzeugt",
-  "iso.winpe_scripts_no_masters": "Mindestens ein Master hinzufügen (install.wim) avant de générer les scripts.",
+  "iso.winpe_scripts_no_masters": "Mindestens ein Master (install.wim) hinzufügen, bevor die Skripte erzeugt werden.",
   "iso.winpe_install_slug": "Name du dossier local (identifiant)",
   "iso.winpe_install_label": "Anzeigename",
   "iso.winpe_install_wim_index": "DISM-Index dans install.wim",
