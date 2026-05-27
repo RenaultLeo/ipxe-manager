@@ -1076,11 +1076,19 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
 
     mboot_pool = iso_lower_legacy.get("mboot.c32", [])
     if not mboot_pool:
-        raise ExtractionError("ESXi : mboot.c32 introuvable dans legacy/.")
-    mboot_path = _esxi_pick_preferred_path(mboot_pool, legacy_root)
+        raise ExtractionError("ESXi : mboot.c32 / MBOOT.C32 introuvable dans legacy/.")
+    mboot_path = _esxi_pick_preferred_path(
+        mboot_pool,
+        legacy_root,
+        prefer_original_case=True,
+    )
     if not mboot_path.is_file():
         raise ExtractionError("ESXi : mboot.c32 introuvable dans legacy/.")
-    _esxi_link_or_copy(mboot_path, legacy_root / "mboot.c32")
+    # Legacy : conserver la casse OEM (souvent MBOOT.C32) — imgargs doit utiliser le même basename.
+    mboot_publish = legacy_root / mboot_path.name
+    if mboot_path.resolve() != mboot_publish.resolve():
+        _esxi_link_or_copy(mboot_path, mboot_publish)
+    mboot_rel = _esxi_rel_from_dest(legacy_root, mboot_publish)
 
     from app.config import resolve_server_base_url
 
@@ -1134,7 +1142,7 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     )
 
     out_paths: dict = {
-        "kernel_path": f"{base}/legacy/mboot.c32",
+        "kernel_path": f"{base}/legacy/{mboot_rel}",
         "esxi_boot_cfg_path": f"{base}/efi/ipxe-boot.cfg",
         "esxi_boot_cfg_legacy_path": f"{base}/legacy/ipxe-boot.cfg",
         "esxi_modules": modules_json,
