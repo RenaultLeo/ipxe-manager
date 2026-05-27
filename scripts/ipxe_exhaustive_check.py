@@ -402,6 +402,10 @@ def validate_menu_ipxe(body: bytes) -> tuple[bool, str]:
         return False, "pas de directive 'menu'"
     if "\nitem " not in blob and blob.count("item ") < 1:
         return False, "pas de directive 'item'"
+    if "\nchoose " not in blob and blob.count("choose ") < 1:
+        return False, "pas de directive 'choose'"
+    if "\ngoto " not in blob and blob.count("goto ") < 1:
+        return False, "pas de directive 'goto'"
     return True, ""
 
 
@@ -509,6 +513,18 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
             payload = json.loads(snap_body.decode("utf-8"))
             snap_ok = isinstance(payload, dict) and "services" in payload and "host" in payload
             snap_hint = "JSON snapshot valide"
+            if isinstance(payload, dict):
+                services = payload.get("services")
+                app_data = payload.get("app")
+                host_data = payload.get("host")
+                paths = payload.get("paths")
+                audit.ok(isinstance(services, list), "snapshot.services est une liste")
+                audit.ok(isinstance(host_data, dict), "snapshot.host est un objet")
+                audit.ok(isinstance(paths, list), "snapshot.paths est une liste")
+                audit.ok(isinstance(app_data, dict), "snapshot.app est un objet")
+                if isinstance(app_data, dict):
+                    for key in ("queues", "uploads", "versions"):
+                        audit.ok(key in app_data, f"snapshot.app contient {key!r}")
         except json.JSONDecodeError:
             snap_hint = "corps non JSON"
     audit.ok(snap_ok, f"GET /admin/supervision/api/snapshot → {snap_hint}")
@@ -561,6 +577,8 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
     if code_raw == 200:
         has_shebang = raw_body.lstrip().startswith(b"#!ipxe")
         audit.ok(has_shebang, "GET /ipxe-menus/menu.ipxe/raw → 200 et commence par #!ipxe")
+        sane, detail = validate_menu_ipxe(raw_body)
+        audit.ok(sane, f"GET /ipxe-menus/menu.ipxe/raw structure valide ({detail or 'ok'})")
     elif code_raw == 404:
         audit.warn(
             False,
@@ -667,6 +685,12 @@ def check_database_application(database_url: str, audit: Audit) -> None:
     ot_slugs: list[str] = []
     missing_seed: list[str] = []
     legacy_slugs: list[str] = []
+    windows_rows: int | None = None
+    windows_boot_type_ok: int | None = None
+    invalid_windows_modes: int | None = None
+    invalid_winpe_modes: int | None = None
+    no_boot_entry_rows: int | None = None
+    many_boot_entries_rows: int | None = None
 
     try:
         conn = sqlite3.connect(f"file:{spath}?mode=ro", uri=True, timeout=20.0)
@@ -695,6 +719,44 @@ def check_database_application(database_url: str, audit: Audit) -> None:
         ot_count = int(ott[0]) if ott else 0
         ot_slugs = [str(r[0]) for r in conn.execute("SELECT slug FROM os_types").fetchall()]
         missing_seed, legacy_slugs = validate_builtin_os_slugs(ot_slugs)
+
+        wr = conn.execute(
+            "SELECT COUNT(*) FROM os_types WHERE LOWER(COALESCE(slug, '')) = 'windows'"
+        ).fetchone()
+        windows_rows = int(wr[0]) if wr else 0
+
+        wb = conn.execute(
+            "SELECT COUNT(*) FROM os_types WHERE LOWER(COALESCE(slug, '')) = 'windows' "
+            "AND LOWER(COALESCE(boot_type, '')) = 'windows'"
+        ).fetchone()
+        windows_boot_type_ok = int(wb[0]) if wb else 0
+
+        iwm = conn.execute(
+            "SELECT COUNT(*) FROM iso_versions "
+            "WHERE LOWER(COALESCE(windows_mode, 'desktop')) NOT IN ('desktop', 'winpe')"
+        ).fetchone()
+        invalid_windows_modes = int(iwm[0]) if iwm else 0
+
+        iwm2 = conn.execute(
+            "SELECT COUNT(*) FROM iso_versions "
+            "WHERE LOWER(COALESCE(winpe_mode, 'master')) NOT IN ('master', 'utility')"
+        ).fetchone()
+        invalid_winpe_modes = int(iwm2[0]) if iwm2 else 0
+
+        nbe = conn.execute(
+            "SELECT COUNT(*) FROM iso_versions iv "
+            "LEFT JOIN boot_entries be ON be.iso_version_id = iv.id "
+            "WHERE be.id IS NULL"
+        ).fetchone()
+        no_boot_entry_rows = int(nbe[0]) if nbe else 0
+
+        mbe = conn.execute(
+            "SELECT COUNT(*) FROM ("
+            "  SELECT iso_version_id, COUNT(*) c "
+            "  FROM boot_entries GROUP BY iso_version_id HAVING c > 1"
+            ")"
+        ).fetchone()
+        many_boot_entries_rows = int(mbe[0]) if mbe else 0
     except sqlite3.Error as ex:
         integrity_issue = str(ex)
     finally:
@@ -729,6 +791,31 @@ def check_database_application(database_url: str, audit: Audit) -> None:
                 f"slug legacy « winpe » encore présent ({legacy_slugs}) — "
                 f"lancer init_db() (WinPE = mode Windows)",
             )
+            if windows_rows is not None:
+                audit.ok(windows_rows == 1, f"os_types.windows présent en 1 exemplaire (actuel: {windows_rows})")
+            if windows_boot_type_ok is not None:
+                audit.ok(windows_boot_type_ok == 1, "os_types.windows a boot_type=windows")
+            if invalid_windows_modes is not None:
+                audit.ok(
+                    invalid_windows_modes == 0,
+                    f"iso_versions.windows_mode valide (invalides: {invalid_windows_modes})",
+                )
+            if invalid_winpe_modes is not None:
+                audit.ok(
+                    invalid_winpe_modes == 0,
+                    f"iso_versions.winpe_mode valide (invalides: {invalid_winpe_modes})",
+                )
+            if no_boot_entry_rows is not None:
+                audit.warn(
+                    no_boot_entry_rows == 0,
+                    f"iso_versions sans boot_entries: {no_boot_entry_rows} "
+                    "(warning tant que l'extraction n'est pas terminée)",
+                )
+            if many_boot_entries_rows is not None:
+                audit.ok(
+                    many_boot_entries_rows == 0,
+                    f"iso_version_id dupliqués dans boot_entries: {many_boot_entries_rows}",
+                )
 
     try:
         sz = os.path.getsize(spath)
@@ -757,9 +844,14 @@ def check_filesystem_layout(env_map: dict[str, str], audit: Audit) -> None:
     if http_root:
         menus = os.path.join(http_root, "menus")
         boot_local = os.path.join(http_root, "boot")
+        masters_root = os.path.join(http_root, "boot", "masters")
         bundle_menu = os.path.join(http_root, "menus", "menu.ipxe")
         audit.ok(os.path.isdir(menus), f"dossier {menus}")
         audit.ok(os.path.isdir(boot_local), f"dossier {boot_local}")
+        audit.warn(
+            os.path.isdir(masters_root),
+            f"dossier {masters_root} (masters WinPE globaux, warning si non utilisé)",
+        )
         configs_d = os.path.join(http_root, "configs")
         audit.ok(os.path.isdir(configs_d), f"dossier {configs_d}")
         if os.path.isfile(bundle_menu):
