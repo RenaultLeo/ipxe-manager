@@ -15,8 +15,26 @@
       {% for v in rows %}
       <tr id="row-{{ v.id }}">
         <td>
+          {% set wm = (v.windows_mode|default('desktop', true))|lower %}
+          {% set pm = (v.winpe_mode|default('master', true))|lower %}
+          {% set is_win_family = (v.os_type.boot_type == 'windows') %}
+          {% if is_win_family and wm == 'winpe' and pm == 'utility' %}
+          <i class="bi bi-tools me-1 text-warning"></i>
+          {% elif is_win_family and wm == 'winpe' %}
+          <i class="bi bi-hdd-stack me-1 text-info"></i>
+          {% elif is_win_family %}
+          <i class="bi bi-pc-display-horizontal me-1 text-primary"></i>
+          {% else %}
           <i class="{{ v.os_type.icon }} me-1 text-primary"></i>
+          {% endif %}
           {{ v.os_type.label }}
+          {% if is_win_family and wm == 'winpe' and pm == 'utility' %}
+          <span class="badge bg-warning text-dark ms-1">WinPE Util</span>
+          {% elif is_win_family and wm == 'winpe' %}
+          <span class="badge bg-info text-dark ms-1">WinPE Master</span>
+          {% elif is_win_family %}
+          <span class="badge bg-primary ms-1">Desktop</span>
+          {% endif %}
         </td>
         <td class="fw-semibold">{{ v.version_label }}</td>
         <td>{{ fmt_size(v.iso_size) }}</td>

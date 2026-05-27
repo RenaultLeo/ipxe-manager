@@ -5,8 +5,26 @@
 <div class="d-flex align-items-center gap-3 mb-4">
   <a href="/isos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
   <h2 class="mb-0">
+    {% set wm = (version.windows_mode|default('desktop', true))|lower %}
+    {% set pm = (version.winpe_mode|default('master', true))|lower %}
+    {% set is_win_family = (version.os_type.boot_type == 'windows') %}
+    {% if is_win_family and wm == 'winpe' and pm == 'utility' %}
+    <i class="bi bi-tools me-2 text-warning"></i>
+    {% elif is_win_family and wm == 'winpe' %}
+    <i class="bi bi-hdd-stack me-2 text-info"></i>
+    {% elif is_win_family %}
+    <i class="bi bi-pc-display-horizontal me-2 text-primary"></i>
+    {% else %}
     <i class="{{ version.os_type.icon }} me-2 text-primary"></i>
+    {% endif %}
     {{ version.os_type.label }} {{ version.version_label }}
+    {% if is_win_family and wm == 'winpe' and pm == 'utility' %}
+    <span class="badge bg-warning text-dark ms-2 align-middle">WinPE Util</span>
+    {% elif is_win_family and wm == 'winpe' %}
+    <span class="badge bg-info text-dark ms-2 align-middle">WinPE Master</span>
+    {% elif is_win_family %}
+    <span class="badge bg-primary ms-2 align-middle">Desktop</span>
+    {% endif %}
   </h2>
   {% set status = version.status %}
   {% set version_id = version.id %}
