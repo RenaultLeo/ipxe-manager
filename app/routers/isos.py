@@ -211,7 +211,11 @@ async def iso_list(
     redir = _auth(request)
     if redir:
         return redir
-    os_types = sort_os_types_for_ui(db.query(OsType).all())
+    os_types = [
+        ot
+        for ot in sort_os_types_for_ui(db.query(OsType).all())
+        if (ot.slug or "").lower() != "winpe"
+    ]
     versions = (
         db.query(IsoVersion)
         .options(joinedload(IsoVersion.os_type))
@@ -244,7 +248,11 @@ async def upload_form(
     redir = _auth(request)
     if redir:
         return redir
-    os_types = sort_os_types_for_ui(db.query(OsType).all())
+    os_types = [
+        ot
+        for ot in sort_os_types_for_ui(db.query(OsType).all())
+        if (ot.slug or "").lower() != "winpe"
+    ]
     os_extract_meta = _os_extract_meta_for_upload(os_types)
     slug_set = {ot.slug for ot in os_types}
     raw = (os or "").strip().lower()

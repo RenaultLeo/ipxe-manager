@@ -559,7 +559,12 @@ def regenerate_all(db: Session) -> list[str]:
     env = _jinja_env()
     written: list[str] = []
 
-    os_types = sort_os_types_for_ui(db.query(OsType).all())
+    all_os_types = sort_os_types_for_ui(db.query(OsType).all())
+    winpe_os_type = next(
+        (ot for ot in all_os_types if (ot.slug or "").lower() == "winpe"),
+        None,
+    )
+    os_types = [ot for ot in all_os_types if (ot.slug or "").lower() != "winpe"]
 
     # Per-OS sub-menus
     for os_type in os_types:
@@ -577,18 +582,36 @@ def regenerate_all(db: Session) -> list[str]:
                 )
                 .all()
             )
+            version_with_os: list[tuple[IsoVersion, OsType]] = [
+                (v, os_type) for v in versions
+            ]
+            if (os_type.slug or "").lower() == "windows" and winpe_os_type is not None:
+                legacy_winpe_versions = (
+                    db.query(IsoVersion)
+                    .options(
+                        joinedload(IsoVersion.boot_entry),
+                        joinedload(IsoVersion.autoconfigs),
+                        joinedload(IsoVersion.winpe_installs),
+                    )
+                    .filter(
+                        IsoVersion.os_type_id == winpe_os_type.id,
+                        IsoVersion.status == "ready",
+                    )
+                    .all()
+                )
+                version_with_os.extend((v, winpe_os_type) for v in legacy_winpe_versions)
 
             # Séparer : versions standard vs versions avec script iPXE custom
             standard_entries = []
             custom_entries   = []
-            for v in versions:
-                entry = _build_entry(v, os_type, cfg)
+            for v, entry_os_type in version_with_os:
+                entry = _build_entry(v, entry_os_type, cfg)
                 if entry["custom_ipxe"]:
                     custom_entries.append(entry)
                     continue
 
-                slug_l = (os_type.slug or "").lower()
-                bt_l = (os_type.boot_type or "linux").lower()
+                slug_l = (entry_os_type.slug or "").lower()
+                bt_l = (entry_os_type.boot_type or "linux").lower()
                 is_esxi = slug_l == "esxi" or bt_l == "esxi"
 
                 if is_esxi and v.boot_entry:
@@ -782,6 +805,12 @@ def regenerate_all(db: Session) -> list[str]:
     out = cfg.menus_dir / "menu.ipxe"
     _write_menu(out, content)
     written.append(str(out))
+
+    # Ancien OS WinPE masqué du menu central : nettoyer les menus potentiellement restés sur disque.
+    for stale_name in ("winpe.ipxe", "winpe_autres.ipxe"):
+        stale = cfg.menus_dir / stale_name
+        if stale.is_file():
+            stale.unlink(missing_ok=True)
 
     return written
 
