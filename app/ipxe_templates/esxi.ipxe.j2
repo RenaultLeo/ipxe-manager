@@ -41,20 +41,12 @@ goto ${selected}
   :ac{{ e.ipxe_item_tag }}_{{ ac.id }}
     kernel {{ e.kernel }}
     imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
-
-    {% for u in e.esxi_module_urls %}
-    module {{ u }}
-    {% endfor %}
     boot
   {% endfor %}
 
   :manual_{{ e.ipxe_item_tag }}
   kernel {{ e.kernel }}
   imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
-
-  {% for u in e.esxi_module_urls %}
-  module {{ u }}
-  {% endfor %}
   boot
 
   :back_v{{ e.ipxe_item_tag }}
@@ -63,10 +55,6 @@ goto ${selected}
 {% else %}
   kernel {{ e.kernel }}
   imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
-
-  {% for u in e.esxi_module_urls %}
-  module {{ u }}
-  {% endfor %}
   boot
 {% endif %}
 
