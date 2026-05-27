@@ -1030,10 +1030,6 @@ def _esxi_boot_cfg_http_payload(
         lowercase_paths=lowercase_paths,
     )
 
-    # Préchargement iPXE (``module``) : utile pour mboot.efi (UEFI).
-    # Legacy (mboot.c32) : ne pas précharger via iPXE — mboot lit ``ipxe-boot.cfg`` et
-    # charge kernel + modules via ``prefix=`` ; précharger (surtout kernel=) provoque
-    # souvent écran noir après chargement des modules.
     preload_rels: list[str] = []
     if profile_label.casefold() == "efi":
         if crypto_path_opt is not None:
@@ -1051,10 +1047,8 @@ def _esxi_boot_cfg_http_payload(
                     "ESXi (%s) : crypto64.efi en tête du préchargement iPXE (HTTP minuscules).",
                     profile_label,
                 )
-        preload_rels.append(kernel_rel)
-        preload_rels.extend(mod_rels)
-    else:
-        preload_rels = list(mod_rels)
+    preload_rels.append(kernel_rel)
+    preload_rels.extend(mod_rels)
 
     return managed, preload_rels
 

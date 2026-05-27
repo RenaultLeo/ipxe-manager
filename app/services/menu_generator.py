@@ -61,93 +61,6 @@ def _esxi_kernel_basename_from_boot_cfg(boot_cfg: Path) -> str | None:
     return None
 
 
-def _esxi_kernelopt_merge(existing: str, boot_arg: str) -> str:
-    """Fusionne les options kernelopt ESXi (en forçant runweasel + ks=...)."""
-    tokens: list[str] = []
-    for tok in (existing or "").split():
-        t = tok.strip()
-        if not t:
-            continue
-        if t.lower() == "cdromboot":
-            continue
-        tokens.append(t)
-    if not any(t.lower() == "runweasel" for t in tokens):
-        tokens.insert(0, "runweasel")
-    for tok in (boot_arg or "").split():
-        t = tok.strip()
-        if not t:
-            continue
-        if t not in tokens:
-            tokens.append(t)
-    return " ".join(tokens).strip()
-
-
-def _esxi_boot_cfg_with_boot_arg(text: str, boot_arg: str) -> str:
-    """Injecte ``ks=...`` dans kernelopt d'un ``ipxe-boot.cfg`` ESXi."""
-    lines = text.splitlines()
-    out: list[str] = []
-    replaced = False
-    for line in lines:
-        if _ESXI_IPXE_KERNELOPT_LINE_RE.match(line):
-            cur = line.split("=", 1)[1].strip() if "=" in line else ""
-            merged = _esxi_kernelopt_merge(cur, boot_arg)
-            out.append(f"kernelopt={merged}" if merged else "kernelopt=")
-            replaced = True
-        else:
-            out.append(line)
-    if not replaced:
-        merged = _esxi_kernelopt_merge("", boot_arg)
-        insert_at = 0
-        for i, raw in enumerate(out):
-            s = raw.strip().lower()
-            if s.startswith("#") or not s:
-                continue
-            insert_at = i + 1 if s.startswith("kernel=") else i
-            break
-        out.insert(insert_at, f"kernelopt={merged}" if merged else "kernelopt=")
-    return "\n".join(out).rstrip() + "\n"
-
-
-def _materialize_esxi_autoconfig_boot_cfgs(
-    cfg: Settings,
-    base_cfg_rel: str,
-    autoconfigs: list[dict],
-    *,
-    file_suffix: str = "",
-) -> list[dict]:
-    """Crée un boot.cfg dérivé par config ESXi et renvoie les URLs HTTP correspondantes."""
-    rel = (base_cfg_rel or "").strip().lstrip("/")
-    if not rel:
-        return autoconfigs
-    src = cfg.http_root and (Path(cfg.http_root) / rel)
-    if not src or not src.is_file():
-        return autoconfigs
-    try:
-        base_text = src.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return autoconfigs
-
-    out: list[dict] = []
-    version_dir = src.parent
-    for ac in autoconfigs:
-        boot_arg = (ac.get("boot_arg") or "").strip()
-        if not boot_arg:
-            out.append(ac)
-            continue
-        ac_id = ac.get("id")
-        if not ac_id:
-            out.append(ac)
-            continue
-        dst = version_dir / f"ipxe-boot-ac{int(ac_id)}{file_suffix}.cfg"
-        try:
-            write_text_file(dst, _esxi_boot_cfg_with_boot_arg(base_text, boot_arg), file_mode=0o644)
-            rel_cfg = dst.relative_to(Path(cfg.http_root)).as_posix()
-            out.append({**ac, "esxi_boot_cfg": _http(rel_cfg, cfg)})
-        except OSError:
-            out.append(ac)
-    return out
-
-
 def _jinja_env() -> Environment:
     from app.config import settings as app_settings
 
@@ -570,8 +483,6 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
         "esxi_module_urls_legacy": esxi_module_urls_legacy,
-        # mboot.c32 (Legacy) : pas de ``module`` iPXE — mboot charge via boot.cfg + prefix=
-        "esxi_ipxe_preload_modules": True,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
         "kernel_args": _build_kernel_args(
             be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
@@ -843,7 +754,6 @@ def regenerate_all(db: Session) -> list[str]:
                                 "esxi_boot_cfg": cfg_http,
                                 "esxi_mboot_basename": kb,
                                 "esxi_module_urls": entry["esxi_module_urls"],
-                                "esxi_ipxe_preload_modules": True,
                                 "ipxe_item_tag": f"v{v.id}_uefi",
                             }
                         )
@@ -873,24 +783,10 @@ def regenerate_all(db: Session) -> list[str]:
                             "esxi_boot_cfg": legacy_cfg_http,
                             "esxi_mboot_basename": kb,
                             "esxi_module_urls": legacy_modules,
-                            "esxi_ipxe_preload_modules": False,
                             "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
                         }
-                        if leg_row.get("autoconfigs"):
-                            leg_row["autoconfigs"] = _materialize_esxi_autoconfig_boot_cfgs(
-                                cfg,
-                                legacy_cfg_rel,
-                                leg_row["autoconfigs"],
-                            )
                         rows.append(leg_row)
                     if rows:
-                        for row in rows:
-                            if row.get("autoconfigs") and "leg" not in (row.get("ipxe_item_tag") or ""):
-                                row["autoconfigs"] = _materialize_esxi_autoconfig_boot_cfgs(
-                                    cfg,
-                                    getattr(be, "esxi_boot_cfg_path", None) or "",
-                                    row["autoconfigs"],
-                                )
                         standard_entries.extend(rows)
                         continue
 

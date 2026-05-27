@@ -40,13 +40,11 @@ goto ${selected}
   {% for ac in e.autoconfigs %}
   :ac{{ e.ipxe_item_tag }}_{{ ac.id }}
     kernel {{ e.kernel }}
-    imgargs {{ mbasename }} -c {{ ac.esxi_boot_cfg or e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+    imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
-{% if e.esxi_ipxe_preload_modules %}
     {% for u in e.esxi_module_urls %}
     module {{ u }}
     {% endfor %}
-{% endif %}
     boot
   {% endfor %}
 
@@ -54,11 +52,9 @@ goto ${selected}
   kernel {{ e.kernel }}
   imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
-{% if e.esxi_ipxe_preload_modules %}
   {% for u in e.esxi_module_urls %}
   module {{ u }}
   {% endfor %}
-{% endif %}
   boot
 
   :back_v{{ e.ipxe_item_tag }}
@@ -68,11 +64,9 @@ goto ${selected}
   kernel {{ e.kernel }}
   imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
 
-{% if e.esxi_ipxe_preload_modules %}
   {% for u in e.esxi_module_urls %}
   module {{ u }}
   {% endfor %}
-{% endif %}
   boot
 {% endif %}
 
