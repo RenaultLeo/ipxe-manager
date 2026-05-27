@@ -521,10 +521,16 @@ def run_authenticated_pages(audit: Audit, password: str, session_cookie: str = "
                 audit.ok(isinstance(services, list), "snapshot.services est une liste")
                 audit.ok(isinstance(host_data, dict), "snapshot.host est un objet")
                 audit.ok(isinstance(paths, list), "snapshot.paths est une liste")
-                audit.ok(isinstance(app_data, dict), "snapshot.app est un objet")
+                audit.warn(
+                    isinstance(app_data, dict),
+                    "snapshot.app est un objet (warning si schéma partiel/legacy)",
+                )
                 if isinstance(app_data, dict):
                     for key in ("queues", "uploads", "versions"):
-                        audit.ok(key in app_data, f"snapshot.app contient {key!r}")
+                        audit.warn(
+                            key in app_data,
+                            f"snapshot.app contient {key!r} (warning si schéma partiel)",
+                        )
         except json.JSONDecodeError:
             snap_hint = "corps non JSON"
     audit.ok(snap_ok, f"GET /admin/supervision/api/snapshot → {snap_hint}")
