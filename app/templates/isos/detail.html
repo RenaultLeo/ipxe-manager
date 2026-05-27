@@ -61,8 +61,7 @@
     <div class="card border-secondary h-100">
       <div class="card-header"><i class="bi bi-info-circle me-2"></i>{{ t('iso.detail.info_card') }}</div>
       <div class="card-body">
-        <div id="boot-paths-wrap" class="boot-paths-wrap">
-        <dl class="row mb-0" id="boot-paths-list">
+        <dl class="row mb-0">
           <dt class="col-5 text-muted">ID</dt><dd class="col-7">{{ version.id }}</dd>
           <dt class="col-5 text-muted">{{ t('iso.col_iso_size') }}</dt><dd class="col-7">{{ fmt_size(version.iso_size) }}</dd>
           <dt class="col-5 text-muted">{{ t('iso.detail_iso_http_url') }}</dt>
@@ -90,10 +89,6 @@
           <dt class="col-5 text-muted">{{ t('iso.detail.notes_label') }}</dt><dd class="col-7">{{ version.notes }}</dd>
           {% endif %}
         </dl>
-        </div>
-        <div class="text-end mt-2 d-none" id="boot-paths-toggle-wrap">
-          <button type="button" class="btn btn-outline-secondary btn-sm" id="boot-paths-toggle-btn">More</button>
-        </div>
       </div>
     </div>
   </div>
@@ -164,7 +159,8 @@
         {% if version.boot_entry %}
         {% set be = version.boot_entry %}
         {% set is_esxi = (version.os_type.slug == 'esxi') or (version.os_type.boot_type == 'esxi') %}
-        <dl class="row mb-0">
+        <div id="boot-files-wrap" class="boot-files-wrap">
+        <dl class="row mb-0" id="boot-files-list">
           {% if is_esxi %}
           {# ESXi : UEFI = mboot.efi ; Legacy = mboot.c32 ; même ipxe-boot.cfg / esxi_modules #}
           {% if be.esxi_efi_boot_path %}
@@ -228,6 +224,10 @@
           <dd class="col-8 font-monospace small text-break">{{ be.custom_ipxe_path }}</dd>
           {% endif %}
         </dl>
+        </div>
+        <div class="text-end mt-2 d-none" id="boot-files-toggle-wrap">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="boot-files-toggle-btn">More</button>
+        </div>
 
         {% if can_modify and version.os_type.slug == 'fedora' and be %}
         <div class="mt-3 pt-3 border-top border-secondary">
@@ -1058,12 +1058,12 @@
     margin: 0;
     cursor: pointer;
   }
-  .boot-paths-wrap.is-collapsed {
-    max-height: var(--boot-paths-collapsed-px, 12rem);
+  .boot-files-wrap.is-collapsed {
+    max-height: var(--boot-files-collapsed-px, 12rem);
     overflow: hidden;
     position: relative;
   }
-  .boot-paths-wrap.is-collapsed::after {
+  .boot-files-wrap.is-collapsed::after {
     content: "";
     position: absolute;
     left: 0;
@@ -1076,15 +1076,16 @@
 </style>
 <script>
 (function () {
-  var wrap = document.getElementById('boot-paths-wrap');
-  var list = document.getElementById('boot-paths-list');
-  var toggleWrap = document.getElementById('boot-paths-toggle-wrap');
-  var btn = document.getElementById('boot-paths-toggle-btn');
+  var wrap = document.getElementById('boot-files-wrap');
+  var list = document.getElementById('boot-files-list');
+  var toggleWrap = document.getElementById('boot-files-toggle-wrap');
+  var btn = document.getElementById('boot-files-toggle-btn');
   if (!wrap || !list || !toggleWrap || !btn) return;
-  var lineHeight = parseFloat(window.getComputedStyle(list).lineHeight || '16');
-  if (!isFinite(lineHeight) || lineHeight <= 0) lineHeight = 16;
-  var collapsedPx = Math.round(lineHeight * 8 + 8);
-  wrap.style.setProperty('--boot-paths-collapsed-px', collapsedPx + 'px');
+  var rows = list.querySelectorAll('dt');
+  if (rows.length <= 8) return;
+  var cutRow = rows[7];
+  var collapsedPx = cutRow.offsetTop + cutRow.offsetHeight + 8;
+  wrap.style.setProperty('--boot-files-collapsed-px', collapsedPx + 'px');
   if (wrap.scrollHeight <= collapsedPx + 4) return;
   wrap.classList.add('is-collapsed');
   toggleWrap.classList.remove('d-none');

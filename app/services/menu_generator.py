@@ -4,7 +4,7 @@ Generates all .ipxe menu files from the database and Jinja2 templates.
 import json
 import logging
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session, joinedload
 
@@ -231,13 +231,34 @@ def _esxi_module_urls_from_cfg_http(
     # Appelant passe un chemin relatif sous HTTP_ROOT.
     from app.config import settings as _settings
 
-    local = Path(_settings.http_root) / p.lstrip("/").replace("\\", "/")
+    rel_cfg = p.lstrip("/").replace("\\", "/")
+    local = Path(_settings.http_root) / rel_cfg
     if not local.is_file():
         return []
+    cfg_dir_rel = str(PurePosixPath(rel_cfg).parent).replace("\\", "/").strip("/")
     try:
         raw = local.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+
+    def to_cfg_scoped_rel(raw_val: str) -> str:
+        """
+        Les modules ESXi dans boot.cfg sont souvent sans dossier (ex: ``K.B00``).
+        Ils sont relatifs au dossier du boot.cfg (``boot/esxi/<ver>/``), pas à la racine serveur.
+        """
+        val = (raw_val or "").strip().replace("\\", "/")
+        if not val:
+            return ""
+        low = val.lower()
+        if low.startswith("http://") or low.startswith("https://"):
+            return ""
+        # Déjà absolu sous HTTP_ROOT (boot/..., menus/..., etc.)
+        if val.startswith("/") or val.startswith("boot/"):
+            return val.lstrip("/")
+        if cfg_dir_rel and cfg_dir_rel != ".":
+            return f"{cfg_dir_rel}/{val.lstrip('/')}"
+        return val.lstrip("/")
+
     urls: list[str] = []
     for line in raw.splitlines():
         s = line.strip()
@@ -247,12 +268,16 @@ def _esxi_module_urls_from_cfg_http(
         key = k.strip().lower()
         val = v.strip()
         if key == "module" and val:
-            urls.append(h(val.lstrip("/")))
+            rel = to_cfg_scoped_rel(val)
+            if rel:
+                urls.append(h(rel))
         elif key == "modules" and val:
             for part in re.split(r"\s*---\s*", val):
                 p2 = part.strip()
                 if p2:
-                    urls.append(h(p2.lstrip("/")))
+                    rel = to_cfg_scoped_rel(p2)
+                    if rel:
+                        urls.append(h(rel))
     return urls
 
 
