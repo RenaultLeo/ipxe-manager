@@ -1308,7 +1308,7 @@ def _winpe_windows_version(version: IsoVersion, lang: str) -> None:
 
 
 def _winpe_master_mode_required(version: IsoVersion, lang: str) -> None:
-    _winpe_master_mode_required(version, lang)
+    _winpe_windows_version(version, lang)
     if (getattr(version, "winpe_mode", None) or "master").lower() != "master":
         raise HTTPException(400, detail=translate(lang, "iso.winpe_scripts_no_masters"))
 

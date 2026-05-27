@@ -23,7 +23,7 @@ echo "  IP détectée : $SERVER_IP"
 echo "======================================================"
 
 # ── 1. Paquets système ────────────────────────────────────────────────────────
-echo "[1/15] Installation des paquets système…"
+echo "[1/17] Installation des paquets système…"
 apt-get update -qq
 apt-get install -y -qq \
     sudo git curl wget unzip rsync ca-certificates openssl \
@@ -39,7 +39,7 @@ apt-get install -y -qq \
 systemctl disable --now samba-ad-dc 2>/dev/null || true
 
 # ── 2. Utilisateur système ────────────────────────────────────────────────────
-echo "[2/15] Création de l'utilisateur $APP_USER…"
+echo "[2/17] Création de l'utilisateur $APP_USER…"
 if ! id "$APP_USER" &>/dev/null; then
     useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$APP_USER"
     echo "  Utilisateur $APP_USER créé."
@@ -48,7 +48,7 @@ else
 fi
 
 # ── 3. Arborescence des données ───────────────────────────────────────────────
-echo "[3/15] Création de l'arborescence…"
+echo "[3/17] Création de l'arborescence…"
 mkdir -p \
     "$DATA_DIR/tftpboot" \
     "$DATA_DIR/http/menus" \
@@ -64,7 +64,7 @@ mkdir -p \
 chmod -R 755 "$DATA_DIR/http"
 
 # ── 4. Clone du repo ──────────────────────────────────────────────────────────
-echo "[4/15] Récupération du code source…"
+echo "[4/17] Récupération du code source…"
 if [ -d "$APP_DIR/.git" ]; then
     echo "  Repo déjà présent — git pull (branche courante / upstream)…"
     git -C "$APP_DIR" pull --ff-only || echo "  ! git pull échoué — conserve la version actuelle."
@@ -96,7 +96,7 @@ if [ -f "$APP_DIR/deploy/install-proxmox-autoinstall-assistant.sh" ]; then
 fi
 
 # ── 5. Environnement Python ───────────────────────────────────────────────────
-echo "[5/15] Création du virtualenv Python…"
+echo "[5/17] Création du virtualenv Python…"
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip wheel
 "$VENV/bin/pip" install -q -r "$APP_DIR/requirements.txt"
@@ -112,7 +112,7 @@ else
 fi
 
 # ── 6. Fichier .env ───────────────────────────────────────────────────────────
-echo "[6/15] Configuration de l'environnement (.env)…"
+echo "[6/17] Configuration de l'environnement (.env)…"
 if [ ! -f "$APP_DIR/.env" ]; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     cat > "$APP_DIR/.env" <<EOF
@@ -149,7 +149,7 @@ else
 fi
 
 # ── 7. Base de données ────────────────────────────────────────────────────────
-echo "[7/16] Initialisation de la base de données…"
+echo "[7/17] Initialisation de la base de données…"
 cd "$APP_DIR"
 "$VENV/bin/python" deploy/seed_db.py
 "$VENV/bin/python" - <<PY
@@ -164,7 +164,7 @@ PY
 echo "  Base initialisée avec tous les OS de base."
 
 # ── 8. Firmwares iPXE (génériques — en attendant la compilation custom) ───────
-echo "[8/15] Téléchargement des firmwares iPXE génériques…"
+echo "[8/17] Téléchargement des firmwares iPXE génériques…"
 # Ces binaires seront remplacés lors de la compilation depuis /firmware dans l'UI
 if [ ! -f "$DATA_DIR/tftpboot/undionly.kpxe" ]; then
     wget -q -O "$DATA_DIR/tftpboot/undionly.kpxe" \
@@ -229,7 +229,7 @@ else
 fi
 
 # ── 9. TFTP — tftpd-hpa ───────────────────────────────────────────────────────
-echo "[9/15] Configuration de tftpd-hpa…"
+echo "[9/17] Configuration de tftpd-hpa…"
 cat > /etc/default/tftpd-hpa <<EOF
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="$DATA_DIR/tftpboot/"
@@ -239,7 +239,7 @@ EOF
 chmod -R 755 "$DATA_DIR/tftpboot"
 
 # ── 10. TLS + Nginx HTTPS ─────────────────────────────────────────────────────
-echo "[10/16] Certificats TLS + Nginx HTTPS…"
+echo "[10/17] Certificats TLS + Nginx HTTPS…"
 if [ -f "$APP_DIR/deploy/generate-tls-cert.sh" ]; then
     bash "$APP_DIR/deploy/generate-tls-cert.sh" "$SERVER_IP"
 else
@@ -257,7 +257,7 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && echo "  Nginx : config OK."
 
 # ── 11. Services systemd ──────────────────────────────────────────────────────
-echo "[11/15] Création des services systemd…"
+echo "[11/17] Création des services systemd…"
 
 cat > /etc/systemd/system/ipxe-manager.service <<EOF
 [Unit]
@@ -308,7 +308,7 @@ systemctl disable --now celery-worker 2>/dev/null || true
 rm -f /etc/systemd/system/celery-worker.service
 
 # ── 12. Samba (partage SMB pour installation Windows via réseau) ──────────────
-echo "[12/15] Configuration Samba…"
+echo "[12/17] Configuration Samba…"
 cat > /etc/samba/smb.conf <<EOF
 [global]
    workgroup = WORKGROUP
@@ -343,7 +343,7 @@ cat > /etc/samba/smb.conf <<EOF
 EOF
 
 # ── 13. NFS — Ubuntu live / install depuis extractions sous http/boot/ubuntu ─
-echo "[13/15] Configuration NFS (Ubuntu netboot depuis $DATA_DIR/http/boot/ubuntu)…"
+echo "[13/17] Configuration NFS (Ubuntu netboot depuis $DATA_DIR/http/boot/ubuntu)…"
 install -d -m 755 /etc/exports.d
 cat > /etc/exports.d/ipxe-manager-ubuntu.exports <<EOF
 # ISO Ubuntu extraites : un dossier par version sous ce répertoire (même slug que l’UI).
@@ -362,7 +362,7 @@ else
 fi
 
 # ── 14. Permissions finales ───────────────────────────────────────────────────
-echo "[14/15] Application des permissions…"
+echo "[14/17] Application des permissions…"
 chown -R "$APP_USER:$APP_USER" "$DATA_DIR" "$LOG_DIR"
 chmod 640 "$APP_DIR/.env"
 # http/boot doit être lisible par Nginx (www-data) ET par Samba
@@ -373,7 +373,7 @@ chmod -R o+rX "$DATA_DIR/http/configs" 2>/dev/null || true
 chmod -R o+rX "$DATA_DIR/isos" 2>/dev/null || true
 
 # ── 15. Démarrage de tous les services ────────────────────────────────────────
-echo "[15/16] Démarrage des services…"
+echo "[15/17] Démarrage des services…"
 systemctl daemon-reload
 systemctl enable --now redis-server
 systemctl enable --now tftpd-hpa

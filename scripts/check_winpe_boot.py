@@ -234,7 +234,7 @@ def main() -> int:
                     print(
                         f"  → Relancer : sudo -u ipxe bash -c 'cd /srv/ipxe/app && "
                         f"/srv/ipxe/venv/bin/celery -A app.tasks.celery_app call patch_winpe_startnet "
-                        f"--args=\"[{v.id}, {aid}]\"'"
+                        f"--args=\"[{v.id}]\"'"
                     )
         finally:
             db.close()
