@@ -1881,7 +1881,10 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(404)
 
     try:
+        from app.services.slugify import slugify
+
         os_slug = version.os_type.slug
+        version_slug = slugify(version.version_label) if version.version_label else str(version_id)
 
         # 1. ISO : dossier dédié par version (/isos/<os>/<id>/…) ou ancien fichier plat
         iso_slot = Path(settings.iso_root) / os_slug / str(version.id)
