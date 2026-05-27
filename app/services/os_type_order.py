@@ -21,7 +21,6 @@ UI_OS_SLUG_ORDER = (
     "alma",
     "fedora",
     "proxmox",
-    "winpe",
     "esxi",
     "tools",
 )

@@ -251,7 +251,7 @@
 const UBUNTU_HINT = {{ t('iso.upload.hint_ubuntu_full')|tojson }};
 const OS_EXTRACT_META = {{ os_extract_meta|tojson }};
 const LINUX_UPLOAD_OPT = {{ t('iso.upload.optional')|tojson }};
-const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows', 'winpe', 'proxmox', 'rocky', 'alma', 'centos', 'fedora', 'esxi']);
+const FULL_EXTRACT_SLUGS = new Set(['ubuntu', 'windows', 'proxmox', 'rocky', 'alma', 'centos', 'fedora', 'esxi']);
 
 const DISTRO_HINTS = {
   debian:  { kernel: 'vmlinuz',    initrd: 'initrd.gz',      hint: 'vmlinuz + initrd.gz' },
@@ -402,7 +402,7 @@ function syncOsSelectUi() {
   const versionCol = document.getElementById('version-label-col');
   const isoInput = document.getElementById('iso-file');
 
-  const isWindowsFamily = (bootType === 'windows' || slug === 'windows' || slug === 'winpe');
+  const isWindowsFamily = (bootType === 'windows' || slug === 'windows');
   if (winRow) winRow.classList.toggle('d-none', !isWindowsFamily);
   if (!isWindowsFamily && winSel) winSel.value = 'desktop';
 

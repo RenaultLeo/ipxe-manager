@@ -351,7 +351,9 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         wmode = (getattr(v, "windows_mode", None) or "desktop").lower()
         pmode = (getattr(v, "winpe_mode", None) or "master").lower()
         if wmode == "winpe":
-            mode_suffix = " [WinPE utilitaire]" if pmode == "utility" else " [WinPE déploiement]"
+            mode_suffix = " [WinPE Util]" if pmode == "utility" else " [WinPE Master]"
+        else:
+            mode_suffix = " [Desktop]"
         active_wid = getattr(v, "active_winpe_install_id", None)
         if active_wid:
             awi = next(

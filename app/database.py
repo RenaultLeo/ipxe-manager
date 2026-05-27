@@ -185,7 +185,6 @@ def _backfill_builtin_extract_full_iso() -> None:
     """OS intégrés : extraction 7z complète (Windows, WinPE, Proxmox, Ubuntu, EL, ESXi…)."""
     slugs = (
         "windows",
-        "winpe",
         "ubuntu",
         "debian",
         "rocky",

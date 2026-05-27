@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 _BUILTIN_FULL_ISO_SLUGS = frozenset(
     {
         "windows",
-        "winpe",
         "ubuntu",
         "debian",
         "rocky",

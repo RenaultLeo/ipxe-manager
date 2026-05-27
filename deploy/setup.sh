@@ -327,7 +327,7 @@ cat > /etc/samba/smb.conf <<EOF
    ntlm auth = yes
 
 [boot]
-   comment = iPXE boot tree (WinPE: \\host\\boot\\winpe\\<ver>\\installs\\<slug>\\install.wim)
+   comment = iPXE boot tree (WinPE local: \\host\\boot\\windows\\<ver>\\installs\\<slug>\\install.wim ; WinPE global: \\host\\boot\\masters\\<famille>\\<slug>\\install.wim)
    path = $DATA_DIR/http/boot
    browseable = yes
    read only = yes

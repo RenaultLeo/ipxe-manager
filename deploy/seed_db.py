@@ -18,7 +18,6 @@ _SLUG_ORDER_RANK = {s: i for i, s in enumerate(UI_OS_SLUG_ORDER)}
 _FULL_EXTRACT_SLUGS = frozenset(
     {
         "windows",
-        "winpe",
         "ubuntu",
         "debian",
         "rocky",
@@ -40,7 +39,6 @@ DEFAULT_OS = [
     {"slug": "alma",    "label": "AlmaLinux",   "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "fedora",  "label": "Fedora",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
     {"slug": "proxmox", "label": "Proxmox VE",  "icon": "bi-server",   "boot_type": "linux",   "is_builtin": True},
-    {"slug": "winpe",   "label": "WinPE",       "icon": "bi-terminal", "boot_type": "windows", "is_builtin": True},
     {"slug": "esxi",    "label": "VMware ESXi", "icon": "bi-cpu",      "boot_type": "esxi",    "is_builtin": True},
     {"slug": "tools",   "label": "Outils",      "icon": "bi-tools",    "boot_type": "tools",    "is_builtin": False},
 ]
