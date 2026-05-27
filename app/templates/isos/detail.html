@@ -54,6 +54,11 @@
   <p class="mb-0 mt-2 small">{{ t('iso.extract_warning_hint') }}</p>
 </div>
 {% endif %}
+{% if version.os_type.slug == 'esxi' %}
+<div class="alert alert-warning mb-4">
+  <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.esxi_efi_only_notice') }}
+</div>
+{% endif %}
 
 <div class="row g-4">
   <!-- Info -->
@@ -904,9 +909,6 @@
         {% endif %}
         {% endif %}
         {% if version.os_type.slug == 'esxi' %}
-        <div class="alert alert-warning py-2 small mb-3">
-          <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.esxi_efi_only_notice') }}
-        </div>
         {% if version.autoconfigs %}
         <p class="small text-muted mb-2">{{ t('iso.active_config_intro') }}</p>
         {% if can_modify and version.boot_entry %}
