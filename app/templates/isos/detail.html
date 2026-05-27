@@ -547,6 +547,11 @@
             {{ request.query_params.get('lp_skipped') }} {{ t('iso.winpe_language_packs_skipped') }}
           </div>
           {% endif %}
+          {% if request.query_params.get('lp_empty') %}
+          <div class="alert alert-warning py-2 small mb-3">
+            {{ request.query_params.get('lp_empty') }} {{ t('iso.winpe_language_packs_empty') }}
+          </div>
+          {% endif %}
           {% endif %}
           {% if winpe_smb_host %}
           <p class="small mb-3">
@@ -564,7 +569,10 @@
                 data-version-id="{{ version.id }}"
                 data-msg-progress="{{ t('iso.winpe_language_packs_progress') }}"
                 data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
-                data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
+                data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}"
+                data-msg-summary="{{ t('iso.winpe_language_packs_upload_summary') }}"
+                data-msg-skipped="{{ t('iso.winpe_language_packs_skipped_detail') }}"
+                data-msg-empty="{{ t('iso.winpe_language_packs_empty_files') }}">
             <div class="col-12">
               <label class="form-label small mb-1">{{ t('iso.winpe_language_packs_files') }}</label>
               <input type="file" name="pack_files" id="winpe-language-packs-files" class="form-control form-control-sm"
@@ -1439,6 +1447,9 @@
   var msgProgress = form.dataset.msgProgress || '…';
   var msgXhr = form.dataset.msgXhr || 'Error';
   var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
+  var msgSummary = form.dataset.msgSummary || 'OK';
+  var msgSkipped = form.dataset.msgSkipped || 'Skipped';
+  var msgEmpty = form.dataset.msgEmpty || 'Empty';
   var wrap = document.getElementById('winpe-language-packs-progress-wrap');
   var bar = document.getElementById('winpe-language-packs-progress-bar');
   var pct = document.getElementById('winpe-language-packs-progress-pct');
@@ -1473,10 +1484,29 @@
     xhr.addEventListener('load', function () {
       if (xhr.status >= 200 && xhr.status < 400) {
         var url = '/isos/' + versionId + '?msg=winpe_language_packs_uploaded';
+        var lines = [];
         try {
           var j = JSON.parse(xhr.responseText || '{}');
           if (j.redirect) url = j.redirect;
+          if (j.saved_count) {
+            lines.push(msgSummary + ': ' + j.saved_count + ' .cab');
+          }
+          if (j.locales && j.locales.length) {
+            j.locales.forEach(function (loc) {
+              var names = (loc.saved || []).join(', ');
+              if (names) lines.push((loc.id || '') + ' → ' + names);
+            });
+          }
+          if (j.skipped && j.skipped.length) {
+            lines.push(msgSkipped + ': ' + j.skipped.join(', '));
+          }
+          if (j.empty && j.empty.length) {
+            lines.push(msgEmpty + ': ' + j.empty.join(', '));
+          }
         } catch (err) {}
+        if (lines.length) {
+          alert(lines.join('\n'));
+        }
         window.location.href = url;
         return;
       }

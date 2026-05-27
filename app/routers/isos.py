@@ -1474,11 +1474,25 @@ async def upload_winpe_language_packs(
     )
 
     try:
-        n_saved, by_locale, skipped = await save_uploaded_cab_files_auto(files)
+        n_saved, by_locale, skipped, empty = await save_uploaded_cab_files_auto(files)
         if n_saved == 0:
-            raise HTTPException(
-                400, detail=translate(lang, "iso.winpe_language_packs_no_files")
-            )
+            detail = translate(lang, "iso.winpe_language_packs_no_files")
+            if skipped or empty:
+                parts = []
+                if skipped:
+                    parts.append(
+                        translate(lang, "iso.winpe_language_packs_skipped_detail")
+                        + ": "
+                        + ", ".join(skipped[:8])
+                    )
+                if empty:
+                    parts.append(
+                        translate(lang, "iso.winpe_language_packs_empty_files")
+                        + ": "
+                        + ", ".join(empty[:8])
+                    )
+                detail = " ".join(parts)
+            raise HTTPException(400, detail=detail)
         cat = rebuild_catalog()
         locales_summary = []
         for lid, names in sorted(by_locale.items()):
@@ -1495,11 +1509,14 @@ async def upload_winpe_language_packs(
         redirect = f"/isos/{version_id}?msg=winpe_language_packs_uploaded"
         if skipped:
             redirect += "&lp_skipped=" + str(len(skipped))
+        if empty:
+            redirect += "&lp_empty=" + str(len(empty))
         payload = {
             "ok": True,
             "saved_count": n_saved,
             "locales": locales_summary,
             "skipped": skipped,
+            "empty": empty,
             "redirect": redirect,
         }
     except ValueError as exc:

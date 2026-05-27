@@ -32,7 +32,15 @@ _IGNORE_LOCALE_PART = frozenset(
         "cab",
         "client",
         "basic",
+        "ocr",
+        "features",
+        "experience",
     }
+)
+# Microsoft-Windows-LanguageFeatures-OCR-fr-fr-Package~….cab (et typo LanguagesFeatures).
+_OCR_FOD_LOCALE_RE = re.compile(
+    r"Languages?Features-OCR[-_](?P<lang>[a-z]{2,3})[-_](?P<reg>[a-zA-Z0-9]{2,8})",
+    re.I,
 )
 # fr-fr, en-us, pt-br, zh-cn … (tiret ou underscore, insensible a la casse).
 _LOCALE_TOKEN_RE = re.compile(
@@ -43,8 +51,13 @@ _LOCALE_TOKEN_RE = re.compile(
 _PREFER_AFTER_MARKERS = (
     "language-pack",
     "language-features",
+    "languagefeatures",
     "language-experience",
+    "languageexperience",
     "client-language",
+    "clientlanguage",
+    "languagesfeatures-ocr",
+    "languagefeatures-ocr",
 )
 
 
@@ -127,15 +140,33 @@ def _pick_best_locale_candidate(stem: str, candidates: list[tuple[int, str]]) ->
     if not candidates:
         return None
     stem_l = stem.lower()
+    from app.services.winpe_locale_presets import UI_LANGUAGES
+
+    known_langs = {row["id"].split("-", 1)[0].lower() for row in UI_LANGUAGES if "-" in row["id"]}
+    plausible = [c for c in candidates if c[1].split("-", 1)[0].lower() in known_langs]
+    pool = plausible or candidates
+
+    lf_ocr = re.search(r"languages?features-ocr", stem, re.I)
+    if lf_ocr:
+        following = [c for c in pool if c[0] >= lf_ocr.end()]
+        if following:
+            return following[-1][1]
+
     for marker in _PREFER_AFTER_MARKERS:
         pos = stem_l.find(marker)
         if pos < 0:
-            continue
-        after = pos + len(marker)
-        following = [c for c in candidates if c[0] >= after]
+            compact = stem_l.replace("-", "").replace("_", "")
+            mc = marker.replace("-", "").replace("_", "")
+            if mc not in compact:
+                continue
+            pos = 0
+            after = len(stem)
+        else:
+            after = pos + len(marker)
+        following = [c for c in pool if c[0] >= after]
         if following:
             return following[-1][1]
-    return candidates[-1][1]
+    return pool[-1][1]
 
 
 def locale_id_from_cab_filename(filename: str) -> str | None:
@@ -147,6 +178,11 @@ def locale_id_from_cab_filename(filename: str) -> str | None:
     if not name.lower().endswith(".cab"):
         return None
     stem = name[:-4]
+    ocr = _OCR_FOD_LOCALE_RE.search(stem)
+    if ocr:
+        loc = _locale_from_match(ocr.group("lang"), ocr.group("reg"))
+        if loc:
+            return loc
     candidates = _locale_candidates_in_stem(stem)
     return _pick_best_locale_candidate(stem, candidates)
 
@@ -187,9 +223,14 @@ def list_cab_files(folder: Path) -> list[Path]:
 
     def sort_key(p: Path) -> tuple[int, str]:
         name = p.name.lower()
-        if "language-pack" in name or "client-language" in name:
+        compact = name.replace("-", "").replace("_", "")
+        if "languagepack" in compact or "clientlanguage" in compact:
             return (0, name)
-        if "language-features" in name or "language-experience" in name:
+        if (
+            "languagefeatures" in compact
+            or "languageexperience" in compact
+            or "languagesfeatures" in compact
+        ):
             return (1, name)
         return (2, name)
 
@@ -413,13 +454,14 @@ async def save_uploaded_cab_files_auto(
     files: list,
     *,
     chunk_size: int = 1024 * 1024,
-) -> tuple[int, dict[str, list[str]], list[str]]:
+) -> tuple[int, dict[str, list[str]], list[str], list[str]]:
     """
     Enregistre les .cab dans boot/language-packs/<locale>/ selon le nom de fichier.
-    Retourne (nombre total, {locale_id: [fichiers]}, fichiers non reconnus).
+    Retourne (nombre total, {locale_id: [fichiers]}, locale inconnue, fichiers vides).
     """
     buckets: dict[str, list[tuple[str, object]]] = {}
     skipped: list[str] = []
+    empty: list[str] = []
 
     for uf in files:
         fname = Path(getattr(uf, "filename", None) or "file").name
@@ -452,7 +494,9 @@ async def save_uploaded_cab_files_auto(
             if await _write_one_cab(dest, uf, chunk_size=chunk_size):
                 names.append(fname)
                 total += 1
+            else:
+                empty.append(fname)
         if names:
             saved_by_locale[locale_id] = names
 
-    return total, saved_by_locale, skipped
+    return total, saved_by_locale, skipped, empty
