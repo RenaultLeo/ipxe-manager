@@ -1046,6 +1046,23 @@ async def iso_activate_config(
             status_code=302,
         )
 
+    if os_slug == "esxi":
+        if cfg.config_type not in ("esxi-kickstart", "kickstart"):
+            raise HTTPException(400, detail=translate(lang, "iso.proxmox_active_config_bad_type"))
+        if not version.boot_entry:
+            raise HTTPException(400, detail=translate(lang, "iso.proxmox_inject_need_extract"))
+        try:
+            from app.services.esxi_autoconfig import activate_esxi_kickstart
+            from app.services.menu_generator import queue_regenerate_all
+
+            activate_esxi_kickstart(db, version, cfg)
+            queue_regenerate_all()
+        except FileNotFoundError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        return RedirectResponse(f"/isos/{version_id}?msg=active_config_ok", status_code=302)
+
     raise HTTPException(400, detail=translate(lang, "iso.active_config_not_ubuntu"))
 
 
@@ -1074,6 +1091,10 @@ async def iso_clear_active_config(
         from app.services.autoconfig_publish import clear_active_proxmox_publish
 
         clear_active_proxmox_publish(db, version)
+    elif os_slug == "esxi":
+        from app.services.esxi_autoconfig import clear_active_esxi_kickstart
+
+        clear_active_esxi_kickstart(db, version)
     if version.status == "ready":
         from app.services.menu_generator import queue_regenerate_all
 

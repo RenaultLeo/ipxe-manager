@@ -902,13 +902,61 @@
         </p>
         {% endif %}
         {% endif %}
+        {% if version.os_type.slug == 'esxi' and version.autoconfigs %}
+        <p class="small text-muted mb-2">{{ t('iso.active_config_intro') }}</p>
+        {% if can_modify and version.boot_entry %}
+        <div class="row g-2 align-items-end mb-3 pb-3 border-bottom border-secondary">
+          <div class="col-md-8">
+            <form method="post" action="/isos/{{ version.id }}/activate-config" class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label small mb-1">{{ t('iso.active_config_select') }}</label>
+                <select name="config_id" class="form-select form-select-sm" required>
+                  <option value="">{{ t('common.choose') }}</option>
+                  {% for ac in version.autoconfigs %}
+                  {% if ac.config_type in ('esxi-kickstart', 'kickstart') %}
+                  <option value="{{ ac.id }}" {% if version.active_autoconfig_id == ac.id %}selected{% endif %}>
+                    {{ ac.label }}
+                  </option>
+                  {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                  <i class="bi bi-box-arrow-in-down me-1"></i>{{ t('iso.active_config_apply') }}
+                </button>
+              </div>
+            </form>
+          </div>
+          {% if version.active_autoconfig_id %}
+          <div class="col-md-4">
+            <form method="post" action="/isos/{{ version.id }}/clear-active-config">
+              <label class="form-label small mb-1 invisible d-block">—</label>
+              <button type="submit" class="btn btn-outline-secondary btn-sm w-100"
+                      title="{{ t('iso.active_config_clear') }}">
+                <i class="bi bi-x-lg me-1"></i>{{ t('iso.active_config_clear') }}
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+        {% elif can_modify and not version.boot_entry %}
+        <p class="small text-warning mb-3">{{ t('iso.proxmox_inject_need_extract') }}</p>
+        {% endif %}
+        {% if version.active_autoconfig_id and active_autoconfig %}
+        <p class="small mb-3">
+          <span class="badge bg-success">{{ t('iso.active_config_current') }}</span>
+          <strong class="ms-1">{{ active_autoconfig.label }}</strong>
+        </p>
+        {% endif %}
+        {% endif %}
       </div>
-      <div class="card-body p-0 {% if version.autoconfigs and (version.os_type.slug == 'ubuntu' or version.os_type.slug == 'proxmox') %}border-top border-secondary{% endif %}">
+      <div class="card-body p-0 {% if version.autoconfigs and (version.os_type.slug == 'ubuntu' or version.os_type.slug == 'proxmox' or version.os_type.slug == 'esxi') %}border-top border-secondary{% endif %}">
         {% if version.autoconfigs %}
         <table class="table table-dark table-hover mb-0">
           <thead><tr>
             <th>{{ t('iso.detail.cfg_th_type') }}</th><th>{{ t('iso.detail.cfg_th_label') }}</th><th>{{ t('iso.detail.cfg_th_file') }}</th>
-            {% if (version.os_type.slug == 'ubuntu' and version.ubuntu_variant != 'server') or version.os_type.slug == 'proxmox' %}<th class="text-center">{{ t('iso.active_config_col') }}</th>{% endif %}
+            {% if (version.os_type.slug == 'ubuntu' and version.ubuntu_variant != 'server') or version.os_type.slug in ('proxmox', 'esxi') %}<th class="text-center">{{ t('iso.active_config_col') }}</th>{% endif %}
             <th class="text-end">Actions</th>
           </tr></thead>
           <tbody>
@@ -917,9 +965,9 @@
               <td><span class="badge bg-info text-dark">{{ ac.config_type }}</span></td>
               <td>{{ ac.label }}</td>
               <td class="font-monospace small text-muted">{{ ac.file_path or '—' }}</td>
-              {% if (version.os_type.slug == 'ubuntu' and version.ubuntu_variant != 'server') or version.os_type.slug == 'proxmox' %}
+              {% if (version.os_type.slug == 'ubuntu' and version.ubuntu_variant != 'server') or version.os_type.slug in ('proxmox', 'esxi') %}
               <td class="text-center">
-                {% if version.active_autoconfig_id == ac.id and (version.os_type.slug != 'proxmox' or ac.config_type == 'proxmox-answer') %}
+                {% if version.active_autoconfig_id == ac.id and ((version.os_type.slug == 'proxmox' and ac.config_type == 'proxmox-answer') or (version.os_type.slug == 'esxi' and ac.config_type in ('esxi-kickstart', 'kickstart')) or (version.os_type.slug != 'proxmox' and version.os_type.slug != 'esxi')) %}
                 <span class="badge bg-success">{{ t('iso.active_config_badge') }}</span>
                 {% else %}
                 <span class="text-muted">—</span>

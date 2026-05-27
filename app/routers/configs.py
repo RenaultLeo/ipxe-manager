@@ -409,6 +409,10 @@ async def config_delete(config_id: int, request: Request, db: Session = Depends(
             from app.services.autoconfig_publish import clear_proxmox_answer_from_boot
 
             clear_proxmox_answer_from_boot(ver)
+        elif (ver.os_type.slug or "").lower() == "esxi":
+            from app.services.esxi_autoconfig import clear_active_esxi_kickstart
+
+            clear_active_esxi_kickstart(db, ver)
         queue_regenerate_all()
     return RedirectResponse("/ipxe-configs", status_code=302)
 

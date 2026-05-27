@@ -351,6 +351,26 @@ def _menu_autoconfig_entries(
             )
         return entries
 
+    if slug_l == "esxi":
+        active_id = getattr(v, "active_autoconfig_id", None)
+        if not active_id:
+            return []
+        for ac in configs:
+            if ac.id != active_id:
+                continue
+            rel = ac.file_path or ""
+            boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
+            entries.append(
+                {
+                    "id": ac.id,
+                    "label": resolve_autoconfig_menu_label(ac),
+                    "url": h(rel) if rel else "",
+                    "type": ac.config_type,
+                    "boot_arg": boot_arg,
+                }
+            )
+        return entries
+
     for ac in configs:
         rel = ac.file_path or ""
         boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
@@ -729,12 +749,6 @@ def regenerate_all(db: Session) -> list[str]:
                     cfg_http = _http(getattr(be, "esxi_boot_cfg_path", None), cfg)
                     if efi_rel:
                         kb = efi_rel.replace("\\", "/").rstrip("/").split("/")[-1]
-                        efi_autocfgs = _materialize_esxi_autoconfig_boot_cfgs(
-                            cfg,
-                            getattr(be, "esxi_boot_cfg_path", None) or "",
-                            list(entry.get("autoconfigs") or []),
-                            file_suffix="_efi",
-                        )
                         rows.append(
                             {
                                 **entry,
@@ -743,7 +757,6 @@ def regenerate_all(db: Session) -> list[str]:
                                 "esxi_boot_cfg": cfg_http,
                                 "esxi_mboot_basename": kb,
                                 "esxi_module_urls": entry["esxi_module_urls"],
-                                "autoconfigs": efi_autocfgs,
                                 "ipxe_item_tag": f"v{v.id}_uefi",
                             }
                         )
@@ -756,14 +769,6 @@ def regenerate_all(db: Session) -> list[str]:
                             or getattr(be, "esxi_boot_cfg_path", None),
                             cfg,
                         )
-                        leg_autocfgs = _materialize_esxi_autoconfig_boot_cfgs(
-                            cfg,
-                            getattr(be, "esxi_boot_cfg_legacy_path", None)
-                            or getattr(be, "esxi_boot_cfg_path", None)
-                            or "",
-                            list(entry.get("autoconfigs") or []),
-                            file_suffix="_legacy",
-                        )
                         rows.append(
                             {
                                 **entry,
@@ -775,7 +780,6 @@ def regenerate_all(db: Session) -> list[str]:
                                     entry.get("esxi_module_urls_legacy")
                                     or entry["esxi_module_urls"]
                                 ),
-                                "autoconfigs": leg_autocfgs,
                                 "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
                             }
                         )
