@@ -613,6 +613,8 @@ def _rewrite_esxi_boot_cfg_http(
     http_prefix: str,
     kernel_rel: str,
     module_rels: list[str],
+    *,
+    lowercase_paths: bool = True,
 ) -> str:
     """
     Réécrit ``boot.cfg`` pour HTTP en **reprenant la structure du fichier VMware source**
@@ -658,7 +660,11 @@ def _rewrite_esxi_boot_cfg_http(
             if kopt:
                 kopt = re.sub(r"\bcdromBoot\b", "", kopt, flags=re.I)
                 kopt = re.sub(r"\s+", " ", kopt).strip()
-                kopt = " ".join(_esxi_boot_cfg_lowercase_kernelopt_token(tok) for tok in kopt.split(" "))
+                if lowercase_paths:
+                    kopt = " ".join(
+                        _esxi_boot_cfg_lowercase_kernelopt_token(tok)
+                        for tok in kopt.split(" ")
+                    )
             lines_out.append(f"kernelopt={kopt}" if kopt else "kernelopt=")
             continue
 
@@ -814,6 +820,7 @@ def _esxi_boot_cfg_http_payload(
     http_prefix: str,
     *,
     profile_label: str,
+    lowercase_paths: bool = True,
 ) -> tuple[str, list[str]]:
     """
     Lit un boot.cfg VMware source et produit le corps HTTP ``ipxe-boot.cfg``
@@ -872,19 +879,25 @@ def _esxi_boot_cfg_http_payload(
             if cp.is_file():
                 crypto_path_opt = cp
 
-    mirror_paths = [k_path] + mod_paths
-    if crypto_path_opt is not None:
-        mirror_paths.append(crypto_path_opt)
-    _esxi_ensure_lowercase_http_mirrors(dest, mirror_paths)
+    if lowercase_paths:
+        mirror_paths = [k_path] + mod_paths
+        if crypto_path_opt is not None:
+            mirror_paths.append(crypto_path_opt)
+        _esxi_ensure_lowercase_http_mirrors(dest, mirror_paths)
 
-    kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
-    mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
+    if lowercase_paths:
+        kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
+        mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
+    else:
+        kernel_rel = _esxi_rel_from_dest(dest, k_path)
+        mod_rels = [_esxi_rel_from_dest(dest, p) for p in mod_paths]
 
     managed = _rewrite_esxi_boot_cfg_http(
         raw_cfg=raw_cfg,
         http_prefix=http_prefix,
         kernel_rel=kernel_rel,
         module_rels=mod_rels,
+        lowercase_paths=lowercase_paths,
     )
 
     preload_rels: list[str] = []
@@ -942,16 +955,20 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     )
     managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
     (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
-    legacy_stale = dest / "ipxe-boot-legacy.cfg"
-    if legacy_stale.is_file():
-        try:
-            legacy_stale.unlink()
-        except OSError as exc:
-            logger.warning("ESXi : suppression ipxe-boot-legacy.cfg obsolète impossible (%s)", exc)
+    managed_legacy, preload_legacy = _esxi_boot_cfg_http_payload(
+        dest,
+        iso_lower,
+        src_cfg,
+        http_prefix,
+        profile_label="Legacy",
+        lowercase_paths=False,
+    )
+    (dest / "ipxe-boot-legacy.cfg").write_text(managed_legacy, encoding="utf-8")
 
     modules_json = json.dumps(preload, separators=(",", ":"))
+    modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))
 
-    mboot_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, mboot_path))
+    mboot_rel = _esxi_rel_from_dest(dest, mboot_path)
 
     efi_boot_pool = iso_lower.get("bootx64.efi", [])
     esxi_efi_boot_http: str | None = None
@@ -974,7 +991,9 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     out_paths: dict = {
         "kernel_path": f"{base}/{mboot_rel}",
         "esxi_boot_cfg_path": f"{base}/ipxe-boot.cfg",
+        "esxi_boot_cfg_legacy_path": f"{base}/ipxe-boot-legacy.cfg",
         "esxi_modules": modules_json,
+        "esxi_modules_legacy": modules_legacy_json,
     }
     if esxi_efi_boot_http:
         out_paths["esxi_efi_boot_path"] = esxi_efi_boot_http

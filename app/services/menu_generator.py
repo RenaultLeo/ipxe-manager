@@ -110,11 +110,13 @@ def _esxi_boot_cfg_with_boot_arg(text: str, boot_arg: str) -> str:
 
 def _materialize_esxi_autoconfig_boot_cfgs(
     cfg: Settings,
-    be: BootEntry,
+    base_cfg_rel: str,
     autoconfigs: list[dict],
+    *,
+    file_suffix: str = "",
 ) -> list[dict]:
     """Crée un boot.cfg dérivé par config ESXi et renvoie les URLs HTTP correspondantes."""
-    rel = (getattr(be, "esxi_boot_cfg_path", None) or "").strip().lstrip("/")
+    rel = (base_cfg_rel or "").strip().lstrip("/")
     if not rel:
         return autoconfigs
     src = cfg.http_root and (Path(cfg.http_root) / rel)
@@ -136,7 +138,7 @@ def _materialize_esxi_autoconfig_boot_cfgs(
         if not ac_id:
             out.append(ac)
             continue
-        dst = version_dir / f"ipxe-boot-ac{int(ac_id)}.cfg"
+        dst = version_dir / f"ipxe-boot-ac{int(ac_id)}{file_suffix}.cfg"
         try:
             write_text_file(dst, _esxi_boot_cfg_with_boot_arg(base_text, boot_arg), file_mode=0o644)
             rel_cfg = dst.relative_to(Path(cfg.http_root)).as_posix()
@@ -404,21 +406,35 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
     esxi_boot_http = ""
     esxi_module_urls: list[str] = []
+    esxi_module_urls_legacy: list[str] = []
+    esxi_boot_http_legacy = ""
+    esxi_vr = ""
     # iPXE : le 1er token de imgargs = basename de l’URL « kernel » (même casse que les fichiers ISO extraits).
     esxi_mboot_basename = ""
     slug_l = os_type.slug.lower()
     bt_l = (os_type.boot_type or "linux").lower()
     if be and (slug_l == "esxi" or bt_l == "esxi"):
         esxi_boot_http = h(getattr(be, "esxi_boot_cfg_path", None))
+        esxi_boot_http_legacy = h(
+            getattr(be, "esxi_boot_cfg_legacy_path", None)
+            or getattr(be, "esxi_boot_cfg_path", None)
+        )
         raw_mods = getattr(be, "esxi_modules", "") or ""
         seg = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
-        vr = f"boot/{os_type.slug}/{seg}".replace("\\", "/")
+        esxi_vr = f"boot/{os_type.slug}/{seg}".replace("\\", "/")
         esxi_module_urls = _esxi_module_urls_from_json(
             raw_mods,
-            vr,
+            esxi_vr,
             h,
             version_label=v.version_label,
             field_name="esxi_modules",
+        )
+        esxi_module_urls_legacy = _esxi_module_urls_from_json(
+            getattr(be, "esxi_modules_legacy", "") or "",
+            esxi_vr,
+            h,
+            version_label=v.version_label,
+            field_name="esxi_modules_legacy",
         )
         if be.kernel_path:
             esxi_mboot_basename = (
@@ -432,8 +448,6 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     autoconfigs = _menu_autoconfig_entries(
         v, os_type, h, ubuntu_variant=ubuntu_variant or "desktop"
     )
-    if be and (slug_l == "esxi" or bt_l == "esxi") and autoconfigs:
-        autoconfigs = _materialize_esxi_autoconfig_boot_cfgs(cfg, be, autoconfigs)
 
     winpe_active_label = ""
     mode_suffix = ""
@@ -467,8 +481,10 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "custom_ipxe":  h(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      h(be.modloop_path) if be and be.modloop_path else "",
         "esxi_boot_cfg": esxi_boot_http,
+        "esxi_boot_cfg_legacy": esxi_boot_http_legacy,
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
+        "esxi_module_urls_legacy": esxi_module_urls_legacy,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.c32
         "kernel_args": _build_kernel_args(
             be, os_type.slug, cfg, nfsroot_pair=nfs_pair, iso_version=v
@@ -580,7 +596,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             continue
         ver = d.name
         new_line = f"prefix={base}/boot/esxi/{ver}/"
-        candidates = (d / "ipxe-boot.cfg",)
+        candidates = (d / "ipxe-boot.cfg", d / "ipxe-boot-legacy.cfg")
         for path in candidates:
             if not path.is_file():
                 continue
@@ -590,7 +606,8 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             except OSError as e:
                 logger.warning("ESXi %s illisible %s : %s", fname, path, e)
                 continue
-            text = normalize_esxi_ipxe_boot_cfg_paths(text)
+            if path.name == "ipxe-boot.cfg":
+                text = normalize_esxi_ipxe_boot_cfg_paths(text)
             lines = text.splitlines()
             out: list[str] = []
             replaced_prefix = False
@@ -712,6 +729,12 @@ def regenerate_all(db: Session) -> list[str]:
                     cfg_http = _http(getattr(be, "esxi_boot_cfg_path", None), cfg)
                     if efi_rel:
                         kb = efi_rel.replace("\\", "/").rstrip("/").split("/")[-1]
+                        efi_autocfgs = _materialize_esxi_autoconfig_boot_cfgs(
+                            cfg,
+                            getattr(be, "esxi_boot_cfg_path", None) or "",
+                            list(entry.get("autoconfigs") or []),
+                            file_suffix="_efi",
+                        )
                         rows.append(
                             {
                                 **entry,
@@ -720,6 +743,7 @@ def regenerate_all(db: Session) -> list[str]:
                                 "esxi_boot_cfg": cfg_http,
                                 "esxi_mboot_basename": kb,
                                 "esxi_module_urls": entry["esxi_module_urls"],
+                                "autoconfigs": efi_autocfgs,
                                 "ipxe_item_tag": f"v{v.id}_uefi",
                             }
                         )
@@ -727,14 +751,31 @@ def regenerate_all(db: Session) -> list[str]:
                         kp = be.kernel_path or ""
                         kb = kp.replace("\\", "/").rstrip("/").split("/")[-1]
                         leg_suffix = " [Legacy]" if efi_rel else ""
+                        legacy_cfg_http = _http(
+                            getattr(be, "esxi_boot_cfg_legacy_path", None)
+                            or getattr(be, "esxi_boot_cfg_path", None),
+                            cfg,
+                        )
+                        leg_autocfgs = _materialize_esxi_autoconfig_boot_cfgs(
+                            cfg,
+                            getattr(be, "esxi_boot_cfg_legacy_path", None)
+                            or getattr(be, "esxi_boot_cfg_path", None)
+                            or "",
+                            list(entry.get("autoconfigs") or []),
+                            file_suffix="_legacy",
+                        )
                         rows.append(
                             {
                                 **entry,
                                 "label": f"{entry['label']}{leg_suffix}",
                                 "kernel": _http(kp, cfg),
-                                "esxi_boot_cfg": cfg_http,
+                                "esxi_boot_cfg": legacy_cfg_http,
                                 "esxi_mboot_basename": kb,
-                                "esxi_module_urls": entry["esxi_module_urls"],
+                                "esxi_module_urls": (
+                                    entry.get("esxi_module_urls_legacy")
+                                    or entry["esxi_module_urls"]
+                                ),
+                                "autoconfigs": leg_autocfgs,
                                 "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
                             }
                         )
