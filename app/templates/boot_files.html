@@ -76,12 +76,13 @@
               ('boot.esxi_loader_uefi_mboot',    be.esxi_efi_boot_path),
               ('boot.esxi_loader_legacy_mboot', be.kernel_path),
               ('boot.esxi_ipxe_boot_cfg',  be.esxi_boot_cfg_path),
+              ('ipxe-boot-legacy.cfg', be.esxi_boot_cfg_legacy_path),
           ] %}
             {% if path_esxi %}
             <div class="col-md-6">
               <div class="p-2 bg-dark border border-secondary rounded">
                 <div class="d-flex justify-content-between align-items-start">
-                  <span class="small text-info fw-semibold">{{ t(label_key) }}</span>
+                  <span class="small text-info fw-semibold">{% if label_key.startswith('boot.') %}{{ t(label_key) }}{% else %}{{ label_key }}{% endif %}</span>
                   <a href="{{ server_url }}/{{ path_esxi }}" target="_blank" class="small text-muted">
                     <i class="bi bi-box-arrow-up-right"></i>
                   </a>
