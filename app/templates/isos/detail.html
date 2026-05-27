@@ -447,6 +447,7 @@
           <table class="table table-sm table-dark table-borderless mb-0">
             <thead>
               <tr class="text-muted small">
+                <th>Famille</th>
                 <th>Dossier</th>
                 <th>Libellé</th>
                 <th>Index</th>
@@ -455,7 +456,8 @@
             <tbody>
               {% for gm in global_winpe_masters %}
               <tr>
-                <td class="font-monospace">masters/{{ gm.slug }}/</td>
+                <td class="font-monospace">{{ gm.family }}</td>
+                <td class="font-monospace">masters/{{ gm.family }}/{{ gm.slug }}/</td>
                 <td>{{ gm.label }}</td>
                 <td>{{ gm.wim_index }}</td>
               </tr>

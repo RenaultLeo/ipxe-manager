@@ -30,14 +30,25 @@ def normalize_master_slug(raw: str) -> str:
     return slug
 
 
-def master_folder(slug: str) -> Path:
-    p = masters_root() / normalize_master_slug(slug)
+def normalize_master_family(raw: str) -> str:
+    fam = (raw or "").strip()
+    if not _SLUG_RE.match(fam):
+        raise ValueError("Famille master invalide.")
+    return fam
+
+
+def compose_master_key(family: str, slug: str) -> str:
+    return f"{normalize_master_family(family)}/{normalize_master_slug(slug)}"
+
+
+def master_folder(slug: str, family: str = "w11") -> Path:
+    p = masters_root() / compose_master_key(family, slug)
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def master_wim_path(slug: str) -> Path:
-    return master_folder(slug) / INSTALL_WIM_FILENAME
+def master_wim_path(slug: str, family: str = "w11") -> Path:
+    return master_folder(slug, family) / INSTALL_WIM_FILENAME
 
 
 def _load_catalog() -> dict[str, dict[str, Any]]:
@@ -60,12 +71,14 @@ def _save_catalog(cat: dict[str, dict[str, Any]]) -> None:
     )
 
 
-def upsert_master_meta(slug: str, *, label: str, wim_index: int) -> None:
+def upsert_master_meta(slug: str, *, family: str = "w11", label: str, wim_index: int) -> None:
+    fam = normalize_master_family(family)
     s = normalize_master_slug(slug)
+    key = compose_master_key(fam, s)
     lbl = (label or s).strip() or s
     idx = max(1, int(wim_index or 1))
     cat = _load_catalog()
-    cat[s] = {"slug": s, "label": lbl, "wim_index": idx}
+    cat[key] = {"family": fam, "slug": s, "key": key, "label": lbl, "wim_index": idx}
     _save_catalog(cat)
 
 
@@ -73,21 +86,47 @@ def list_global_masters() -> list[dict[str, Any]]:
     cat = _load_catalog()
     out: list[dict[str, Any]] = []
     root = masters_root()
-    for folder in sorted(root.iterdir(), key=lambda p: p.name.casefold()):
-        if not folder.is_dir():
+    for family_dir in sorted(root.iterdir(), key=lambda p: p.name.casefold()):
+        if not family_dir.is_dir():
             continue
-        slug = folder.name
-        wim = folder / INSTALL_WIM_FILENAME
-        if not wim.is_file():
+        # Compat ancien schéma: boot/masters/<slug>/install.wim
+        legacy_wim = family_dir / INSTALL_WIM_FILENAME
+        if legacy_wim.is_file():
+            slug = family_dir.name
+            key = f"w11/{slug}"
+            meta = cat.get(slug) or cat.get(key) or {}
+            out.append(
+                {
+                    "family": "w11",
+                    "slug": slug,
+                    "key": key,
+                    "label": (meta.get("label") or slug),
+                    "wim_index": max(1, int(meta.get("wim_index") or 1)),
+                    "wim_path": str(legacy_wim),
+                    "size": legacy_wim.stat().st_size,
+                }
+            )
             continue
-        meta = cat.get(slug) or {}
-        out.append(
-            {
-                "slug": slug,
-                "label": (meta.get("label") or slug),
-                "wim_index": max(1, int(meta.get("wim_index") or 1)),
-                "wim_path": str(wim),
-                "size": wim.stat().st_size,
-            }
-        )
+
+        family = family_dir.name
+        for folder in sorted(family_dir.iterdir(), key=lambda p: p.name.casefold()):
+            if not folder.is_dir():
+                continue
+            slug = folder.name
+            key = f"{family}/{slug}"
+            wim = folder / INSTALL_WIM_FILENAME
+            if not wim.is_file():
+                continue
+            meta = cat.get(key) or {}
+            out.append(
+                {
+                    "family": family,
+                    "slug": slug,
+                    "key": key,
+                    "label": (meta.get("label") or slug),
+                    "wim_index": max(1, int(meta.get("wim_index") or 1)),
+                    "wim_path": str(wim),
+                    "size": wim.stat().st_size,
+                }
+            )
     return out

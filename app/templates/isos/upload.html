@@ -35,7 +35,7 @@
                 {% endfor %}
               </select>
             </div>
-          <div class="col-md-6">
+          <div class="col-md-6" id="version-label-col">
               <label class="form-label">{{ t('iso.upload.version_label') }} <span class="text-danger">*</span></label>
               <input type="text" name="version_label" class="form-control" id="version-label-input"
                      placeholder="{{ t('iso.upload.version_ph') }}" required>
@@ -57,6 +57,22 @@
                 <option value="master">WinPE Déploiement (masters)</option>
                 <option value="utility">WinPE Utilitaire (debug)</option>
               </select>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4 d-none" id="master-store-row">
+            <div class="col-md-4">
+              <label class="form-label">Famille master</label>
+              <input type="text" name="master_family" id="master-family-input" class="form-control" value="w11" placeholder="w11">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">Nom master</label>
+              <input type="text" name="master_name" id="master-name-input" class="form-control" placeholder="win11-master-ryzen">
+              <div class="form-text text-muted">Chemin final : <code>boot/masters/&lt;famille&gt;/&lt;nom&gt;/install.wim</code></div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Index DISM</label>
+              <input type="number" name="master_wim_index" id="master-index-input" class="form-control" min="1" max="99" value="1">
             </div>
           </div>
 
@@ -379,7 +395,11 @@ function syncOsSelectUi() {
   const winRow = document.getElementById('windows-mode-row');
   const winSel = document.getElementById('windows-mode-select');
   const winpeCol = document.getElementById('winpe-mode-col');
+  const masterStoreRow = document.getElementById('master-store-row');
+  const masterNameInput = document.getElementById('master-name-input');
+  const masterFamilyInput = document.getElementById('master-family-input');
   const versionInput = document.getElementById('version-label-input');
+  const versionCol = document.getElementById('version-label-col');
   const isoInput = document.getElementById('iso-file');
 
   const isWindowsFamily = (bootType === 'windows' || slug === 'windows' || slug === 'winpe');
@@ -390,10 +410,15 @@ function syncOsSelectUi() {
   const isWinpe = isWindowsFamily && wm === 'winpe';
   const isMasterStore = isWindowsFamily && wm === 'master_store';
   if (winpeCol) winpeCol.classList.toggle('d-none', !isWinpe);
+  if (masterStoreRow) masterStoreRow.classList.toggle('d-none', !isMasterStore);
   if (versionInput) {
     versionInput.placeholder = isMasterStore ? 'ex: win11-master-ryzen' : {{ t('iso.upload.version_ph')|tojson }};
-    versionInput.required = true;
+    versionInput.required = !isMasterStore;
+    if (isMasterStore) versionInput.value = '';
   }
+  if (versionCol) versionCol.classList.toggle('d-none', isMasterStore);
+  if (masterNameInput) masterNameInput.required = isMasterStore;
+  if (masterFamilyInput) masterFamilyInput.required = isMasterStore;
   if (isoInput) {
     isoInput.accept = isMasterStore ? '.wim' : '.iso,.img,.wim';
   }
@@ -458,6 +483,15 @@ async function runIsoDupCheck() {
 document.getElementById('iso-file').addEventListener('change', function() {
   const sel = document.getElementById('os-select');
   const opt = sel.options[sel.selectedIndex];
+  const wm = (document.getElementById('windows-mode-select') || {}).value || '';
+  const f = this.files && this.files[0];
+  if (wm === 'master_store' && f) {
+    const stem = (f.name || '').replace(/\.[^.]+$/, '');
+    const nameInput = document.getElementById('master-name-input');
+    if (nameInput && !nameInput.value.trim()) {
+      nameInput.value = stem.replace(/\s+/g, '-').toLowerCase();
+    }
+  }
   if ((opt.dataset.boot || '') === 'linux') updateLinuxFields();
   scheduleIsoDupCheck();
 });

@@ -108,14 +108,15 @@ def build_masters_catalog(
 
         existing = {r["slug"] for r in rows}
         for gm in list_global_masters():
-            slug = str(gm.get("slug") or "").strip()
+            slug = str(gm.get("key") or gm.get("slug") or "").strip()
             if not slug or slug in existing:
                 continue
+            wim_rel = slug.replace("/", "\\")
             rows.append(
                 {
                     "slug": slug,
                     "label": str(gm.get("label") or slug).strip() or slug,
-                    "wimPath": f"Z:\\masters\\{slug}\\{INSTALL_WIM_FILENAME}",
+                    "wimPath": f"Z:\\masters\\{wim_rel}\\{INSTALL_WIM_FILENAME}",
                     "dismIndex": max(1, int(gm.get("wim_index") or 1)),
                 }
             )

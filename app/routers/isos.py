@@ -451,9 +451,12 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     kernel_args = str(form.get("kernel_args") or "").strip()
     alpine_repo_custom_raw = form.get("alpine_repo_custom")
     alpine_repo_url_raw = str(form.get("alpine_repo_url") or "").strip()
-
-    if not version_label:
-        raise HTTPException(400, "Label de version requis")
+    master_family = str(form.get("master_family") or "w11").strip().lower()
+    master_name = str(form.get("master_name") or "").strip()
+    try:
+        master_wim_index = max(1, int(str(form.get("master_wim_index") or "1").strip() or "1"))
+    except ValueError:
+        master_wim_index = 1
 
     owner = get_session_user(request)
     if not owner:
@@ -472,6 +475,8 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         windows_mode = "desktop"
     if winpe_mode not in {"master", "utility"}:
         winpe_mode = "master"
+    if windows_mode != "master_store" and not version_label:
+        raise HTTPException(400, "Label de version requis")
 
     ubuntu_variant = "desktop"
     if os_type.slug == "ubuntu":
@@ -509,10 +514,22 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         fname = Path(file_iso.filename or "").name
         if not fname.lower().endswith(".wim"):
             raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
-        from app.services.winpe_master_store import master_wim_path, normalize_master_slug, upsert_master_meta
+        from app.services.winpe_master_store import (
+            master_wim_path,
+            normalize_master_family,
+            normalize_master_slug,
+            upsert_master_meta,
+        )
 
-        slug = normalize_master_slug(version_label)
-        dest = master_wim_path(slug)
+        family = normalize_master_family(master_family or "w11")
+        if master_name:
+            slug = normalize_master_slug(master_name.replace(" ", "-"))
+        else:
+            base_name = Path(fname).stem.strip()
+            if not base_name:
+                raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
+            slug = normalize_master_slug(base_name.replace(" ", "-"))
+        dest = master_wim_path(slug, family)
         size = 0
         with open(dest, "wb") as out:
             while chunk := await file_iso.read(1024 * 1024):
@@ -520,10 +537,10 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                 size += len(chunk)
         if size <= 0:
             raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
-        upsert_master_meta(slug, label=notes or slug, wim_index=1)
+        upsert_master_meta(slug, family=family, label=slug, wim_index=master_wim_index)
         db.add(
             Upload(
-                filename=f"masters/{slug}/install.wim",
+                filename=f"masters/{family}/{slug}/install.wim",
                 file_type="install_wim",
                 size=size,
                 status="done",
