@@ -62,6 +62,8 @@ class IsoVersion(Base):
     active_autoconfig_id = Column(Integer, ForeignKey("autoconfigs.id"), nullable=True, index=True)
     active_winpe_install_id = Column(Integer, ForeignKey("winpe_installs.id"), nullable=True, index=True)
     winpe_startnet_patched_at = Column(DateTime, nullable=True)
+    windows_mode = Column(String(16), default="desktop", nullable=False)  # desktop | winpe
+    winpe_mode = Column(String(16), default="master", nullable=False)  # master | utility
     created_at = Column(DateTime, default=datetime.utcnow)
 
     os_type = relationship("OsType", back_populates="versions")

@@ -115,6 +115,9 @@ def _migrate_columns():
     _add_column_if_missing("iso_versions", "active_autoconfig_id", "INTEGER")
     _add_column_if_missing("iso_versions", "active_winpe_install_id", "INTEGER")
     _add_column_if_missing("iso_versions", "winpe_startnet_patched_at", "DATETIME")
+    _add_column_if_missing("iso_versions", "windows_mode", "VARCHAR(16) DEFAULT 'desktop'")
+    _add_column_if_missing("iso_versions", "winpe_mode", "VARCHAR(16) DEFAULT 'master'")
+    _backfill_windows_modes()
     _add_column_if_missing("os_types", "extract_full_iso", "BOOLEAN DEFAULT 0")
     _add_column_if_missing("os_types", "extract_paths_json", "TEXT DEFAULT '[]'")
     _add_column_if_missing("os_types", "ipxe_roles_json", "TEXT DEFAULT '[]'")
@@ -261,6 +264,40 @@ def _backfill_ubuntu_variant_desktop() -> None:
             conn.commit()
     except Exception:
         logger.exception("Migration : backfill ubuntu_variant")
+
+
+def _backfill_windows_modes() -> None:
+    """Compat: anciennes versions de l'OS slug 'winpe' => windows_mode=winpe."""
+    if "sqlite" not in settings.database_url:
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE iso_versions
+                    SET windows_mode = 'winpe'
+                    WHERE id IN (
+                        SELECT iv.id
+                        FROM iso_versions iv
+                        JOIN os_types ot ON ot.id = iv.os_type_id
+                        WHERE LOWER(COALESCE(ot.slug, '')) = 'winpe'
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE iso_versions
+                    SET winpe_mode = 'master'
+                    WHERE winpe_mode IS NULL OR TRIM(winpe_mode) = ''
+                    """
+                )
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Migration : backfill windows_mode/winpe_mode")
 
 
 def _add_column_if_missing(table: str, column: str, col_type: str) -> bool:

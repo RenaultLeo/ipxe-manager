@@ -463,6 +463,16 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if not os_type:
         raise HTTPException(404, "Type d'OS introuvable")
 
+    windows_mode = str(form.get("windows_mode") or "desktop").strip().lower()
+    winpe_mode = str(form.get("winpe_mode") or "master").strip().lower()
+    if (os_type.boot_type or "").lower() != "windows":
+        windows_mode = "desktop"
+        winpe_mode = "master"
+    if windows_mode not in {"desktop", "winpe", "master_store"}:
+        windows_mode = "desktop"
+    if winpe_mode not in {"master", "utility"}:
+        winpe_mode = "master"
+
     ubuntu_variant = "desktop"
     if os_type.slug == "ubuntu":
         uv = str(form.get("ubuntu_variant") or "desktop").strip().lower()
@@ -475,9 +485,12 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if file_iso:
         iso_safe_name = Path(file_iso.filename).name
         ext = Path(iso_safe_name).suffix.lower()
-        if ext not in {".iso", ".img", ""}:
+        allowed_exts = {".iso", ".img", ""}
+        if (os_type.boot_type or "").lower() == "windows" and windows_mode == "master_store":
+            allowed_exts = {".wim"}
+        if ext not in allowed_exts:
             raise HTTPException(400, f"Extension non supportée : {ext}")
-        if _iso_duplicate_label_and_filename(db, os_type_id, version_label, iso_safe_name):
+        if windows_mode != "master_store" and _iso_duplicate_label_and_filename(db, os_type_id, version_label, iso_safe_name):
             raise HTTPException(
                 status_code=409,
                 detail=translate(lang, "iso.upload.iso_duplicate_submit"),
@@ -490,6 +503,36 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if blocked1:
         raise HTTPException(status_code=blocked1[0], detail=blocked1[1])
 
+    if (os_type.boot_type or "").lower() == "windows" and windows_mode == "master_store":
+        if not file_iso:
+            raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
+        fname = Path(file_iso.filename or "").name
+        if not fname.lower().endswith(".wim"):
+            raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
+        from app.services.winpe_master_store import master_wim_path, normalize_master_slug, upsert_master_meta
+
+        slug = normalize_master_slug(version_label)
+        dest = master_wim_path(slug)
+        size = 0
+        with open(dest, "wb") as out:
+            while chunk := await file_iso.read(1024 * 1024):
+                out.write(chunk)
+                size += len(chunk)
+        if size <= 0:
+            raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
+        upsert_master_meta(slug, label=notes or slug, wim_index=1)
+        db.add(
+            Upload(
+                filename=f"masters/{slug}/install.wim",
+                file_type="install_wim",
+                size=size,
+                status="done",
+                owner_user_id=owner.id,
+            )
+        )
+        db.commit()
+        return RedirectResponse(f"/isos/upload?os={os_type.slug}", status_code=302)
+
     version = IsoVersion(
         os_type_id=os_type_id,
         owner_user_id=owner.id,
@@ -498,6 +541,8 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
         iso_size=0,
         notes=notes,
         ubuntu_variant=ubuntu_variant,
+        windows_mode=("winpe" if windows_mode == "winpe" else "desktop"),
+        winpe_mode=("utility" if winpe_mode == "utility" else "master"),
     )
     db.add(version)
     db.flush()
@@ -831,6 +876,19 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
     winpe_language_packs_catalog: list = []
     winpe_language_packs_root = ""
     winpe_scripts_dir = ""
+    global_winpe_masters: list = []
+    windows_mode = (getattr(version, "windows_mode", None) or "desktop").lower()
+    winpe_mode = (getattr(version, "winpe_mode", None) or "master").lower()
+    is_winpe_master_mode = bool(
+        (version.os_type.boot_type == "windows")
+        and windows_mode == "winpe"
+        and winpe_mode == "master"
+    )
+    is_winpe_utility_mode = bool(
+        (version.os_type.boot_type == "windows")
+        and windows_mode == "winpe"
+        and winpe_mode == "utility"
+    )
     if version.os_type.boot_type == "windows":
         try:
             from app.services.winpe_drivers import (
@@ -850,6 +908,9 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             from app.services.winpe_scripts import scripts_dir
 
             winpe_scripts_dir = str(scripts_dir(version))
+            from app.services.winpe_master_store import list_global_masters
+
+            global_winpe_masters = list_global_masters()
         except Exception:
             pass
 
@@ -867,6 +928,11 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             winpe_language_packs_catalog=winpe_language_packs_catalog,
             winpe_language_packs_root=winpe_language_packs_root,
             winpe_scripts_dir=winpe_scripts_dir,
+            global_winpe_masters=global_winpe_masters,
+            windows_mode=windows_mode,
+            winpe_mode=winpe_mode,
+            is_winpe_master_mode=is_winpe_master_mode,
+            is_winpe_utility_mode=is_winpe_utility_mode,
             extract_error_msg=extract_error_msg,
             extract_warning_msg=extract_warning_msg,
             fmt_size=fmt_size,
@@ -898,6 +964,8 @@ async def iso_activate_config(
     version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
+    lang = getattr(request.state, "locale", "fr")
+    _winpe_master_mode_required(version, lang)
     user = get_session_user(request)
     if not can_modify_iso_version(user, version):
         raise HTTPException(403)
@@ -1210,6 +1278,14 @@ def _winpe_windows_version(version: IsoVersion, lang: str) -> None:
         raise HTTPException(status_code=404)
     if (version.os_type.boot_type or "").lower() != "windows":
         raise HTTPException(400, detail=translate(lang, "iso.winpe_not_windows"))
+    if (getattr(version, "windows_mode", None) or "desktop").lower() != "winpe":
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_not_windows"))
+
+
+def _winpe_master_mode_required(version: IsoVersion, lang: str) -> None:
+    _winpe_master_mode_required(version, lang)
+    if (getattr(version, "winpe_mode", None) or "master").lower() != "master":
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_scripts_no_masters"))
 
 
 @router.get("/uploads/{upload_id}/status")
@@ -1247,7 +1323,7 @@ async def winpe_drivers_catalog_route(
         raise HTTPException(401)
     lang = getattr(request.state, "locale", "fr")
     version = _get_version_view_or_404(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
     from app.services.winpe_drivers import catalog_for_template
 
     return JSONResponse({"machines": catalog_for_template()})
@@ -1273,7 +1349,7 @@ async def upload_winpe_drivers(
         raise HTTPException(401)
 
     version = _get_version_modify_with_os(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
 
     fname = Path(driver_zip.filename or "").name
     if not fname.lower().endswith(".zip"):
@@ -1431,7 +1507,7 @@ async def winpe_language_packs_catalog_route(
         raise HTTPException(401)
     lang = getattr(request.state, "locale", "fr")
     version = _get_version_view_or_404(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
     from app.services.winpe_language_packs import catalog_for_template
 
     return JSONResponse({"languages": catalog_for_template()})
@@ -1449,7 +1525,7 @@ async def upload_winpe_language_packs(
         return redir
     lang = getattr(request.state, "locale", "fr")
     version = _get_version_modify_with_os(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
 
     form = await _read_multipart_form(request, lang=lang)
     files = _upload_files_from_form(form, "pack_files")
@@ -1549,7 +1625,7 @@ async def winpe_install_precheck(
         raise HTTPException(401)
     lang = getattr(request.state, "locale", "fr")
     version = _get_version_view_or_404(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
     blocked = _multipart_upload_blocked(lang, mf=None, expected_file_bytes=total_bytes)
     if blocked:
         _, detail = blocked
@@ -1599,7 +1675,7 @@ async def upload_winpe_install(
         raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
 
     version = _get_version_modify_with_os(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
 
     from app.services.winpe_installs import (
         INSTALL_WIM_FILENAME,
@@ -1735,9 +1811,11 @@ async def regenerate_winpe_scripts_route(
         return redir
     lang = getattr(request.state, "locale", "fr")
     version = _get_version_modify_with_os(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
 
-    if not version.winpe_installs:
+    from app.services.winpe_scripts import build_masters_catalog
+
+    if not build_masters_catalog(version, list(version.winpe_installs or [])):
         raise HTTPException(400, detail=translate(lang, "iso.winpe_scripts_no_masters"))
 
     if not version.boot_entry or not (version.boot_entry.boot_wim_path or "").strip():
@@ -1777,7 +1855,7 @@ async def winpe_scripts_status_route(
         raise HTTPException(401)
     lang = getattr(request.state, "locale", "fr")
     version = _get_version_view_or_404(db, request, version_id)
-    _winpe_windows_version(version, lang)
+    _winpe_master_mode_required(version, lang)
 
     from app.datetime_display import format_local_dt
     from app.services.winpe_scripts import (
@@ -1809,7 +1887,7 @@ async def winpe_scripts_status_route(
     return JSONResponse(
         {
             "ready": ready,
-            "pending": not ready and bool(installs),
+            "pending": not ready and bool(masters),
             "patched_at": patched.isoformat() if patched else None,
             "patched_at_display": format_local_dt(patched) if patched else "",
             "masters_count": len(masters),

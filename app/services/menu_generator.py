@@ -346,7 +346,12 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
             ubuntu_variant = "desktop"
 
     winpe_active_label = ""
+    mode_suffix = ""
     if be and (os_type.boot_type or "").lower() == "windows":
+        wmode = (getattr(v, "windows_mode", None) or "desktop").lower()
+        pmode = (getattr(v, "winpe_mode", None) or "master").lower()
+        if wmode == "winpe":
+            mode_suffix = " [WinPE utilitaire]" if pmode == "utility" else " [WinPE déploiement]"
         active_wid = getattr(v, "active_winpe_install_id", None)
         if active_wid:
             awi = next(
@@ -358,7 +363,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
 
     return {
         "id":           v.id,
-        "label":        f"{os_type.label} {v.version_label}",
+        "label":        f"{os_type.label} {v.version_label}{mode_suffix}",
         "winpe_active_label": winpe_active_label,
         "kernel":       h(be.kernel_path) if be and be.kernel_path else "",
         "initrd":       h(be.initrd_path) if be and be.initrd_path else "",

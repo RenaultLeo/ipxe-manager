@@ -281,7 +281,7 @@
     </div>
   </div>
 
-  {% if version.os_type.boot_type == 'windows' and can_modify %}
+  {% if version.os_type.boot_type == 'windows' and windows_mode == 'winpe' and can_modify %}
   <div class="col-12">
     <div class="card border-secondary border-info">
       <div class="card-header">
@@ -290,6 +290,13 @@
       <div class="card-body">
         <p class="small text-muted mb-3">{{ t('iso.winpe_install_intro') }}</p>
         <p class="small text-muted mb-3">{{ t('iso.winpe_scripts_intro') }}</p>
+        {% if is_winpe_utility_mode %}
+        <div class="alert alert-info py-2 small mb-3">
+          Mode WinPE utilitaire : seuls les fichiers de boot WinPE (notamment boot.wim) sont gérés sur cette version.
+        </div>
+        {% endif %}
+
+        {% if is_winpe_master_mode %}
 
         {% if request.query_params.get('msg') == 'winpe_install_ready' %}
         <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ready') }}</div>
@@ -306,7 +313,7 @@
           <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
           <span id="winpe-scripts-poll-text">{{ t('iso.winpe_scripts_polling') }}</span>
         </div>
-        {% if version.winpe_installs and not version.winpe_startnet_patched_at %}
+        {% if (version.winpe_installs or global_winpe_masters) and not version.winpe_startnet_patched_at %}
         <div class="alert alert-warning py-2 small mb-3">
           <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.winpe_scripts_stale') }}
         </div>
@@ -376,7 +383,7 @@
           </div>
           <div class="col-lg-7">
             <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_scripts_title') }}</h6>
-            {% if version.boot_entry and version.boot_entry.boot_wim_path and version.winpe_installs %}
+            {% if version.boot_entry and version.boot_entry.boot_wim_path and (version.winpe_installs or global_winpe_masters) %}
             <p class="small text-muted mb-2">{{ t('iso.winpe_scripts_help') }}</p>
             <form method="post" action="/isos/{{ version.id }}/regenerate-winpe-scripts" class="mb-2"
                   id="winpe-scripts-regenerate-form">
@@ -392,7 +399,7 @@
             {% if winpe_scripts_dir %}
             <p class="small text-muted font-monospace mb-0">{{ winpe_scripts_dir }}</p>
             {% endif %}
-            {% elif not version.winpe_installs %}
+            {% elif not (version.winpe_installs or global_winpe_masters) %}
             <p class="small text-muted mb-0">{{ t('iso.winpe_scripts_no_masters') }}</p>
             {% else %}
             <p class="small text-warning mb-0">{{ t('iso.winpe_need_boot_wim') }}</p>
@@ -428,6 +435,29 @@
                   </form>
                   {% endif %}
                 </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        {% if global_winpe_masters %}
+        <h6 class="text-muted small text-uppercase mt-3 mb-2">Masters globaux détectés (persistants)</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-dark table-borderless mb-0">
+            <thead>
+              <tr class="text-muted small">
+                <th>Dossier</th>
+                <th>Libellé</th>
+                <th>Index</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for gm in global_winpe_masters %}
+              <tr>
+                <td class="font-monospace">masters/{{ gm.slug }}/</td>
+                <td>{{ gm.label }}</td>
+                <td>{{ gm.wim_index }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -630,6 +660,7 @@
           <p class="small text-warning mb-0">{{ t('iso.winpe_language_packs_empty') }}</p>
           {% endif %}
         </div>
+        {% endif %}
       </div>
     </div>
   </div>

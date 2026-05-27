@@ -101,6 +101,27 @@ def build_masters_catalog(
                 "dismIndex": wim_index,
             }
         )
+
+    # Masters globaux persistants : Z:\masters\<slug>\install.wim
+    try:
+        from app.services.winpe_master_store import list_global_masters
+
+        existing = {r["slug"] for r in rows}
+        for gm in list_global_masters():
+            slug = str(gm.get("slug") or "").strip()
+            if not slug or slug in existing:
+                continue
+            rows.append(
+                {
+                    "slug": slug,
+                    "label": str(gm.get("label") or slug).strip() or slug,
+                    "wimPath": f"Z:\\masters\\{slug}\\{INSTALL_WIM_FILENAME}",
+                    "dismIndex": max(1, int(gm.get("wim_index") or 1)),
+                }
+            )
+            existing.add(slug)
+    except Exception:
+        logger.debug("Masters globaux indisponibles pour le catalogue WinPE", exc_info=True)
     return rows
 
 

@@ -42,13 +42,31 @@
             </div>
           </div>
 
+          <div class="row g-3 mb-4 d-none" id="windows-mode-row">
+            <div class="col-md-6">
+              <label class="form-label">Profil Windows</label>
+              <select name="windows_mode" class="form-select" id="windows-mode-select">
+                <option value="desktop">Windows Desktop</option>
+                <option value="winpe">WinPE</option>
+                <option value="master_store">Master (stockage global)</option>
+              </select>
+            </div>
+            <div class="col-md-6 d-none" id="winpe-mode-col">
+              <label class="form-label">Mode WinPE</label>
+              <select name="winpe_mode" class="form-select" id="winpe-mode-select">
+                <option value="master">WinPE Déploiement (masters)</option>
+                <option value="utility">WinPE Utilitaire (debug)</option>
+              </select>
+            </div>
+          </div>
+
           <!-- ISO file (optionnel) -->
           <div class="card border-secondary mb-4">
             <div class="card-header small text-muted">
               <i class="bi bi-disc me-1"></i>{{ t('iso.upload.iso_section') }}
             </div>
             <div class="card-body">
-              <input type="file" name="file" class="form-control" accept=".iso,.img" id="iso-file">
+              <input type="file" name="file" class="form-control" accept=".iso,.img,.wim" id="iso-file">
               <div class="form-text">{{ t('iso.upload.iso_hint') }}</div>
               <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                 <span id="iso-dup-badge" class="badge bg-warning text-dark d-none">{{ t('iso.upload.iso_duplicate_badge') }}</span>
@@ -357,6 +375,29 @@ function syncOsSelectUi() {
   const sel = document.getElementById('os-select');
   const opt = sel.options[sel.selectedIndex];
   const bootType = opt.dataset.boot || '';
+  const slug = opt.dataset.slug || '';
+  const winRow = document.getElementById('windows-mode-row');
+  const winSel = document.getElementById('windows-mode-select');
+  const winpeCol = document.getElementById('winpe-mode-col');
+  const versionInput = document.getElementById('version-label-input');
+  const isoInput = document.getElementById('iso-file');
+
+  const isWindowsFamily = (bootType === 'windows' || slug === 'windows' || slug === 'winpe');
+  if (winRow) winRow.classList.toggle('d-none', !isWindowsFamily);
+  if (!isWindowsFamily && winSel) winSel.value = 'desktop';
+
+  const wm = (winSel && isWindowsFamily) ? (winSel.value || 'desktop') : 'desktop';
+  const isWinpe = isWindowsFamily && wm === 'winpe';
+  const isMasterStore = isWindowsFamily && wm === 'master_store';
+  if (winpeCol) winpeCol.classList.toggle('d-none', !isWinpe);
+  if (versionInput) {
+    versionInput.placeholder = isMasterStore ? 'ex: win11-master-ryzen' : {{ t('iso.upload.version_ph')|tojson }};
+    versionInput.required = true;
+  }
+  if (isoInput) {
+    isoInput.accept = isMasterStore ? '.wim' : '.iso,.img,.wim';
+  }
+
   document.getElementById('fields-linux').classList.toggle('d-none', bootType !== 'linux');
   if (bootType === 'linux') {
     updateLinuxFields();
@@ -370,6 +411,10 @@ function syncOsSelectUi() {
   }
 }
 syncOsSelectUi();
+document.getElementById('windows-mode-select').addEventListener('change', function () {
+  syncOsSelectUi();
+  scheduleIsoDupCheck();
+});
 
 let isoDupTimer = null;
 function scheduleIsoDupCheck() {
@@ -452,11 +497,15 @@ document.getElementById('upload-form').addEventListener('submit', async function
   }
   const isoInput = document.getElementById('iso-file');
   const hasIso = !!(isoInput.files && isoInput.files[0]);
+  const windowsModeSel = document.getElementById('windows-mode-select');
+  const currentWinMode = windowsModeSel ? windowsModeSel.value : 'desktop';
   if (hasIso) {
-    const duplicate = await runIsoDupCheck();
-    if (duplicate) {
-      alert(msgDupSubmit);
-      return;
+    if (currentWinMode !== 'master_store') {
+      const duplicate = await runIsoDupCheck();
+      if (duplicate) {
+        alert(msgDupSubmit);
+        return;
+      }
     }
   }
 
