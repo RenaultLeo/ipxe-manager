@@ -379,6 +379,7 @@ def upload_winpe_install_task(
             row.label = label_s
             row.wim_index = max(1, int(wim_index or 1))
 
+        version.winpe_startnet_patched_at = None
         upload.status = "done"
         upload.size = dest.stat().st_size
         upload.filename = f"{slug}/{INSTALL_WIM_FILENAME}"

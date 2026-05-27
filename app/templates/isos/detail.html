@@ -291,8 +291,12 @@
         <p class="small text-muted mb-3">{{ t('iso.winpe_install_intro') }}</p>
         <p class="small text-muted mb-3">{{ t('iso.winpe_scripts_intro') }}</p>
 
-        {% if request.query_params.get('msg') == 'winpe_install_added' %}
-        <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
+        {% if request.query_params.get('msg') == 'winpe_install_ready' %}
+        <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ready') }}</div>
+        {% elif request.query_params.get('msg') == 'winpe_install_partial' %}
+        <div class="alert alert-warning py-2 small mb-3">{{ t('iso.winpe_install_partial') }}</div>
+        {% elif request.query_params.get('msg') == 'winpe_install_added' %}
+        <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
         {% endif %}
         <div id="winpe-upload-status-alert" class="alert alert-info py-2 small mb-3 d-none" role="status"></div>
         {% if request.query_params.get('msg') == 'winpe_scripts_done' %}
@@ -330,6 +334,9 @@
                   data-msg-started="{{ t('iso.winpe_upload_started') }}"
                   data-msg-done="{{ t('iso.winpe_upload_done') }}"
                   data-msg-error="{{ t('iso.winpe_upload_error') }}"
+                  data-msg-scripts-polling="{{ t('iso.winpe_scripts_polling') }}"
+                  data-msg-install-ready="{{ t('iso.winpe_install_ready') }}"
+                  data-msg-install-partial="{{ t('iso.winpe_install_partial') }}"
                   data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
                   data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
               <div class="col-12">
@@ -1052,6 +1059,8 @@
   var msgStarted = form.dataset.msgStarted || '';
   var msgDone = form.dataset.msgDone || '';
   var msgError = form.dataset.msgError || '';
+  var msgScriptsPolling = form.dataset.msgScriptsPolling || '';
+  var msgInstallPartial = form.dataset.msgInstallPartial || '';
   var msgXhr = form.dataset.msgXhr || 'Error';
   var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
 
@@ -1084,6 +1093,32 @@
     return String(detail);
   }
 
+  async function pollWinpeScriptsAfterInstall() {
+    if (statusAlert && msgScriptsPolling) showStatusAlert(msgScriptsPolling, 'info');
+    setProgress(100, msgScriptsPolling || msgFinalize);
+    var delay = 2000;
+    for (var attempt = 0; attempt < 90; attempt++) {
+      await new Promise(function (r) { setTimeout(r, delay); });
+      try {
+        var r = await fetch('/isos/' + versionId + '/winpe-scripts/status', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (r.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        if (!r.ok) continue;
+        var j = await r.json();
+        if (j.ready) {
+          window.location.href = '/isos/' + versionId + '?msg=winpe_install_ready';
+          return;
+        }
+      } catch (e) { /* retry */ }
+    }
+    window.location.href = '/isos/' + versionId + '?msg=winpe_install_partial';
+  }
+
   async function pollUploadJob(uploadId) {
     setProgress(100, msgFinalize);
     if (btn) btn.disabled = true;
@@ -1105,7 +1140,7 @@
         var j = await r.json();
         var st = (j.status || '').toLowerCase();
         if (st === 'done') {
-          window.location.href = '/isos/' + versionId + '?msg=winpe_install_added';
+          await pollWinpeScriptsAfterInstall();
           return;
         }
         if (st === 'error') {
@@ -1178,7 +1213,7 @@
           pollUploadJob(uploadId);
           return;
         }
-        window.location.href = '/isos/' + versionId + '?msg=winpe_install_added';
+        pollWinpeScriptsAfterInstall();
         return;
       }
       if (btn) btn.disabled = false;
@@ -1587,7 +1622,10 @@
         }
         if (j.ready) {
           showSuccess(j.patched_at_display || '');
-          if (window.location.search.indexOf('msg=winpe_scripts_queued') >= 0) {
+          var pageMsg = new URLSearchParams(window.location.search).get('msg');
+          if (pageMsg === 'winpe_install_added') {
+            window.location.replace('/isos/' + versionId + '?msg=winpe_install_ready');
+          } else if (pageMsg === 'winpe_scripts_queued') {
             window.location.replace('/isos/' + versionId + '?msg=winpe_scripts_done');
           }
           return;
@@ -1601,7 +1639,8 @@
     pollAlert.classList.remove('d-none');
   }
 
-  if (new URLSearchParams(window.location.search).get('msg') === 'winpe_scripts_queued') {
+  var pageMsg = new URLSearchParams(window.location.search).get('msg');
+  if (pageMsg === 'winpe_scripts_queued' || pageMsg === 'winpe_install_added') {
     pollWinpeScripts();
   }
 })();
