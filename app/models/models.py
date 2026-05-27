@@ -131,7 +131,10 @@ class BootEntry(Base):
 
 
 class WinpeInstall(Base):
-    """Image Windows ``install.wim`` sous ``boot/<os>/<ver>/installs/<slug>/install.wim``."""
+    """Image ``install.wim`` locale a une version WinPE.
+
+    Les masters globaux persistants sont stockes sous ``boot/masters/<family>/<slug>/install.wim``.
+    """
     __tablename__ = "winpe_installs"
 
     id = Column(Integer, primary_key=True, index=True)

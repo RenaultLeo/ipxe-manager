@@ -102,7 +102,7 @@ def build_masters_catalog(
             }
         )
 
-    # Masters globaux persistants : Z:\masters\<slug>\install.wim
+    # Masters globaux persistants : Z:\masters\<family>\<slug>\install.wim
     try:
         from app.services.winpe_master_store import list_global_masters
 

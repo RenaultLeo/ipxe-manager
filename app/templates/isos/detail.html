@@ -322,7 +322,7 @@
         {% if winpe_smb_host %}
         <p class="small mb-3">
           <strong>{{ t('iso.winpe_install_smb') }}</strong>
-          <code class="ms-1">\\{{ winpe_smb_host }}\{{ winpe_smb_share }}\{{ version.os_type.slug }}\…\installs\&lt;nom&gt;\install.wim</code>
+          <code class="ms-1">\\{{ winpe_smb_host }}\{{ winpe_smb_share }}\masters\&lt;famille&gt;\&lt;nom&gt;\install.wim</code>
           {% if winpe_installs_root %}
           <span class="d-block text-muted mt-1 font-monospace">{{ winpe_installs_root }}</span>
           {% endif %}
@@ -350,6 +350,7 @@
                 <label class="form-label small mb-1">{{ t('iso.winpe_install_slug') }}</label>
                 <input type="text" name="install_slug" class="form-control form-control-sm font-monospace"
                        placeholder="win11-pro" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*">
+                <div class="form-text text-muted">Stockage local version: <code>boot/{{ version.os_type.slug }}/…/installs/&lt;slug&gt;/install.wim</code></div>
               </div>
               <div class="col-12">
                 <label class="form-label small mb-1">{{ t('iso.winpe_install_label') }}</label>
@@ -422,7 +423,7 @@
             <tbody>
               {% for wi in version.winpe_installs %}
               <tr>
-                <td class="font-monospace">installs/{{ wi.slug }}/</td>
+                <td class="font-monospace">boot/{{ version.os_type.slug }}/…/installs/{{ wi.slug }}/</td>
                 <td>{{ wi.label or wi.slug }}</td>
                 <td>{{ wi.wim_index }}</td>
                 <td class="text-end">
@@ -442,7 +443,7 @@
         </div>
         {% endif %}
         {% if global_winpe_masters %}
-        <h6 class="text-muted small text-uppercase mt-3 mb-2">Masters globaux détectés (persistants)</h6>
+        <h6 class="text-muted small text-uppercase mt-3 mb-2">Masters globaux detectes (persistants)</h6>
         <div class="table-responsive">
           <table class="table table-sm table-dark table-borderless mb-0">
             <thead>
