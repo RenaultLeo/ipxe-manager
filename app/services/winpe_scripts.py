@@ -332,7 +332,8 @@ def regenerate_winpe_deployment(
     """
     Régénère scripts + optionnellement startnet.cmd dans boot.wim.
     """
-    if not installs:
+    masters = build_masters_catalog(version, installs)
+    if not masters:
         raise ValueError("Ajoutez au moins un master (install.wim) avant de générer les scripts.")
     _sync_windows_boot_paths(version)
     if patch_wim:
@@ -342,6 +343,6 @@ def regenerate_winpe_deployment(
         inject_startnet_into_boot_wim(version)
     return {
         "scripts_dir": str(sdir),
-        "masters": len(build_masters_catalog(version, installs)),
+        "masters": len(masters),
         "patched_at": datetime.utcnow().isoformat() + "Z",
     }
