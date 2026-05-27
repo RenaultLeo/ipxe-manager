@@ -1195,7 +1195,7 @@ function Show-WinpeDeployWizard {{
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'iPXE Manager — Deploiement'
-    $form.Size = New-Object System.Drawing.Size(520, 754)
+    $form.Size = New-Object System.Drawing.Size(520, 600)
     $form.StartPosition = 'CenterScreen'
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
@@ -1206,21 +1206,16 @@ function Show-WinpeDeployWizard {{
     $lblM.Size = New-Object System.Drawing.Size(480, 20)
     $form.Controls.Add($lblM)
 
-    $lstM = New-Object System.Windows.Forms.ListBox
-    $lstM.Location = New-Object System.Drawing.Point(12, 34)
-    $lstM.Size = New-Object System.Drawing.Size(480, 100)
-    # Force un affichage vertical item-par-item (pas de colonnes "stackees").
-    $lstM.MultiColumn = $false
-    $lstM.IntegralHeight = $false
-    $lstM.SelectionMode = [System.Windows.Forms.SelectionMode]::One
-    $lstM.ColumnWidth = 480
-    $lstM.HorizontalScrollbar = $true
-    foreach ($m in $Masters) {{
+    $cmbM = New-Object System.Windows.Forms.ComboBox
+    $cmbM.Location = New-Object System.Drawing.Point(12, 34)
+    $cmbM.Size = New-Object System.Drawing.Size(480, 24)
+    $cmbM.DropDownStyle = 'DropDownList'
+    foreach ($m in @($Masters)) {{
         $disp = if ($m.label -and $m.label -ne $m.slug) {{ "$($m.slug) — $($m.label)" }} else {{ "$($m.slug)" }}
-        [void]$lstM.Items.Add($disp)
+        [void]$cmbM.Items.Add($disp)
     }}
-    if ($lstM.Items.Count -gt 0) {{ $lstM.SelectedIndex = 0 }}
-    $form.Controls.Add($lstM)
+    if ($cmbM.Items.Count -gt 0) {{ $cmbM.SelectedIndex = 0 }}
+    $form.Controls.Add($cmbM)
 
     $lblD = New-Object System.Windows.Forms.Label
     if ($RequireManualDriver) {{
@@ -1232,12 +1227,12 @@ function Show-WinpeDeployWizard {{
     }} else {{
         $lblD.Text = 'Pilotes (optionnel)'
     }}
-    $lblD.Location = New-Object System.Drawing.Point(12, 142)
+    $lblD.Location = New-Object System.Drawing.Point(12, 66)
     $lblD.Size = New-Object System.Drawing.Size(480, 36)
     $form.Controls.Add($lblD)
 
     $cmbD = New-Object System.Windows.Forms.ComboBox
-    $cmbD.Location = New-Object System.Drawing.Point(12, 180)
+    $cmbD.Location = New-Object System.Drawing.Point(12, 104)
     $cmbD.Size = New-Object System.Drawing.Size(480, 24)
     $cmbD.DropDownStyle = 'DropDownList'
     [void]$cmbD.Items.Add('(aucun pilote)')
@@ -1253,12 +1248,12 @@ function Show-WinpeDeployWizard {{
 
     $lblLang = New-Object System.Windows.Forms.Label
     $lblLang.Text = 'Langue interface (setup + OOBE)'
-    $lblLang.Location = New-Object System.Drawing.Point(12, 218)
+    $lblLang.Location = New-Object System.Drawing.Point(12, 136)
     $lblLang.Size = New-Object System.Drawing.Size(480, 20)
     $form.Controls.Add($lblLang)
 
     $cmbLang = New-Object System.Windows.Forms.ComboBox
-    $cmbLang.Location = New-Object System.Drawing.Point(12, 240)
+    $cmbLang.Location = New-Object System.Drawing.Point(12, 158)
     $cmbLang.Size = New-Object System.Drawing.Size(480, 24)
     $cmbLang.DropDownStyle = 'DropDownList'
     foreach ($lp in @($script:WinpeUiLanguages)) {{
@@ -1276,12 +1271,12 @@ function Show-WinpeDeployWizard {{
 
     $lblReg = New-Object System.Windows.Forms.Label
     $lblReg.Text = 'Region / formats (dates, nombres, devise)'
-    $lblReg.Location = New-Object System.Drawing.Point(12, 272)
+    $lblReg.Location = New-Object System.Drawing.Point(12, 190)
     $lblReg.Size = New-Object System.Drawing.Size(480, 20)
     $form.Controls.Add($lblReg)
 
     $cmbReg = New-Object System.Windows.Forms.ComboBox
-    $cmbReg.Location = New-Object System.Drawing.Point(12, 294)
+    $cmbReg.Location = New-Object System.Drawing.Point(12, 212)
     $cmbReg.Size = New-Object System.Drawing.Size(480, 24)
     $cmbReg.DropDownStyle = 'DropDownList'
     foreach ($rg in @($script:WinpeRegions)) {{
@@ -1299,12 +1294,12 @@ function Show-WinpeDeployWizard {{
 
     $lblKb = New-Object System.Windows.Forms.Label
     $lblKb.Text = 'Clavier / disposition'
-    $lblKb.Location = New-Object System.Drawing.Point(12, 326)
+    $lblKb.Location = New-Object System.Drawing.Point(12, 244)
     $lblKb.Size = New-Object System.Drawing.Size(480, 20)
     $form.Controls.Add($lblKb)
 
     $cmbKb = New-Object System.Windows.Forms.ComboBox
-    $cmbKb.Location = New-Object System.Drawing.Point(12, 348)
+    $cmbKb.Location = New-Object System.Drawing.Point(12, 266)
     $cmbKb.Size = New-Object System.Drawing.Size(480, 24)
     $cmbKb.DropDownStyle = 'DropDownList'
     foreach ($kb in @($script:WinpeKeyboardLayouts)) {{
@@ -1322,41 +1317,41 @@ function Show-WinpeDeployWizard {{
 
     $lblCn = New-Object System.Windows.Forms.Label
     $lblCn.Text = 'Nom de la machine (vide = defaut du master)'
-    $lblCn.Location = New-Object System.Drawing.Point(12, 386)
+    $lblCn.Location = New-Object System.Drawing.Point(12, 304)
     $lblCn.Size = New-Object System.Drawing.Size(480, 20)
     $form.Controls.Add($lblCn)
 
     $txtCn = New-Object System.Windows.Forms.TextBox
-    $txtCn.Location = New-Object System.Drawing.Point(12, 408)
+    $txtCn.Location = New-Object System.Drawing.Point(12, 326)
     $txtCn.Size = New-Object System.Drawing.Size(480, 24)
     $form.Controls.Add($txtCn)
 
     $chkU = New-Object System.Windows.Forms.CheckBox
     $chkU.Text = 'Ajouter un compte local (les comptes du master ne sont pas modifies)'
-    $chkU.Location = New-Object System.Drawing.Point(12, 446)
+    $chkU.Location = New-Object System.Drawing.Point(12, 364)
     $chkU.Size = New-Object System.Drawing.Size(480, 24)
     $form.Controls.Add($chkU)
 
     $lblU = New-Object System.Windows.Forms.Label
     $lblU.Text = 'Nom utilisateur'
-    $lblU.Location = New-Object System.Drawing.Point(12, 474)
+    $lblU.Location = New-Object System.Drawing.Point(12, 392)
     $lblU.Size = New-Object System.Drawing.Size(200, 20)
     $form.Controls.Add($lblU)
 
     $txtU = New-Object System.Windows.Forms.TextBox
-    $txtU.Location = New-Object System.Drawing.Point(12, 494)
+    $txtU.Location = New-Object System.Drawing.Point(12, 412)
     $txtU.Size = New-Object System.Drawing.Size(480, 24)
     $txtU.Enabled = $false
     $form.Controls.Add($txtU)
 
     $lblP = New-Object System.Windows.Forms.Label
     $lblP.Text = 'Mot de passe'
-    $lblP.Location = New-Object System.Drawing.Point(12, 522)
+    $lblP.Location = New-Object System.Drawing.Point(12, 440)
     $lblP.Size = New-Object System.Drawing.Size(200, 20)
     $form.Controls.Add($lblP)
 
     $txtP = New-Object System.Windows.Forms.TextBox
-    $txtP.Location = New-Object System.Drawing.Point(12, 542)
+    $txtP.Location = New-Object System.Drawing.Point(12, 460)
     $txtP.Size = New-Object System.Drawing.Size(480, 24)
     $txtP.UseSystemPasswordChar = $true
     $txtP.Enabled = $false
@@ -1370,7 +1365,7 @@ function Show-WinpeDeployWizard {{
 
     $btnOk = New-Object System.Windows.Forms.Button
     $btnOk.Text = 'Deployer'
-    $btnOk.Location = New-Object System.Drawing.Point(12, 588)
+    $btnOk.Location = New-Object System.Drawing.Point(12, 506)
     $btnOk.Size = New-Object System.Drawing.Size(230, 36)
     $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $form.AcceptButton = $btnOk
@@ -1378,7 +1373,7 @@ function Show-WinpeDeployWizard {{
 
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = 'Annuler'
-    $btnCancel.Location = New-Object System.Drawing.Point(262, 588)
+    $btnCancel.Location = New-Object System.Drawing.Point(262, 506)
     $btnCancel.Size = New-Object System.Drawing.Size(230, 36)
     $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $form.CancelButton = $btnCancel
@@ -1396,8 +1391,8 @@ function Show-WinpeDeployWizard {{
             return $null
         }}
     }}
-    if ($lstM.SelectedIndex -lt 0) {{ return $null }}
-    $master = $Masters[$lstM.SelectedIndex]
+    if ($cmbM.SelectedIndex -lt 0) {{ return $null }}
+    $master = @($Masters)[$cmbM.SelectedIndex]
     $driverKey = $null
     if ($cmbD.SelectedItem -and $cmbD.SelectedItem -ne '(aucun pilote)') {{
         $driverKey = [string]$cmbD.SelectedItem
@@ -1477,8 +1472,9 @@ if (-not (Test-Path -LiteralPath $MastersFile)) {{
     Write-Host "masters.json introuvable : $MastersFile" -ForegroundColor Red
     Pause; exit 1
 }}
-$masters = @(Get-Content -LiteralPath $MastersFile -Raw | ConvertFrom-Json)
-if (-not $masters -or $masters.Count -eq 0) {{
+$mastersRaw = Get-Content -LiteralPath $MastersFile -Raw | ConvertFrom-Json
+$masters = @($mastersRaw)
+if ($masters.Count -eq 0) {{
     Write-Host 'Aucun master.' -ForegroundColor Red
     Pause; exit 1
 }}
