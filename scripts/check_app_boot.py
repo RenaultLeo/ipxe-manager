@@ -18,6 +18,28 @@ def main() -> int:
 
         init_db()
         print("init_db: OK")
+
+        from app.database import SessionLocal
+        from app.models.models import OsType
+        from app.services.os_type_seed import EXPECTED_BUILTIN_OS_SLUGS, validate_builtin_os_slugs
+
+        db = SessionLocal()
+        try:
+            slugs = [ot.slug for ot in db.query(OsType).all()]
+            missing, legacy = validate_builtin_os_slugs(slugs)
+            if missing:
+                print(f"ERREUR: slugs seed manquants: {missing}")
+                return 1
+            if legacy:
+                print(f"ERREUR: slug legacy winpe encore present: {legacy}")
+                return 1
+            print(
+                f"Seed os_types: OK ({len(slugs)} ligne(s), "
+                f"{len(EXPECTED_BUILTIN_OS_SLUGS)} integres)"
+            )
+        finally:
+            db.close()
+
         from app.main import app
 
         print("FastAPI app:", app.title)

@@ -54,9 +54,15 @@ def main() -> int:
         init_db()
         db = SessionLocal()
         try:
-            win = db.query(OsType).filter(OsType.slug.in_(("winpe", "windows"))).all()
-            if not win:
-                errors.append("Types OS winpe/windows absents en BDD")
+            win = db.query(OsType).filter(OsType.slug == "windows").first()
+            if win is None:
+                errors.append("Type OS « windows » absent en BDD (lancer deploy/seed_db.py)")
+            legacy_winpe = db.query(OsType).filter(OsType.slug == "winpe").first()
+            if legacy_winpe is not None:
+                errors.append(
+                    "Slug OS legacy « winpe » encore en BDD — exécuter init_db() "
+                    "(WinPE est un mode Windows, plus un OS séparé)"
+                )
 
             wb = Path(settings.http_root) / "wimboot"
             if not wb.is_file():

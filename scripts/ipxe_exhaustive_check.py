@@ -37,7 +37,17 @@ import ssl
 import subprocess
 import sys
 from collections.abc import Iterable
+from pathlib import Path
 from urllib.parse import urlencode, urlparse
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from app.services.os_type_seed import (  # noqa: E402
+    EXPECTED_BUILTIN_OS_SLUGS,
+    validate_builtin_os_slugs,
+)
 
 USER_AGENT = "ipxe-exhaustive-check/1.0"
 
@@ -654,6 +664,9 @@ def check_database_application(database_url: str, audit: Audit) -> None:
     missing_tables: list[str] = []
     fk_errors: int | None = None
     ot_count: int | None = None
+    ot_slugs: list[str] = []
+    missing_seed: list[str] = []
+    legacy_slugs: list[str] = []
 
     try:
         conn = sqlite3.connect(f"file:{spath}?mode=ro", uri=True, timeout=20.0)
@@ -680,6 +693,8 @@ def check_database_application(database_url: str, audit: Audit) -> None:
 
         ott = conn.execute("SELECT COUNT(*) FROM os_types").fetchone()
         ot_count = int(ott[0]) if ott else 0
+        ot_slugs = [str(r[0]) for r in conn.execute("SELECT slug FROM os_types").fetchall()]
+        missing_seed, legacy_slugs = validate_builtin_os_slugs(ot_slugs)
     except sqlite3.Error as ex:
         integrity_issue = str(ex)
     finally:
@@ -701,8 +716,18 @@ def check_database_application(database_url: str, audit: Audit) -> None:
 
         if ot_count is not None:
             audit.ok(
-                ot_count >= 1,
-                f"os_types.COUNT={ot_count} — 0 lignes ⇒ lancer deploy/seed_db.py",
+                ot_count >= len(EXPECTED_BUILTIN_OS_SLUGS),
+                f"os_types.COUNT={ot_count} — attendu ≥{len(EXPECTED_BUILTIN_OS_SLUGS)} "
+                f"(seed deploy/seed_db.py)",
+            )
+            audit.ok(
+                not missing_seed,
+                f"slugs seed intégrés — manquants : {missing_seed or 'aucun'}",
+            )
+            audit.ok(
+                not legacy_slugs,
+                f"slug legacy « winpe » encore présent ({legacy_slugs}) — "
+                f"lancer init_db() (WinPE = mode Windows)",
             )
 
     try:

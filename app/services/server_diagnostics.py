@@ -256,18 +256,33 @@ def check_database(*, quick: bool = False) -> dict[str, Any]:
             con = sqlite3.connect(str(p), timeout=5)
             try:
                 row = con.execute("PRAGMA integrity_check").fetchone()
-                ok = row and row[0] == "ok"
+                integrity_ok = row and row[0] == "ok"
                 tables = {
                     r[0]
                     for r in con.execute(
                         "SELECT name FROM sqlite_master WHERE type='table'"
                     ).fetchall()
                 }
+                slugs = [
+                    str(r[0])
+                    for r in con.execute("SELECT slug FROM os_types").fetchall()
+                ]
+                from app.services.os_type_seed import validate_builtin_os_slugs
+
+                missing, legacy = validate_builtin_os_slugs(slugs)
+                seed_ok = not missing and not legacy
+                ok = integrity_ok and seed_ok
+                detail_parts = [row[0] if row else "?"]
+                if missing:
+                    detail_parts.append(f"seed manquants: {', '.join(missing)}")
+                if legacy:
+                    detail_parts.append("slug legacy winpe — init_db()")
                 return {
                     "ok": ok,
                     "engine": "sqlite",
-                    "detail": row[0] if row else "?",
+                    "detail": " · ".join(detail_parts),
                     "tables": len(tables),
+                    "os_types": len(slugs),
                     "status": _status_from_bool(ok),
                 }
             finally:

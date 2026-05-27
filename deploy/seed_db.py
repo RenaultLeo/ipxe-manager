@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.database import init_db, SessionLocal
 from app.models.models import OsType
 from app.services.os_type_order import UI_OS_SLUG_ORDER
+from app.services.os_type_seed import DEFAULT_OS
 
 _SLUG_ORDER_RANK = {s: i for i, s in enumerate(UI_OS_SLUG_ORDER)}
 
@@ -28,20 +29,6 @@ _FULL_EXTRACT_SLUGS = frozenset(
         "esxi",
     }
 )
-
-DEFAULT_OS = [
-    {"slug": "windows", "label": "Windows",     "icon": "bi-windows",  "boot_type": "windows", "is_builtin": True},
-    {"slug": "ubuntu",  "label": "Ubuntu",      "icon": "bi-ubuntu",   "boot_type": "linux",   "is_builtin": True},
-    {"slug": "debian",  "label": "Debian",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
-    {"slug": "centos",  "label": "CentOS",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
-    {"slug": "rocky",   "label": "Rocky Linux", "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
-    {"slug": "alpine",  "label": "Alpine Linux", "icon": "bi-hdd",     "boot_type": "linux",   "is_builtin": True},
-    {"slug": "alma",    "label": "AlmaLinux",   "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
-    {"slug": "fedora",  "label": "Fedora",      "icon": "bi-hdd",      "boot_type": "linux",   "is_builtin": True},
-    {"slug": "proxmox", "label": "Proxmox VE",  "icon": "bi-server",   "boot_type": "linux",   "is_builtin": True},
-    {"slug": "esxi",    "label": "VMware ESXi", "icon": "bi-cpu",      "boot_type": "esxi",    "is_builtin": True},
-    {"slug": "tools",   "label": "Outils",      "icon": "bi-tools",    "boot_type": "tools",    "is_builtin": False},
-]
 
 if __name__ == "__main__":
     init_db()

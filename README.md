@@ -373,7 +373,7 @@ Le script **`scripts/ipxe_exhaustive_check.py`** (**stdlib uniquement**, dont **
 **Sur le serveur iPXE (SSH, répertoire applicatif sous `--app-dir` / défaut `/srv/ipxe/app`)**
 
 - **`--full-local`** : active **`--check-db`**, **`--check-fs`**, **`--check-listen`**, **`--check-smb-shares`**, **`--check-nfs-export`**, **`--probe-static-http`**, **`--check-testparm`**.
-  - **`--check-db`** : lecture de **`DATABASE_URL`** dans **`.env`** — SQLite (**`PRAGMA integrity_check`**, **`foreign_key_check`**, présence des tables **`os_types` … `remote_chains`**, **`COUNT(os_types)`** ≥ 1) ou **`pg_isready`** si Postgres.
+  - **`--check-db`** : lecture de **`DATABASE_URL`** dans **`.env`** — SQLite (**`PRAGMA integrity_check`**, **`foreign_key_check`**, présence des tables **`os_types` … `remote_chains`**, seed **`os_types`** : 11 slugs intégrés sans **`winpe`** legacy) ou **`pg_isready`** si Postgres.
   - **`--check-fs`** : dossiers **`TFTP_ROOT`**, **`HTTP_ROOT`**, **`ISO_ROOT`**, **`BUILD_DIR`**, puis **`menus/`**, **`boot/`**, **`configs/`**, **`menus/menu.ipxe`**, **`undionly.kpxe`** préconisés.
   - **`--check-listen`** : **`TCP :445`** (SMB **`smbd`**), **`TCP :6379`** (Redis), **UDP :69** (TFTP **`tftpd-hpa`**) sur **localhost** ; information sur **`TCP :2049`** (NFS).
   - **`--check-smb-shares`** : **`smbclient -g -L localhost -N`** attend les volumes **`disk`** **`boot`** et **`isos`** (comme dans **`deploy/setup.sh`**).
