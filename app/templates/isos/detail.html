@@ -1081,10 +1081,9 @@
   var toggleWrap = document.getElementById('boot-files-toggle-wrap');
   var btn = document.getElementById('boot-files-toggle-btn');
   if (!wrap || !list || !toggleWrap || !btn) return;
-  var rows = list.querySelectorAll('dt');
-  if (rows.length <= 8) return;
-  var cutRow = rows[7];
-  var collapsedPx = cutRow.offsetTop + cutRow.offsetHeight + 8;
+  var lineHeight = parseFloat(window.getComputedStyle(list).lineHeight || '16');
+  if (!isFinite(lineHeight) || lineHeight <= 0) lineHeight = 16;
+  var collapsedPx = Math.round(lineHeight * 8 + 8);
   wrap.style.setProperty('--boot-files-collapsed-px', collapsedPx + 'px');
   if (wrap.scrollHeight <= collapsedPx + 4) return;
   wrap.classList.add('is-collapsed');
