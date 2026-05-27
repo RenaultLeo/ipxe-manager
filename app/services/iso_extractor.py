@@ -829,6 +829,22 @@ def _esxi_ensure_lowercase_http_mirrors(dest: Path, files: Iterable[Path]) -> No
                 logger.warning("ESXi EFI : miroir « %s » impossible (%s)", mirror, exc)
 
 
+def _esxi_link_or_copy(src: Path, dst: Path) -> None:
+    """Publie un fichier ESXi dans un dossier de profil (legacy/efi), via hardlink puis copie."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.is_file():
+        try:
+            if dst.samefile(src):
+                return
+        except OSError:
+            pass
+        dst.unlink(missing_ok=True)
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
 def _esxi_rel_from_dest(dest: Path, file_path: Path) -> str:
     """Chemin relatif POSIX depuis ``dest`` vers ``file_path`` (casse identique au disque après 7z)."""
     dest_r = dest.resolve()
@@ -850,6 +866,7 @@ def _esxi_boot_cfg_http_payload(
     *,
     profile_label: str,
     lowercase_paths: bool = True,
+    profile_subdir: str | None = None,
 ) -> tuple[str, list[str]]:
     """
     Lit un boot.cfg VMware source et produit le corps HTTP ``ipxe-boot.cfg``
@@ -912,13 +929,33 @@ def _esxi_boot_cfg_http_payload(
             if cp.is_file():
                 crypto_path_opt = cp
 
-    if lowercase_paths:
+    if profile_subdir:
+        sub = profile_subdir.strip("/").replace("\\", "/")
+        profile_dir = (dest / sub).resolve()
+        kernel_name = PurePosixPath(kernel_ref).name or k_path.name
+        if lowercase_paths:
+            kernel_name = kernel_name.lower()
+        staged_kernel = profile_dir / kernel_name
+        _esxi_link_or_copy(k_path, staged_kernel)
+        kernel_rel = f"{sub}/{kernel_name}"
+        mod_rels: list[str] = []
+        for ref, mp in zip(mod_refs, mod_paths):
+            mod_name = PurePosixPath(ref).name or mp.name
+            if lowercase_paths:
+                mod_name = mod_name.lower()
+            staged_mod = profile_dir / mod_name
+            _esxi_link_or_copy(mp, staged_mod)
+            mod_rels.append(f"{sub}/{mod_name}")
+        if lowercase_paths and crypto_path_opt is not None:
+            crypto_name = _esxi_crypto64_path_for_http(crypto_path_opt).name.lower()
+            staged_crypto = profile_dir / crypto_name
+            _esxi_link_or_copy(crypto_path_opt, staged_crypto)
+            crypto_path_opt = staged_crypto
+    elif lowercase_paths:
         mirror_paths = [k_path] + mod_paths
         if crypto_path_opt is not None:
             mirror_paths.append(crypto_path_opt)
         _esxi_ensure_lowercase_http_mirrors(dest, mirror_paths)
-
-    if lowercase_paths:
         kernel_rel = _esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, k_path))
         mod_rels = [_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, p)) for p in mod_paths]
     else:
@@ -979,11 +1016,16 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     mboot_path = _esxi_pick_preferred_path(mboot_pool, dest)
     if not mboot_path.is_file():
         raise ExtractionError("ESXi : mboot.c32 introuvable.")
-    _esxi_ensure_lowercase_http_mirrors(dest, [mboot_path])
+    legacy_dir = dest / "legacy"
+    efi_dir = dest / "efi"
+    legacy_mboot = legacy_dir / "mboot.c32"
+    _esxi_link_or_copy(mboot_path, legacy_mboot)
 
     from app.config import resolve_server_base_url
 
-    http_prefix = resolve_server_base_url().rstrip("/") + f"/{base}/"
+    base_url = resolve_server_base_url().rstrip("/")
+    legacy_http_prefix = f"{base_url}/{base}/legacy/"
+    efi_http_prefix = f"{base_url}/{base}/efi/"
 
     # Legacy d'abord : mboot.c32 lit les fichiers extraits en MAJUSCULES à la racine ;
     # la génération EFI crée ensuite les miroirs minuscules (k.b00) pour mboot.efi.
@@ -991,45 +1033,46 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
         dest,
         iso_lower,
         src_cfg,
-        http_prefix,
+        legacy_http_prefix,
         profile_label="Legacy",
         lowercase_paths=False,
+        profile_subdir="legacy",
     )
-    (dest / "ipxe-boot-legacy.cfg").write_text(managed_legacy, encoding="utf-8")
+    (legacy_dir / "ipxe-boot.cfg").write_text(managed_legacy, encoding="utf-8")
 
     managed, preload = _esxi_boot_cfg_http_payload(
-        dest, iso_lower, src_cfg, http_prefix, profile_label="EFI"
+        dest,
+        iso_lower,
+        src_cfg,
+        efi_http_prefix,
+        profile_label="EFI",
+        profile_subdir="efi",
     )
     managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
-    (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
+    (efi_dir / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
 
     modules_json = json.dumps(preload, separators=(",", ":"))
     modules_legacy_json = json.dumps(preload_legacy, separators=(",", ":"))
-
-    mboot_rel = _esxi_rel_from_dest(dest, mboot_path)
 
     efi_boot_pool = iso_lower.get("bootx64.efi", [])
     esxi_efi_boot_http: str | None = None
     if efi_boot_pool:
         efi_chosen = _esxi_pick_preferred_path(efi_boot_pool, dest)
         if efi_chosen.is_file():
-            mboot_dest = efi_chosen.parent / "mboot.efi"
-            shutil.copy2(efi_chosen, mboot_dest)
-            _esxi_ensure_lowercase_http_mirrors(dest, [mboot_dest])
-            esxi_efi_boot_http = (
-                f"{base}/{_esxi_lowercase_posix_rel(_esxi_rel_from_dest(dest, mboot_dest))}"
-            )
+            mboot_efi = efi_dir / "mboot.efi"
+            _esxi_link_or_copy(efi_chosen, mboot_efi)
+            esxi_efi_boot_http = f"{base}/efi/mboot.efi"
         else:
             logger.warning("ESXi : bootx64.efi illisible — entrée menu UEFI absente.")
     else:
         logger.warning("ESXi : bootx64.efi absent — entrée menu UEFI absente.")
 
-    logger.info("ESXi OK — mboot.c32=%s modules=%d", mboot_rel, len(preload))
+    logger.info("ESXi OK — legacy=%d modules efi=%d", len(preload_legacy), len(preload))
 
     out_paths: dict = {
-        "kernel_path": f"{base}/{mboot_rel}",
-        "esxi_boot_cfg_path": f"{base}/ipxe-boot.cfg",
-        "esxi_boot_cfg_legacy_path": f"{base}/ipxe-boot-legacy.cfg",
+        "kernel_path": f"{base}/legacy/mboot.c32",
+        "esxi_boot_cfg_path": f"{base}/efi/ipxe-boot.cfg",
+        "esxi_boot_cfg_legacy_path": f"{base}/legacy/ipxe-boot.cfg",
         "esxi_modules": modules_json,
         "esxi_modules_legacy": modules_legacy_json,
     }

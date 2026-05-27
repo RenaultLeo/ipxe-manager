@@ -689,16 +689,19 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
         new_line = f"prefix={http_prefix}"
         iso_lower = _esxi_index_files_casefold(d)
         src_cfg = _pick_esxi_boot_cfg_any(d, iso_lower)
-        legacy_path = d / "ipxe-boot-legacy.cfg"
+        legacy_path = d / "legacy" / "ipxe-boot.cfg"
+        if not legacy_path.is_file():
+            legacy_path = d / "ipxe-boot-legacy.cfg"
         if src_cfg and legacy_path.is_file():
             try:
                 managed_legacy, _ = _esxi_boot_cfg_http_payload(
                     d,
                     iso_lower,
                     src_cfg,
-                    http_prefix,
+                    f"{http_prefix}legacy/",
                     profile_label="Legacy",
                     lowercase_paths=False,
+                    profile_subdir="legacy",
                 )
                 write_text_file(legacy_path, managed_legacy, file_mode=0o644)
             except Exception as exc:
@@ -707,7 +710,10 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
                     legacy_path,
                     exc,
                 )
-        candidates = (d / "ipxe-boot.cfg", legacy_path)
+        efi_path = d / "efi" / "ipxe-boot.cfg"
+        if not efi_path.is_file():
+            efi_path = d / "ipxe-boot.cfg"
+        candidates = (efi_path, legacy_path)
         for path in candidates:
             if not path.is_file():
                 continue
@@ -717,7 +723,7 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
             except OSError as e:
                 logger.warning("ESXi %s illisible %s : %s", fname, path, e)
                 continue
-            if path.name == "ipxe-boot.cfg":
+            if path.name == "ipxe-boot.cfg" and path.parent.name != "legacy":
                 text = normalize_esxi_ipxe_boot_cfg_paths(text)
             lines = text.splitlines()
             out: list[str] = []
