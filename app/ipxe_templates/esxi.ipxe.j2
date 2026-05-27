@@ -46,7 +46,7 @@ goto ${selected}
 
   :manual_{{ e.ipxe_item_tag }}
   kernel {{ e.kernel }}
-  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
+  imgargs {{ mbasename }} -c {{ e.esxi_boot_cfg_manual or e.esxi_boot_cfg }} {{ esxi_bootif_arg }}{% if e.kernel_args %} {{ e.kernel_args }}{% endif %}
   boot
 
   :back_v{{ e.ipxe_item_tag }}

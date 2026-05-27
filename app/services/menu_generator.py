@@ -338,6 +338,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         return _http(canonicalize_rel(rel), cfg)
 
     esxi_boot_http = ""
+    esxi_boot_http_manual = ""
     esxi_module_urls: list[str] = []
     esxi_vr = ""
     # iPXE : le 1er token de imgargs = basename de l’URL « kernel » (même casse que les fichiers ISO extraits).
@@ -346,6 +347,10 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     bt_l = (os_type.boot_type or "linux").lower()
     if be and (slug_l == "esxi" or bt_l == "esxi"):
         esxi_boot_http = h(getattr(be, "esxi_boot_cfg_path", None))
+        esxi_boot_http_manual = esxi_boot_http.replace(
+            "/ipxe-boot.cfg",
+            "/ipxe-boot-manual.cfg",
+        )
         raw_mods = getattr(be, "esxi_modules", "") or ""
         seg = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
         esxi_vr = f"boot/{os_type.slug}/{seg}".replace("\\", "/")
@@ -401,6 +406,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "custom_ipxe":  h(be.custom_ipxe_path) if be and be.custom_ipxe_path else "",
         "modloop":      h(be.modloop_path) if be and be.modloop_path else "",
         "esxi_boot_cfg": esxi_boot_http,
+        "esxi_boot_cfg_manual": esxi_boot_http_manual or esxi_boot_http,
         "esxi_mboot_basename": esxi_mboot_basename,
         "esxi_module_urls": esxi_module_urls,
         # Pour Alpine / Ubuntu ; pour ESXi : options pass-through vers imgargs mboot.efi
@@ -514,9 +520,10 @@ def _refresh_esxi_ipxe_boot_cfg_prefixes(cfg: Settings) -> None:
         ver = d.name
         base_prefix = f"{base}/boot/esxi/{ver}/"
         path = d / "ipxe-boot.cfg"
-        if not path.is_file():
+        manual_path = d / "ipxe-boot-manual.cfg"
+        if not path.is_file() and not manual_path.is_file():
             continue
-        candidates = (path,)
+        candidates = tuple(p for p in (path, manual_path) if p.is_file())
         for path in candidates:
             if not path.is_file():
                 continue

@@ -1072,6 +1072,8 @@ def _extract_esxi_from_full_dest(dest: Path, os_slug: str, version_slug: str) ->
     )
     managed = normalize_esxi_ipxe_boot_cfg_paths(managed)
     (dest / "ipxe-boot.cfg").write_text(managed, encoding="utf-8")
+    # Fichier dédié au boot manuel : jamais touché par l'injection ks=.
+    (dest / "ipxe-boot-manual.cfg").write_text(managed, encoding="utf-8")
     modules_json = json.dumps(preload, separators=(",", ":"))
 
     efi_boot_pool = iso_lower.get("bootx64.efi", [])
