@@ -216,6 +216,46 @@ def _esxi_module_urls_from_json(
     return urls
 
 
+def _esxi_module_urls_from_cfg_http(
+    cfg_rel_or_http: str | None,
+    h,
+) -> list[str]:
+    """Lit modules= / module= depuis un boot.cfg ESXi et renvoie les URLs (casse préservée)."""
+    if not cfg_rel_or_http:
+        return []
+    p = str(cfg_rel_or_http).strip()
+    if not p:
+        return []
+    if "://" in p:
+        return []
+    # Appelant passe un chemin relatif sous HTTP_ROOT.
+    from app.config import settings as _settings
+
+    local = Path(_settings.http_root) / p.lstrip("/").replace("\\", "/")
+    if not local.is_file():
+        return []
+    try:
+        raw = local.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    urls: list[str] = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, _, v = s.partition("=")
+        key = k.strip().lower()
+        val = v.strip()
+        if key == "module" and val:
+            urls.append(h(val.lstrip("/")))
+        elif key == "modules" and val:
+            for part in re.split(r"\s*---\s*", val):
+                p2 = part.strip()
+                if p2:
+                    urls.append(h(p2.lstrip("/")))
+    return urls
+
+
 def _ubuntu_nocloud_boot_arg(seed_dir_url: str) -> str:
     """Args autoinstall : seed à la racine boot/ubuntu/<release>/ (ds=nocloud;s=…/)."""
     base = (seed_dir_url or "").rstrip("/") + "/"
@@ -764,11 +804,21 @@ def regenerate_all(db: Session) -> list[str]:
                         kp = be.kernel_path or ""
                         kb = kp.replace("\\", "/").rstrip("/").split("/")[-1]
                         leg_suffix = " [Legacy]" if efi_rel else ""
-                        legacy_cfg_http = _http(
+                        legacy_cfg_rel = (
                             getattr(be, "esxi_boot_cfg_legacy_path", None)
-                            or getattr(be, "esxi_boot_cfg_path", None),
+                            or getattr(be, "esxi_boot_cfg_path", None)
+                            or ""
+                        )
+                        legacy_cfg_http = _http(
+                            legacy_cfg_rel,
                             cfg,
                         )
+                        legacy_modules = entry.get("esxi_module_urls_legacy") or []
+                        if not legacy_modules:
+                            legacy_modules = _esxi_module_urls_from_cfg_http(
+                                legacy_cfg_rel,
+                                lambda rel: _http(rel, cfg),
+                            )
                         rows.append(
                             {
                                 **entry,
@@ -776,10 +826,7 @@ def regenerate_all(db: Session) -> list[str]:
                                 "kernel": _http(kp, cfg),
                                 "esxi_boot_cfg": legacy_cfg_http,
                                 "esxi_mboot_basename": kb,
-                                "esxi_module_urls": (
-                                    entry.get("esxi_module_urls_legacy")
-                                    or entry["esxi_module_urls"]
-                                ),
+                                "esxi_module_urls": legacy_modules or entry["esxi_module_urls"],
                                 "ipxe_item_tag": f"v{v.id}_leg" if efi_rel else f"v{v.id}",
                             }
                         )
