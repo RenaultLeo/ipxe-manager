@@ -87,10 +87,9 @@ def logout_user(request: Request) -> None:
 
 
 def authenticate_user(username: str, password: str) -> SessionUser | None:
-    from app.database import SessionLocal, init_db
+    from app.database import SessionLocal
     from app.models.models import User
 
-    init_db()
     name = (username or "").strip().lower()
     if not name or not password:
         return None

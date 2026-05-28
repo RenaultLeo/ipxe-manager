@@ -11,6 +11,7 @@ from app.models.models import AppSetting, IsoVersion, Upload, User
 logger = logging.getLogger(__name__)
 
 DEFAULT_ADMIN_USERNAME = "admin"
+_INSECURE_DEFAULT_ADMIN_PASSWORDS = {""}
 
 
 def bootstrap_users() -> None:
@@ -26,20 +27,16 @@ def bootstrap_users() -> None:
             pwd_hash = row.value
         else:
             plain = settings.admin_password
+            if (plain or "").strip().lower() in _INSECURE_DEFAULT_ADMIN_PASSWORDS:
+                raise RuntimeError(
+                    "ADMIN_PASSWORD insecure/default. Set a strong ADMIN_PASSWORD in .env before first start."
+                )
             if plain:
                 pwd_hash = hash_password(plain)
                 if not row:
                     db.add(AppSetting(key="admin_password_hash", value=pwd_hash))
                 else:
                     row.value = pwd_hash
-
-        if not pwd_hash:
-            pwd_hash = hash_password("admin")
-            logger.warning(
-                "Aucun mot de passe admin configuré — compte « %s » créé avec mot de passe « admin » "
-                "(changez-le immédiatement).",
-                DEFAULT_ADMIN_USERNAME,
-            )
 
         admin = User(
             username=DEFAULT_ADMIN_USERNAME,

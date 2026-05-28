@@ -173,15 +173,21 @@ def schedule_service_restarts() -> None:
 def check_port_open(proto: str, port: int, host: str = "127.0.0.1") -> bool | None:
     try:
         if proto == "udp":
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(1.0)
-            try:
-                s.connect((host, port))
-                return True
-            except OSError:
-                return False
-            finally:
-                s.close()
+            # UDP "connect" is not a real liveness check. Use protocol probe for TFTP.
+            if port == 69:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.settimeout(1.2)
+                try:
+                    # RRQ for a non-existent file should still return an ERROR packet if TFTP is alive.
+                    rrq = b"\x00\x01.__ipxe_probe__\x00octet\x00"
+                    s.sendto(rrq, (host, port))
+                    _d, _a = s.recvfrom(2048)
+                    return True
+                except OSError:
+                    return False
+                finally:
+                    s.close()
+            return None
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(1.0)
         try:

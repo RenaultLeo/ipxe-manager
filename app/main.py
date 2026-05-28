@@ -37,7 +37,7 @@ app.add_middleware(
     secret_key=settings.secret_key,
     max_age=86400,
     same_site="lax",
-    https_only=False,
+    https_only=settings.server_base_url.strip().lower().startswith("https://"),
 )
 
 # ── Static assets (CSS/JS) ────────────────────────────────────────────────────
@@ -110,6 +110,10 @@ async def startup():
 
     log = logging.getLogger(__name__)
     try:
+        if settings.secret_key == "changeme_generate_with_openssl_rand_hex_32":
+            raise RuntimeError(
+                "SECRET_KEY is insecure default. Set SECRET_KEY in .env before starting."
+            )
         init_db()
         sync_settings_runtime_from_db()
         _cleanup_stale_uploads()
