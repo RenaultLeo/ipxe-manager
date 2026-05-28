@@ -509,7 +509,10 @@
           },
         ],
       },
-      options: { plugins: { legend: { position: "bottom" } } },
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+      },
     });
 
     var ports = snap.ports || [];
@@ -533,6 +536,7 @@
         ],
       },
       options: {
+        maintainAspectRatio: false,
         scales: { y: { max: 1, ticks: { stepSize: 1 } } },
         plugins: { legend: { display: false } },
       },
@@ -551,6 +555,7 @@
         ],
       },
       options: {
+        maintainAspectRatio: false,
         indexAxis: "y",
         scales: { x: { max: 100 } },
         plugins: { legend: { display: false } },
@@ -576,6 +581,7 @@
         ],
       },
       options: {
+        maintainAspectRatio: false,
         scales: { y: { max: 100 } },
         plugins: { legend: { display: false } },
       },

@@ -413,6 +413,72 @@ pre {
   vertical-align: middle;
 }
 
+/* Grille charts Supervision : 4 panneaux de même hauteur */
+.super-charts-row {
+  --super-chart-row-height: 28rem;
+  --super-chart-slot-height: 11.5rem;
+}
+
+.super-charts-row > .super-charts-col {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--super-chart-row-height);
+}
+
+.super-charts-col-stack {
+  gap: 0.75rem;
+}
+
+.super-charts-col-stack > .super-chart-card {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.super-charts-col:not(.super-charts-col-stack) > .super-chart-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.super-chart-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.super-chart-card .card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 0.75rem;
+}
+
+.super-chart-slot {
+  position: relative;
+  height: var(--super-chart-slot-height);
+  flex: 0 0 var(--super-chart-slot-height);
+}
+
+.super-chart-slot canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.super-chart-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(var(--super-chart-row-height) - var(--super-chart-slot-height) - 3.5rem);
+  overflow: auto;
+  margin-top: 0.5rem;
+}
+
+.super-chart-card-solo .super-chart-slot {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: var(--super-chart-slot-height);
+}
+
 .status-led {
   display: inline-block;
   width: 0.65rem;
