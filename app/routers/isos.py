@@ -1304,6 +1304,7 @@ async def iso_status_fragment(
             status=status,
             version_id=version_id,
             pull_end=pull_end,
+            auto_reload_ready=pull_end,
         ),
     )
 
