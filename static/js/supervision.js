@@ -491,6 +491,10 @@
     });
   }
 
+  var chartLayoutPorts = { top: 8, right: 10, bottom: 28, left: 8 };
+  var chartLayoutResources = { top: 10, right: 12, bottom: 32, left: 12 };
+  var chartLayoutDisk = { top: 8, right: 10, bottom: 28, left: 36 };
+
   function renderCharts(snap) {
     if (typeof Chart === "undefined" || !snap) return;
     var ss = snap.services_summary || {};
@@ -537,7 +541,14 @@
       },
       options: {
         maintainAspectRatio: false,
-        scales: { y: { max: 1, ticks: { stepSize: 1 } } },
+        layout: { padding: chartLayoutPorts },
+        scales: {
+          x: {
+            ticks: { autoSkip: false, maxRotation: 0, minRotation: 0, padding: 6 },
+            grid: { display: false },
+          },
+          y: { max: 1, ticks: { stepSize: 1, padding: 4 }, grid: { drawTicks: false } },
+        },
         plugins: { legend: { display: false } },
       },
     });
@@ -556,8 +567,19 @@
       },
       options: {
         maintainAspectRatio: false,
+        layout: { padding: chartLayoutResources },
         indexAxis: "y",
-        scales: { x: { max: 100 } },
+        scales: {
+          x: {
+            max: 100,
+            ticks: { maxTicksLimit: 6, padding: 8 },
+            grid: { offset: false },
+          },
+          y: {
+            ticks: { autoSkip: false, padding: 10 },
+            grid: { display: false },
+          },
+        },
         plugins: { legend: { display: false } },
       },
     });
@@ -582,7 +604,11 @@
       },
       options: {
         maintainAspectRatio: false,
-        scales: { y: { max: 100 } },
+        layout: { padding: chartLayoutDisk },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 0, padding: 6 } },
+          y: { max: 100, ticks: { padding: 6 }, grid: { offset: false } },
+        },
         plugins: { legend: { display: false } },
       },
     });

@@ -415,8 +415,8 @@ pre {
 
 /* Grille charts Supervision : 4 panneaux de même hauteur */
 .super-charts-row {
-  --super-chart-row-height: 28rem;
-  --super-chart-slot-height: 11.5rem;
+  --super-chart-row-height: 34rem;
+  --super-chart-slot-height: 14rem;
 }
 
 .super-charts-row > .super-charts-col {
@@ -451,12 +451,15 @@ pre {
   flex-direction: column;
   min-height: 0;
   padding-bottom: 0.75rem;
+  overflow: visible;
 }
 
 .super-chart-slot {
   position: relative;
   height: var(--super-chart-slot-height);
   flex: 0 0 var(--super-chart-slot-height);
+  overflow: visible;
+  padding: 0 0.25rem 0.35rem;
 }
 
 .super-chart-slot canvas {
