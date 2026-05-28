@@ -8,7 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session, joinedload
 
-from app.config import Settings, resolve_server_base_url
+from app.config import Settings, resolve_ipxe_debug, resolve_server_base_url
 from app.models.models import OsType, IsoVersion, BootEntry, RemoteChain
 from app.services.config_scanner import config_boot_arg
 from app.services.os_type_order import sort_os_types_for_ui
@@ -43,14 +43,12 @@ _ESXI_IPXE_KERNELOPT_LINE_RE = re.compile(r"^\s*kernelopt\s*=", re.I)
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
 
-def _jinja_env() -> Environment:
-    from app.config import settings as app_settings
-
+def _jinja_env(*, ipxe_debug: bool) -> Environment:
     env = Environment(
         loader=FileSystemLoader(str(TMPL_DIR)),
         keep_trailing_newline=True,
     )
-    env.globals["ipxe_debug"] = app_settings.ipxe_debug
+    env.globals["ipxe_debug"] = ipxe_debug
     return env
 
 
@@ -575,12 +573,13 @@ def regenerate_all(db: Session) -> list[str]:
     """Regenerate every menu file. Returns list of written file paths."""
     cfg = Settings()  # Relecture .env à chaque génération (sans redémarrage uvicorn)
     cfg.server_base_url = resolve_server_base_url(db)
+    cfg.ipxe_debug = resolve_ipxe_debug(db)
     _refresh_esxi_ipxe_boot_cfg_prefixes(cfg)
     prepare_menus_dir(cfg.menus_dir)
     repo_root = Path(__file__).resolve().parent.parent.parent
     has_menu_theme = _build_menu_theme_png(cfg.menus_dir)
 
-    env = _jinja_env()
+    env = _jinja_env(ipxe_debug=cfg.ipxe_debug)
     written: list[str] = []
 
     all_os_types = sort_os_types_for_ui(db.query(OsType).all())

@@ -34,6 +34,10 @@
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.tls_renew_sudo') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'tls_renew_script' %}
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_script') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'ipxe_debug_on' %}
+<div class="alert alert-success alert-dismissible fade show"><i class="bi bi-bug me-2"></i>{{ t('sett.ipxe_debug_on') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'ipxe_debug_off' %}
+<div class="alert alert-success alert-dismissible fade show"><i class="bi bi-bug me-2"></i>{{ t('sett.ipxe_debug_off') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
 
 <p class="section-label">{{ t('sett.section_server') }}</p>
@@ -50,6 +54,18 @@
           </div>
           <button class="btn btn-primary btn-sm">
             <i class="bi bi-floppy me-1"></i>{{ t('sett.save_regen') }}
+          </button>
+        </form>
+        <hr>
+        <p class="text-muted small mb-2">{{ t('sett.ipxe_debug_help') }}</p>
+        <form method="post" action="/settings/ipxe-debug" class="d-flex flex-wrap align-items-center gap-2">
+          <input type="hidden" name="ipxe_debug" value="{% if current.ipxe_debug %}0{% else %}1{% endif %}">
+          <span class="badge {% if current.ipxe_debug %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+            {{ t('sett.ipxe_debug_state', state=('ON' if current.ipxe_debug else 'OFF')) }}
+          </span>
+          <button class="btn btn-outline-secondary btn-sm" type="submit">
+            <i class="bi bi-bug me-1"></i>
+            {% if current.ipxe_debug %}{{ t('sett.ipxe_debug_disable') }}{% else %}{{ t('sett.ipxe_debug_enable') }}{% endif %}
           </button>
         </form>
       </div>

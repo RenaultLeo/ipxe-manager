@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from app.config import settings
+from app.config import resolve_ipxe_debug, settings
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ def ipxe_tls_make_args() -> list[str]:
 
 
 def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
-    dbg = settings.ipxe_debug if debug is None else debug
+    dbg = resolve_ipxe_debug() if debug is None else debug
     lines = [
         "#!ipxe",
         "",
@@ -287,6 +287,7 @@ def compile_ipxe_firmware(
     build_dir = Path(settings.build_dir)
 
     make_env = os.environ.copy()
+    debug_enabled = resolve_ipxe_debug()
 
     def run(cmd: list[str], cwd: Path | None = None) -> str:
         logs.append(f"$ {' '.join(cmd)}")
@@ -347,7 +348,7 @@ def compile_ipxe_firmware(
     patch_ipxe_https_support(src_dir, logs)
     progress("patch_ipxe_debug", completed_steps, logs)
     logs.append("Patch config iPXE (DEBUG / LOG_LEVEL)…")
-    patch_ipxe_debug_support(src_dir, logs, enable=settings.ipxe_debug)
+    patch_ipxe_debug_support(src_dir, logs, enable=debug_enabled)
     completed_steps.append("patch_ipxe_debug")
 
     # Pas de DEBUG= sur la ligne make (casse openssl.dbg1.o sur certains clones).
@@ -358,7 +359,7 @@ def compile_ipxe_firmware(
         logs.append(
             f"Attention : {settings.tls_ca_cert_path} absent — HTTPS sans TRUST custom."
         )
-    if settings.ipxe_debug:
+    if debug_enabled:
         logs.append(
             "Mode debug : scripts (loglevel 7) + LOG_LEVEL dans general.h "
             "(pas de DEBUG= sur la ligne make — évite openssl.dbg1.o)."
@@ -370,7 +371,7 @@ def compile_ipxe_firmware(
         run(["make", "clean"], make_dir)
         completed_steps.append("make_clean")
 
-    embed_content = build_embed_ipxe(menu_url)
+    embed_content = build_embed_ipxe(menu_url, debug=debug_enabled)
     progress("embed", completed_steps, logs)
     embed_path.write_text(embed_content, encoding="utf-8")
     if menu_url not in embed_path.read_text(encoding="utf-8"):

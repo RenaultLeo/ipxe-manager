@@ -65,6 +65,36 @@ def sync_settings_server_base_url_from_db() -> None:
     settings.server_base_url = resolve_server_base_url()
 
 
+def resolve_ipxe_debug(db: Session | None = None) -> bool:
+    """État effectif du mode debug iPXE : BDD si défini, sinon ``settings`` / ``.env``."""
+    from app.models.models import AppSetting
+
+    own_session = False
+    if db is None:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        own_session = True
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "ipxe_debug").first()
+        if row and row.value is not None:
+            val = str(row.value).strip().lower()
+            if val in {"1", "true", "yes", "on"}:
+                return True
+            if val in {"0", "false", "no", "off"}:
+                return False
+    finally:
+        if own_session:
+            db.close()
+    return bool(settings.ipxe_debug)
+
+
+def sync_settings_runtime_from_db() -> None:
+    """Aligne les paramètres runtime (singleton) depuis la BDD au démarrage."""
+    settings.server_base_url = resolve_server_base_url()
+    settings.ipxe_debug = resolve_ipxe_debug()
+
+
 def _write_env_server_base_url(url: str) -> None:
     """Met à jour ``SERVER_BASE_URL`` dans ``.env`` si le fichier existe (Celery / ``Settings()``)."""
     env_path = _PROJECT_ROOT / ".env"
@@ -89,6 +119,31 @@ def _write_env_server_base_url(url: str) -> None:
         logger.warning("Impossible de mettre à jour SERVER_BASE_URL dans .env : %s", exc)
 
 
+def _write_env_ipxe_debug(enabled: bool) -> None:
+    """Met à jour ``IPXE_DEBUG`` dans ``.env`` (pris en compte par workers / ``Settings()``)."""
+    env_path = _PROJECT_ROOT / ".env"
+    if not env_path.is_file():
+        return
+    val = "true" if enabled else "false"
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        out: list[str] = []
+        found = False
+        for line in lines:
+            if line.strip().startswith("IPXE_DEBUG="):
+                out.append(f"IPXE_DEBUG={val}")
+                found = True
+            else:
+                out.append(line)
+        if not found:
+            if out and out[-1].strip():
+                out.append("")
+            out.append(f"IPXE_DEBUG={val}")
+        env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Impossible de mettre à jour IPXE_DEBUG dans .env : %s", exc)
+
+
 def persist_server_base_url(db: Session, url: str) -> str:
     """Enregistre l’URL (BDD + ``.env`` + singleton) — source unique pour menus et Celery."""
     from app.models.models import AppSetting
@@ -103,6 +158,22 @@ def persist_server_base_url(db: Session, url: str) -> str:
     settings.server_base_url = normalized
     _write_env_server_base_url(normalized)
     return normalized
+
+
+def persist_ipxe_debug(db: Session, enabled: bool) -> bool:
+    """Enregistre IPXE_DEBUG (BDD + ``.env`` + singleton)."""
+    from app.models.models import AppSetting
+
+    val = "true" if enabled else "false"
+    row = db.query(AppSetting).filter(AppSetting.key == "ipxe_debug").first()
+    if row:
+        row.value = val
+    else:
+        db.add(AppSetting(key="ipxe_debug", value=val))
+    db.commit()
+    settings.ipxe_debug = enabled
+    _write_env_ipxe_debug(enabled)
+    return enabled
 
 
 class Settings(BaseSettings):

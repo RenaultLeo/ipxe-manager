@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.config import settings, sync_settings_server_base_url_from_db
+from app.config import settings, sync_settings_runtime_from_db
 from app.database import init_db, SessionLocal
 from app.models.models import Upload, IsoVersion
 from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware, locale, admin, admin_supervision
@@ -111,7 +111,7 @@ async def startup():
     log = logging.getLogger(__name__)
     try:
         init_db()
-        sync_settings_server_base_url_from_db()
+        sync_settings_runtime_from_db()
         _cleanup_stale_uploads()
     except Exception:
         log.exception("Échec au démarrage (init_db / settings / cleanup)")
