@@ -92,7 +92,13 @@
       b /= 1024;
       idx += 1;
     }
-    var decimals = b >= 100 || idx === 0 ? 0 : b >= 10 ? 1 : 2;
+    var decimals;
+    if (idx === 0) {
+      // Keep precision on very small incoming traffic.
+      decimals = b >= 100 ? 0 : b >= 10 ? 1 : 2;
+    } else {
+      decimals = b >= 100 ? 0 : b >= 10 ? 1 : 2;
+    }
     return b.toFixed(decimals) + " " + units[idx];
   }
 
