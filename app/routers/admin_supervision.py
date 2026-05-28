@@ -18,6 +18,7 @@ from app.services.server_diagnostics import (
     invalidate_snapshot_cache,
     schedule_service_restarts,
 )
+from app.services.network_traffic_store import get_network_history
 from app.services.server_verification import (
     get_last_verification,
     persist_last_verification,
@@ -109,6 +110,15 @@ async def supervision_snapshot_api(
         quick=not full,
     )
     return JSONResponse(snap)
+
+
+@router.get("/supervision/api/network-history")
+async def supervision_network_history_api(request: Request, limit: int = 240):
+    redir = auth_redirect_admin(request)
+    if redir:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    history = await asyncio.to_thread(get_network_history, limit)
+    return JSONResponse({"points": history})
 
 
 @router.post("/supervision/verification/quick")

@@ -4,6 +4,8 @@
   var networkHistory = [];
   var networkLastPoint = null;
   var NETWORK_HISTORY_LIMIT = 120;
+  var lastHeavyChartsRenderTs = 0;
+  var HEAVY_CHARTS_MIN_INTERVAL_MS = 45000;
   var i18n = {
     active: "active",
     openPorts: "open ports",
@@ -184,6 +186,55 @@
       rxBytes: totals.rxBytes,
       txBytes: totals.txBytes,
     };
+  }
+
+  function setNetworkHistory(points) {
+    if (!Array.isArray(points) || !points.length) return;
+    var mapped = [];
+    points.forEach(function (p) {
+      if (!p) return;
+      var ts = Number(p.ts);
+      if (!Number.isFinite(ts)) {
+        ts = parseIsoDate(p.at) || Date.now();
+      } else if (ts < 1e12) {
+        ts = Math.round(ts * 1000);
+      }
+      var rxRate = Number(p.rx_rate_bps);
+      var txRate = Number(p.tx_rate_bps);
+      mapped.push({
+        ts: ts,
+        label: formatTimeLabel(ts),
+        rxBytes: Number(p.rx_bytes) || 0,
+        txBytes: Number(p.tx_bytes) || 0,
+        rateRx: Number.isFinite(rxRate) ? Math.max(0, rxRate) : 0,
+        rateTx: Number.isFinite(txRate) ? Math.max(0, txRate) : 0,
+        ifaceCount: Number(p.iface_count) || 0,
+      });
+    });
+    if (!mapped.length) return;
+    mapped.sort(function (a, b) { return a.ts - b.ts; });
+    networkHistory = mapped.slice(-NETWORK_HISTORY_LIMIT);
+    var last = networkHistory[networkHistory.length - 1];
+    networkLastPoint = { ts: last.ts, rxBytes: last.rxBytes, txBytes: last.txBytes };
+    renderNetworkStats();
+    if (isHealthTabVisible()) renderNetworkChart();
+  }
+
+  function refreshNetworkHistory() {
+    fetch("/admin/supervision/api/network-history?limit=" + NETWORK_HISTORY_LIMIT, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("fetch-network-history");
+        return r.json();
+      })
+      .then(function (data) {
+        if (data && Array.isArray(data.points)) {
+          setNetworkHistory(data.points);
+        }
+      })
+      .catch(function () {});
   }
 
   function renderNetworkStats() {
@@ -381,7 +432,11 @@
     }
 
     if (typeof Chart === "undefined" || !isHealthTabVisible()) return;
-    renderCharts(snap);
+    var now = Date.now();
+    if (!lastHeavyChartsRenderTs || now - lastHeavyChartsRenderTs >= HEAVY_CHARTS_MIN_INTERVAL_MS) {
+      renderCharts(snap);
+      lastHeavyChartsRenderTs = now;
+    }
     renderNetworkChart();
   }
 
@@ -412,6 +467,7 @@
     if (lastSnapshot) {
       window.requestAnimationFrame(function () {
         renderCharts(lastSnapshot);
+        lastHeavyChartsRenderTs = Date.now();
         renderNetworkChart();
       });
     } else {
@@ -550,6 +606,7 @@
       })
       .then(function (data) {
         renderSnapshot(data);
+        refreshNetworkHistory();
       })
       .catch(function () {})
       .finally(function () {
@@ -603,7 +660,7 @@
     if (document.hidden) return;
     snapshotPollTimer = setInterval(function () {
       if (!document.hidden) refreshSnapshot(false);
-    }, 10000);
+    }, 15000);
   }
 
   bindSupervisionTabs();
@@ -619,6 +676,7 @@
   }
 
   refreshSnapshot(false);
+  refreshNetworkHistory();
   scheduleSnapshotPoll();
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {

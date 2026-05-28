@@ -9,6 +9,7 @@ from app.database import init_db, SessionLocal
 from app.models.models import Upload, IsoVersion
 from app.routers import auth, dashboard, isos, boot_files, configs, menus, jobs, firmware, locale, admin, admin_supervision
 from app.routers import settings as settings_router
+from app.services.network_traffic_store import start_network_traffic_collector
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR.parent / "static"
@@ -117,6 +118,7 @@ async def startup():
         init_db()
         sync_settings_runtime_from_db()
         _cleanup_stale_uploads()
+        start_network_traffic_collector(sample_interval_sec=10.0)
     except Exception:
         log.exception("Échec au démarrage (init_db / settings / cleanup)")
         raise
