@@ -413,80 +413,110 @@ pre {
   vertical-align: middle;
 }
 
-/* Grille charts Supervision : hauteurs fixes (pas de stretch Chart.js) */
-.super-charts-row {
-  --super-chart-row-height: 34rem;
-  --super-chart-slot-height: 13rem;
-  --super-chart-stack-card-height: calc((var(--super-chart-row-height) - 0.75rem) / 2);
-  --super-chart-stack-slot-height: 9.25rem;
-}
-
-.super-charts-row > .super-charts-col {
-  display: flex;
-  flex-direction: column;
-  height: var(--super-chart-row-height);
-  max-height: var(--super-chart-row-height);
-}
-
-.super-charts-col-stack {
+/* Grille charts Supervision : responsive, hauteur bornée (anti-stretch Chart.js) */
+.super-charts-grid {
+  --super-grid-h: clamp(28rem, 36vh, 38rem);
+  display: grid;
   gap: 0.75rem;
+  height: var(--super-grid-h);
+  max-height: var(--super-grid-h);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "services ports disk"
+    "services resources disk";
 }
 
-.super-charts-col-stack > .super-chart-card {
-  flex: 0 0 var(--super-chart-stack-card-height);
-  height: var(--super-chart-stack-card-height);
-  max-height: var(--super-chart-stack-card-height);
+.super-chart-item {
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
-.super-charts-col:not(.super-charts-col-stack) > .super-chart-card {
-  flex: 0 0 var(--super-chart-row-height);
-  height: var(--super-chart-row-height);
-  max-height: var(--super-chart-row-height);
-  overflow: hidden;
-}
+.super-chart-item--services { grid-area: services; }
+.super-chart-item--ports { grid-area: ports; }
+.super-chart-item--resources { grid-area: resources; }
+.super-chart-item--disk { grid-area: disk; }
 
 .super-chart-card {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .super-chart-card .card-body {
-  flex: 0 0 auto;
-  display: block;
-  padding-bottom: 0.75rem;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  padding-bottom: 0.65rem;
 }
 
 .super-chart-slot {
   position: relative;
-  box-sizing: border-box;
-  width: 100%;
-  height: var(--super-chart-slot-height);
-  max-height: var(--super-chart-slot-height);
-  min-height: var(--super-chart-slot-height);
+  flex: 1 1 0;
+  min-height: 7rem;
+  max-height: 100%;
   overflow: hidden;
-  padding: 0 0.25rem 0.25rem;
 }
 
-.super-charts-col-stack .super-chart-slot {
-  height: var(--super-chart-stack-slot-height);
-  max-height: var(--super-chart-stack-slot-height);
-  min-height: var(--super-chart-stack-slot-height);
+.super-chart-item--services .super-chart-slot {
+  flex: 0 0 44%;
+  max-height: 44%;
+  min-height: 8.5rem;
 }
 
 .super-chart-slot canvas {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100% !important;
   height: 100% !important;
-  max-height: 100%;
 }
 
 .super-chart-table-wrap {
-  height: calc(var(--super-chart-row-height) - var(--super-chart-slot-height) - 3.25rem);
-  max-height: calc(var(--super-chart-row-height) - var(--super-chart-slot-height) - 3.25rem);
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   margin-top: 0.5rem;
+}
+
+@media (max-width: 991.98px) {
+  .super-charts-grid {
+    height: auto;
+    max-height: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto;
+    grid-template-areas:
+      "services services"
+      "ports resources"
+      "disk disk";
+  }
+
+  .super-chart-item {
+    min-height: clamp(14rem, 32vw, 18rem);
+  }
+
+  .super-chart-item--disk {
+    min-height: clamp(13rem, 24vw, 16rem);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .super-charts-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "services"
+      "ports"
+      "resources"
+      "disk";
+  }
+
+  .super-chart-item {
+    min-height: clamp(13rem, 42vw, 17rem);
+  }
 }
 
 .status-led {

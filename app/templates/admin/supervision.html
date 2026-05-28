@@ -98,9 +98,9 @@
     </div>
   </div>
 
-  <div class="row g-3 mb-3 super-charts-row">
-    <div class="col-lg-4 super-charts-col">
-      <div class="card panel-card super-chart-card">
+  <div class="super-charts-grid mb-3">
+    <div class="super-chart-item super-chart-item--services">
+      <div class="card panel-card super-chart-card h-100">
         <div class="card-header"><i class="bi bi-pie-chart me-2"></i>{{ t('super.chart_services') }}</div>
         <div class="card-body">
           <div class="super-chart-slot">
@@ -118,8 +118,8 @@
         </div>
       </div>
     </div>
-    <div class="col-lg-4 super-charts-col super-charts-col-stack">
-      <div class="card panel-card super-chart-card super-chart-card-solo">
+    <div class="super-chart-item super-chart-item--ports">
+      <div class="card panel-card super-chart-card h-100">
         <div class="card-header"><i class="bi bi-hdd-network me-2"></i>{{ t('super.chart_ports') }}</div>
         <div class="card-body">
           <div class="super-chart-slot">
@@ -127,7 +127,9 @@
           </div>
         </div>
       </div>
-      <div class="card panel-card super-chart-card super-chart-card-solo">
+    </div>
+    <div class="super-chart-item super-chart-item--resources">
+      <div class="card panel-card super-chart-card h-100">
         <div class="card-header"><i class="bi bi-speedometer2 me-2"></i>{{ t('super.chart_resources') }}</div>
         <div class="card-body">
           <div class="super-chart-slot">
@@ -136,8 +138,8 @@
         </div>
       </div>
     </div>
-    <div class="col-lg-4 super-charts-col">
-      <div class="card panel-card super-chart-card super-chart-card-solo">
+    <div class="super-chart-item super-chart-item--disk">
+      <div class="card panel-card super-chart-card h-100">
         <div class="card-header"><i class="bi bi-bar-chart me-2"></i>{{ t('super.chart_disk') }}</div>
         <div class="card-body">
           <div class="super-chart-slot">
@@ -292,5 +294,5 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="/static/js/supervision.js?v=20260528-fixed-charts"></script>
+<script src="/static/js/supervision.js?v=20260528-responsive-grid"></script>
 {% endblock %}

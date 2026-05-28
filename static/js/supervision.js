@@ -471,9 +471,25 @@
         renderCharts(lastSnapshot);
         lastHeavyChartsRenderTs = Date.now();
         renderNetworkChart();
+        window.setTimeout(resizeCharts, 80);
       });
     } else {
       resizeCharts();
+    }
+  }
+
+  var chartsResizeTimer = null;
+  function scheduleChartsResize() {
+    if (chartsResizeTimer) clearTimeout(chartsResizeTimer);
+    chartsResizeTimer = setTimeout(resizeCharts, 120);
+  }
+
+  if (window.ResizeObserver) {
+    var chartsGrid = document.querySelector(".super-charts-grid");
+    if (chartsGrid) {
+      new ResizeObserver(function () {
+        scheduleChartsResize();
+      }).observe(chartsGrid);
     }
   }
 
@@ -612,6 +628,7 @@
         plugins: { legend: { display: false } },
       },
     });
+    window.requestAnimationFrame(resizeCharts);
   }
 
   function setLoading(show) {
