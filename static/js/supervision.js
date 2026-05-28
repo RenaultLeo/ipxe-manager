@@ -197,55 +197,63 @@
     var labels = networkHistory.map(function (p) { return p.label; });
     var rxData = networkHistory.map(function (p) { return p.rateRx; });
     var txData = networkHistory.map(function (p) { return p.rateTx; });
-    destroyChart("networkTraffic");
-    charts.networkTraffic = new Chart(canvas, {
-      type: "line",
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: "Entrant (B/s)",
-            data: rxData,
-            borderColor: "#38bdf8",
-            backgroundColor: "rgba(56,189,248,0.15)",
-            tension: 0.3,
-            pointRadius: 0,
-            fill: true,
+    if (!charts.networkTraffic) {
+      charts.networkTraffic = new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "Entrant (B/s)",
+              data: rxData,
+              borderColor: "#38bdf8",
+              backgroundColor: "rgba(56,189,248,0.15)",
+              tension: 0.3,
+              pointRadius: 0,
+              fill: true,
+            },
+            {
+              label: "Sortant (B/s)",
+              data: txData,
+              borderColor: "#a78bfa",
+              backgroundColor: "rgba(167,139,250,0.12)",
+              tension: 0.3,
+              pointRadius: 0,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { intersect: false, mode: "index" },
+          plugins: {
+            legend: { position: "bottom" },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var label = ctx.dataset.label ? ctx.dataset.label + " : " : "";
+                  return label + formatRate(ctx.parsed.y);
+                },
+              },
+            },
           },
-          {
-            label: "Sortant (B/s)",
-            data: txData,
-            borderColor: "#a78bfa",
-            backgroundColor: "rgba(167,139,250,0.12)",
-            tension: 0.3,
-            pointRadius: 0,
-            fill: true,
-          },
-        ],
-      },
-      options: {
-        maintainAspectRatio: false,
-        interaction: { intersect: false, mode: "index" },
-        plugins: {
-          legend: { position: "bottom" },
-          tooltip: {
-            callbacks: {
-              label: function (ctx) {
-                var label = ctx.dataset.label ? ctx.dataset.label + " : " : "";
-                return label + formatRate(ctx.parsed.y);
+          scales: {
+            y: {
+              ticks: {
+                callback: function (value) { return formatRate(Number(value)); },
               },
             },
           },
         },
-        scales: {
-          y: {
-            ticks: {
-              callback: function (value) { return formatRate(Number(value)); },
-            },
-          },
-        },
-      },
-    });
+      });
+      return;
+    }
+    charts.networkTraffic.data.labels = labels;
+    charts.networkTraffic.data.datasets[0].data = rxData;
+    charts.networkTraffic.data.datasets[1].data = txData;
+    charts.networkTraffic.update("none");
   }
 
   function renderSnapshot(snap) {
@@ -509,7 +517,7 @@
   function refreshSnapshot(full) {
     var btn = el("btn-refresh-snapshot");
     if (btn) btn.disabled = true;
-    setLoading(true);
+    if (full) setLoading(true);
     var url = "/admin/supervision/api/snapshot";
     if (full) {
       url += "?full=1";
@@ -529,7 +537,7 @@
       })
       .catch(function () {})
       .finally(function () {
-        setLoading(false);
+        if (full) setLoading(false);
         if (btn) btn.disabled = false;
       });
   }
