@@ -407,6 +407,8 @@ def host_metrics(*, cpu_interval: float = 0.15) -> dict[str, Any]:
                 {
                     "iface": nic,
                     "ips": ips[:3],
+                    "rx_bytes": int(st.bytes_recv),
+                    "tx_bytes": int(st.bytes_sent),
                     "rx_mb": round(st.bytes_recv / 1024**2, 1),
                     "tx_mb": round(st.bytes_sent / 1024**2, 1),
                 }

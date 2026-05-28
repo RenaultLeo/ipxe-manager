@@ -123,10 +123,20 @@
     var txBytes = 0;
     ifaces.forEach(function (n) {
       if (!n || n.iface === "lo") return;
-      var rxMb = Number(n.rx_mb);
-      var txMb = Number(n.tx_mb);
-      if (Number.isFinite(rxMb)) rxBytes += rxMb * 1024 * 1024;
-      if (Number.isFinite(txMb)) txBytes += txMb * 1024 * 1024;
+      var rxRaw = Number(n.rx_bytes);
+      var txRaw = Number(n.tx_bytes);
+      if (Number.isFinite(rxRaw)) {
+        rxBytes += rxRaw;
+      } else {
+        var rxMb = Number(n.rx_mb);
+        if (Number.isFinite(rxMb)) rxBytes += rxMb * 1024 * 1024;
+      }
+      if (Number.isFinite(txRaw)) {
+        txBytes += txRaw;
+      } else {
+        var txMb = Number(n.tx_mb);
+        if (Number.isFinite(txMb)) txBytes += txMb * 1024 * 1024;
+      }
     });
     return { rxBytes: rxBytes, txBytes: txBytes, ifaceCount: ifaces.length };
   }
