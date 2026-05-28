@@ -413,16 +413,19 @@ pre {
   vertical-align: middle;
 }
 
-/* Grille charts Supervision : 4 panneaux de même hauteur */
+/* Grille charts Supervision : hauteurs fixes (pas de stretch Chart.js) */
 .super-charts-row {
   --super-chart-row-height: 34rem;
-  --super-chart-slot-height: 14rem;
+  --super-chart-slot-height: 13rem;
+  --super-chart-stack-card-height: calc((var(--super-chart-row-height) - 0.75rem) / 2);
+  --super-chart-stack-slot-height: 9.25rem;
 }
 
 .super-charts-row > .super-charts-col {
   display: flex;
   flex-direction: column;
-  min-height: var(--super-chart-row-height);
+  height: var(--super-chart-row-height);
+  max-height: var(--super-chart-row-height);
 }
 
 .super-charts-col-stack {
@@ -430,56 +433,60 @@ pre {
 }
 
 .super-charts-col-stack > .super-chart-card {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 0 0 var(--super-chart-stack-card-height);
+  height: var(--super-chart-stack-card-height);
+  max-height: var(--super-chart-stack-card-height);
+  overflow: hidden;
 }
 
 .super-charts-col:not(.super-charts-col-stack) > .super-chart-card {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 var(--super-chart-row-height);
+  height: var(--super-chart-row-height);
+  max-height: var(--super-chart-row-height);
+  overflow: hidden;
 }
 
 .super-chart-card {
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
 .super-chart-card .card-body {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  flex: 0 0 auto;
+  display: block;
   padding-bottom: 0.75rem;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .super-chart-slot {
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
   height: var(--super-chart-slot-height);
-  flex: 0 0 var(--super-chart-slot-height);
-  overflow: visible;
-  padding: 0 0.25rem 0.35rem;
+  max-height: var(--super-chart-slot-height);
+  min-height: var(--super-chart-slot-height);
+  overflow: hidden;
+  padding: 0 0.25rem 0.25rem;
+}
+
+.super-charts-col-stack .super-chart-slot {
+  height: var(--super-chart-stack-slot-height);
+  max-height: var(--super-chart-stack-slot-height);
+  min-height: var(--super-chart-stack-slot-height);
 }
 
 .super-chart-slot canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+  max-height: 100%;
 }
 
 .super-chart-table-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: calc(var(--super-chart-row-height) - var(--super-chart-slot-height) - 3.5rem);
-  overflow: auto;
+  height: calc(var(--super-chart-row-height) - var(--super-chart-slot-height) - 3.25rem);
+  max-height: calc(var(--super-chart-row-height) - var(--super-chart-slot-height) - 3.25rem);
+  overflow-y: auto;
   margin-top: 0.5rem;
-}
-
-.super-chart-card-solo .super-chart-slot {
-  flex: 1 1 auto;
-  height: auto;
-  min-height: var(--super-chart-slot-height);
 }
 
 .status-led {
