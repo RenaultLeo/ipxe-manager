@@ -1264,11 +1264,23 @@ async def extract(version_id: int, request: Request, db: Session = Depends(get_d
         owner_user_id=owner.id if owner else version.owner_user_id,
         iso_version_id=version_id,
     )
+    # Basculer immédiatement l'UI en "extracting" pour activer le polling HTMX sans reload manuel.
+    version.status = "extracting"
     db.add(upload_log)
     db.commit()
 
-    from app.tasks.jobs import extract_iso_task
-    extract_iso_task.delay(version_id, upload_log.id)
+    try:
+        from app.tasks.jobs import extract_iso_task
+        extract_iso_task.delay(version_id, upload_log.id)
+    except Exception as exc:
+        logger.exception("extract enqueue failed")
+        upload_log.status = "error"
+        upload_log.error_msg = str(exc)[:4000]
+        version.status = "error"
+        db.add(upload_log)
+        db.add(version)
+        db.commit()
+        raise HTTPException(status_code=500, detail=translate(lang, "iso.extract_failed"))
 
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 

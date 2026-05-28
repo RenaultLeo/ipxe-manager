@@ -51,6 +51,7 @@ def bootstrap_users() -> None:
     except Exception:
         logger.exception("Échec bootstrap utilisateurs")
         db.rollback()
+        raise
     finally:
         db.close()
 
