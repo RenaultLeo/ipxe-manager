@@ -97,6 +97,7 @@ async def supervision_snapshot_api(
     request: Request,
     db: Session = Depends(get_db),
     full: bool = False,
+    force: bool = False,
 ):
     redir = auth_redirect_admin(request)
     if redir:
@@ -104,7 +105,7 @@ async def supervision_snapshot_api(
     snap = await asyncio.to_thread(
         collect_snapshot_cached,
         db,
-        force=full,
+        force=full or force,
         quick=not full,
     )
     return JSONResponse(snap)

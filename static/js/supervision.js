@@ -1,6 +1,9 @@
 (function () {
   var charts = {};
   var lastSnapshot = null;
+  var networkHistory = [];
+  var networkLastPoint = null;
+  var NETWORK_HISTORY_LIMIT = 120;
   var i18n = {
     active: "active",
     openPorts: "open ports",
@@ -74,9 +77,182 @@
     }
   }
 
+  function parseIsoDate(value) {
+    if (!value) return null;
+    var ts = Date.parse(value);
+    return Number.isFinite(ts) ? ts : null;
+  }
+
+  function formatRate(bytesPerSec) {
+    if (bytesPerSec == null || !Number.isFinite(bytesPerSec)) return "—";
+    var b = Math.max(0, bytesPerSec);
+    var units = ["B/s", "KB/s", "MB/s", "GB/s"];
+    var idx = 0;
+    while (b >= 1024 && idx < units.length - 1) {
+      b /= 1024;
+      idx += 1;
+    }
+    var decimals = b >= 100 || idx === 0 ? 0 : b >= 10 ? 1 : 2;
+    return b.toFixed(decimals) + " " + units[idx];
+  }
+
+  function formatBytes(bytes) {
+    if (bytes == null || !Number.isFinite(bytes)) return "—";
+    var b = Math.max(0, bytes);
+    var units = ["B", "KB", "MB", "GB", "TB"];
+    var idx = 0;
+    while (b >= 1024 && idx < units.length - 1) {
+      b /= 1024;
+      idx += 1;
+    }
+    var decimals = b >= 100 || idx === 0 ? 0 : b >= 10 ? 1 : 2;
+    return b.toFixed(decimals) + " " + units[idx];
+  }
+
+  function formatTimeLabel(ts) {
+    var dt = new Date(ts);
+    var h = String(dt.getHours()).padStart(2, "0");
+    var m = String(dt.getMinutes()).padStart(2, "0");
+    var s = String(dt.getSeconds()).padStart(2, "0");
+    return h + ":" + m + ":" + s;
+  }
+
+  function computeNetworkTotals(host) {
+    var ifaces = (host && host.network) || [];
+    var rxBytes = 0;
+    var txBytes = 0;
+    ifaces.forEach(function (n) {
+      if (!n || n.iface === "lo") return;
+      var rxMb = Number(n.rx_mb);
+      var txMb = Number(n.tx_mb);
+      if (Number.isFinite(rxMb)) rxBytes += rxMb * 1024 * 1024;
+      if (Number.isFinite(txMb)) txBytes += txMb * 1024 * 1024;
+    });
+    return { rxBytes: rxBytes, txBytes: txBytes, ifaceCount: ifaces.length };
+  }
+
+  function pushNetworkPoint(snap) {
+    if (!snap || !snap.host) return;
+    var totals = computeNetworkTotals(snap.host);
+    var ts = parseIsoDate(snap.generated_at);
+    if (!ts) ts = Date.now();
+    var rateRx = null;
+    var rateTx = null;
+    if (networkLastPoint && ts > networkLastPoint.ts) {
+      var dtSec = (ts - networkLastPoint.ts) / 1000;
+      if (dtSec > 0) {
+        rateRx = (totals.rxBytes - networkLastPoint.rxBytes) / dtSec;
+        rateTx = (totals.txBytes - networkLastPoint.txBytes) / dtSec;
+      }
+    }
+    if (!Number.isFinite(rateRx) || rateRx < 0) rateRx = 0;
+    if (!Number.isFinite(rateTx) || rateTx < 0) rateTx = 0;
+    if (networkLastPoint && ts <= networkLastPoint.ts) {
+      return;
+    }
+    var point = {
+      ts: ts,
+      label: formatTimeLabel(ts),
+      rxBytes: totals.rxBytes,
+      txBytes: totals.txBytes,
+      rateRx: rateRx,
+      rateTx: rateTx,
+      ifaceCount: totals.ifaceCount,
+    };
+    networkHistory.push(point);
+    if (networkHistory.length > NETWORK_HISTORY_LIMIT) {
+      networkHistory = networkHistory.slice(networkHistory.length - NETWORK_HISTORY_LIMIT);
+    }
+    networkLastPoint = {
+      ts: ts,
+      rxBytes: totals.rxBytes,
+      txBytes: totals.txBytes,
+    };
+  }
+
+  function renderNetworkStats() {
+    if (!networkHistory.length) return;
+    var last = networkHistory[networkHistory.length - 1];
+    if (el("stat-net-rx")) el("stat-net-rx").textContent = formatRate(last.rateRx);
+    if (el("stat-net-tx")) el("stat-net-tx").textContent = formatRate(last.rateTx);
+    if (el("stat-net-total")) {
+      el("stat-net-total").textContent = "↓ " + formatBytes(last.rxBytes) + " / ↑ " + formatBytes(last.txBytes);
+    }
+    if (el("stat-net-ifaces")) el("stat-net-ifaces").textContent = String(last.ifaceCount || 0);
+    if (el("network-window-label")) {
+      var first = networkHistory[0];
+      var minutes = Math.max(1, Math.round((last.ts - first.ts) / 60000));
+      el("network-window-label").textContent = "Fenêtre " + minutes + " min";
+    }
+  }
+
+  function renderNetworkChart() {
+    if (typeof Chart === "undefined") return;
+    var canvas = el("chart-network-traffic");
+    if (!canvas) return;
+    if (!networkHistory.length) {
+      destroyChart("networkTraffic");
+      return;
+    }
+    var labels = networkHistory.map(function (p) { return p.label; });
+    var rxData = networkHistory.map(function (p) { return p.rateRx; });
+    var txData = networkHistory.map(function (p) { return p.rateTx; });
+    destroyChart("networkTraffic");
+    charts.networkTraffic = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Entrant (B/s)",
+            data: rxData,
+            borderColor: "#38bdf8",
+            backgroundColor: "rgba(56,189,248,0.15)",
+            tension: 0.3,
+            pointRadius: 0,
+            fill: true,
+          },
+          {
+            label: "Sortant (B/s)",
+            data: txData,
+            borderColor: "#a78bfa",
+            backgroundColor: "rgba(167,139,250,0.12)",
+            tension: 0.3,
+            pointRadius: 0,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: "index" },
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var label = ctx.dataset.label ? ctx.dataset.label + " : " : "";
+                return label + formatRate(ctx.parsed.y);
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: function (value) { return formatRate(Number(value)); },
+            },
+          },
+        },
+      },
+    });
+  }
+
   function renderSnapshot(snap) {
     if (!snap) return;
     lastSnapshot = snap;
+    pushNetworkPoint(snap);
+    renderNetworkStats();
     var ss = snap.services_summary || {};
     var ps = snap.ports_summary || {};
     var host = snap.host || {};
@@ -182,6 +358,7 @@
 
     if (typeof Chart === "undefined" || !isHealthTabVisible()) return;
     renderCharts(snap);
+    renderNetworkChart();
   }
 
   function isHealthTabVisible() {
@@ -211,6 +388,7 @@
     if (lastSnapshot) {
       window.requestAnimationFrame(function () {
         renderCharts(lastSnapshot);
+        renderNetworkChart();
       });
     } else {
       resizeCharts();
@@ -333,7 +511,11 @@
     if (btn) btn.disabled = true;
     setLoading(true);
     var url = "/admin/supervision/api/snapshot";
-    if (full) url += "?full=1";
+    if (full) {
+      url += "?full=1";
+    } else {
+      url += "?force=1";
+    }
     fetch(url, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -397,7 +579,7 @@
     if (document.hidden) return;
     snapshotPollTimer = setInterval(function () {
       if (!document.hidden) refreshSnapshot(false);
-    }, 90000);
+    }, 10000);
   }
 
   bindSupervisionTabs();
