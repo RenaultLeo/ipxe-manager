@@ -29,6 +29,7 @@
   {% set status = version.status %}
   {% set version_id = version.id %}
   {% set pull_end = true %}
+  {% set auto_reload_ready = true %}
   {% include "isos/status_badge.html" %}
 </div>
 
@@ -1785,6 +1786,26 @@
   if (pageMsg === 'winpe_scripts_queued') {
     pollWinpeScripts();
   }
+})();
+
+(function () {
+  var reloaded = false;
+  document.body.addEventListener('htmx:afterSwap', function (event) {
+    if (reloaded) return;
+    var target = event && event.detail ? event.detail.target : null;
+    if (!target || !(target instanceof Element)) return;
+    var badge = null;
+    if (target.matches('[data-iso-status-badge]')) {
+      badge = target;
+    } else {
+      badge = target.querySelector('[data-iso-status-badge]');
+    }
+    if (!badge) return;
+    if (badge.getAttribute('data-auto-reload-ready') !== '1') return;
+    if (badge.getAttribute('data-status') !== 'ready') return;
+    reloaded = true;
+    window.location.reload();
+  });
 })();
 </script>
 {% endblock %}
