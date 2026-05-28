@@ -26,7 +26,7 @@ BUNDLED_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "defa
 
 router = APIRouter(prefix="/settings")
 
-BOOT_TYPE_CHOICES = frozenset({"linux", "windows", "tools"})
+BOOT_TYPE_CHOICES = frozenset({"linux", "windows", "tools", "esxi"})
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,30}$")
 FORCED_AUTOCONFIG_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,62}$")
@@ -200,7 +200,6 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
             show_on_dashboard=True,
             extract_full_iso=extract_full,
             extract_paths_json=json.dumps(patterns),
-            ipxe_roles_json="[]",
             forced_autoconfig_type=forced_cfg,
         )
     )
@@ -276,7 +275,6 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
     ot.icon = icon
     ot.extract_full_iso = extract_full
     ot.extract_paths_json = json.dumps(patterns)
-    ot.ipxe_roles_json = "[]"
     ot.forced_autoconfig_type = forced_cfg
     db.commit()
     return RedirectResponse("/settings", status_code=302)

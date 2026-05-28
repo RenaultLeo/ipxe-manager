@@ -1048,9 +1048,9 @@ async def iso_activate_config(
 
     if os_slug == "esxi":
         if cfg.config_type not in ("esxi-kickstart", "kickstart"):
-            raise HTTPException(400, detail=translate(lang, "iso.proxmox_active_config_bad_type"))
+            raise HTTPException(400, detail=translate(lang, "iso.esxi_active_config_bad_type"))
         if not version.boot_entry:
-            raise HTTPException(400, detail=translate(lang, "iso.proxmox_inject_need_extract"))
+            raise HTTPException(400, detail=translate(lang, "iso.esxi_need_extract"))
         try:
             from app.services.esxi_autoconfig import activate_esxi_kickstart
             from app.services.menu_generator import queue_regenerate_all

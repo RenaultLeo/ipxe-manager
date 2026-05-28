@@ -1,7 +1,7 @@
 import logging
 import time
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -370,17 +370,18 @@ def _ensure_windows_os_type_consistency() -> None:
 
 def _add_column_if_missing(table: str, column: str, col_type: str) -> bool:
     """Retourne True si la colonne a été créée (préremplissage possible)."""
-    with engine.connect() as conn:
-        try:
-            # SQLite: check if column exists via PRAGMA
-            result = conn.execute(text(f"PRAGMA table_info({table})"))
-            columns = [row[1] for row in result.fetchall()]
-            if column not in columns:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
-                conn.commit()
-                logger.info("Migration : colonne '%s.%s' ajoutée", table, column)
-                return True
+    try:
+        insp = inspect(engine)
+        if not insp.has_table(table):
+            logger.warning("Migration ignorée : table absente '%s'", table)
             return False
-        except Exception:
-            logger.exception("Migration échouée pour %s.%s", table, column)
+        columns = {col.get("name") for col in insp.get_columns(table)}
+        if column in columns:
             return False
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+        logger.info("Migration : colonne '%s.%s' ajoutée", table, column)
+        return True
+    except Exception:
+        logger.exception("Migration échouée pour %s.%s", table, column)
+        return False

@@ -43,24 +43,6 @@ _ESXI_IPXE_KERNELOPT_LINE_RE = re.compile(r"^\s*kernelopt\s*=", re.I)
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
 
 
-def _esxi_kernel_basename_from_boot_cfg(boot_cfg: Path) -> str | None:
-    """Lit ``kernel=<basename>`` dans boot.cfg aplati à côté de mboot (insensible ligne #)."""
-    if not boot_cfg.is_file():
-        return None
-    try:
-        text = boot_cfg.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.lower().startswith("kernel="):
-            val = line.split("=", 1)[1].strip().strip("\"'")
-            return Path(val.replace("\\", "/")).name
-    return None
-
-
 def _jinja_env() -> Environment:
     from app.config import settings as app_settings
 

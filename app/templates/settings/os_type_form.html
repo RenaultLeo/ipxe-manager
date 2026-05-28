@@ -52,6 +52,7 @@
               <option value="linux" {% if ot and ot.boot_type == 'linux' %}selected{% elif not ot %}selected{% endif %}>linux</option>
               <option value="windows" {% if ot and ot.boot_type == 'windows' %}selected{% endif %}>windows</option>
               <option value="tools" {% if ot and ot.boot_type == 'tools' %}selected{% endif %}>tools</option>
+              <option value="esxi" {% if ot and ot.boot_type == 'esxi' %}selected{% endif %}>esxi</option>
             </select>
           </div>
           <div class="col-md-6">

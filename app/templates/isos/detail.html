@@ -222,7 +222,7 @@
         </dl>
         </div>
         <div class="text-end mt-2 d-none" id="boot-files-toggle-wrap">
-          <button type="button" class="btn btn-outline-secondary btn-sm" id="boot-files-toggle-btn">More</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="boot-files-toggle-btn">{{ t('iso.detail.more') }}</button>
         </div>
 
         {% if can_modify and version.os_type.slug == 'fedora' and be %}
@@ -315,7 +315,7 @@
         <p class="small text-muted mb-3">{{ t('iso.winpe_scripts_intro') }}</p>
         {% if is_winpe_utility_mode %}
         <div class="alert alert-info py-2 small mb-3">
-          Mode WinPE utilitaire : seuls les fichiers de boot WinPE (notamment boot.wim) sont gérés sur cette version.
+          {{ t('iso.winpe_utility_mode_notice') }}
         </div>
         {% endif %}
 
@@ -325,8 +325,6 @@
         <div class="alert alert-success py-2 small mb-3">{{ t('iso.winpe_install_ready') }}</div>
         {% elif request.query_params.get('msg') == 'winpe_install_partial' %}
         <div class="alert alert-warning py-2 small mb-3">{{ t('iso.winpe_install_partial') }}</div>
-        {% elif request.query_params.get('msg') == 'winpe_install_added' %}
-        <div class="alert alert-info py-2 small mb-3">{{ t('iso.winpe_install_ok') }}</div>
         {% endif %}
         <div id="winpe-upload-status-alert" class="alert alert-info py-2 small mb-3 d-none" role="status"></div>
         {% if request.query_params.get('msg') == 'winpe_scripts_done' %}
@@ -466,13 +464,13 @@
         </div>
         {% endif %}
         {% if global_winpe_masters %}
-        <h6 class="text-muted small text-uppercase mt-3 mb-2">Masters globaux detectes (persistants)</h6>
+        <h6 class="text-muted small text-uppercase mt-3 mb-2">{{ t('iso.winpe_global_masters_detected') }}</h6>
         <div class="table-responsive">
           <table class="table table-sm table-dark table-borderless mb-0">
             <thead>
               <tr class="text-muted small">
-                <th>Famille</th>
-                <th>Dossier</th>
+                <th>{{ t('iso.winpe_family') }}</th>
+                <th>{{ t('iso.winpe_folder') }}</th>
                 <th>Libellé</th>
                 <th>Index</th>
               </tr>
@@ -577,7 +575,7 @@
             <table class="table table-sm table-dark table-borderless mb-0" id="winpe-drivers-catalog-table">
               <thead>
                 <tr class="text-muted small">
-                  <th>Type</th>
+                  <th>{{ t('iso.winpe_machine_type') }}</th>
                   <th>{{ t('iso.winpe_drivers_path') }}</th>
                   <th class="text-end">{{ t('iso.winpe_drivers_count') }}</th>
                 </tr>
@@ -666,7 +664,7 @@
             <table class="table table-sm table-dark table-borderless mb-0" id="winpe-language-packs-catalog-table">
               <thead>
                 <tr class="text-muted small">
-                  <th>Locale</th>
+                  <th>{{ t('iso.winpe_locale') }}</th>
                   <th>{{ t('iso.winpe_language_packs_path') }}</th>
                   <th class="text-end">{{ t('iso.winpe_language_packs_count') }}</th>
                 </tr>
@@ -890,7 +888,7 @@
           {% endif %}
         </div>
         {% elif can_modify and not version.boot_entry %}
-        <p class="small text-warning mb-3">{{ t('iso.proxmox_inject_need_extract') }}</p>
+        <p class="small text-warning mb-3">{{ t('iso.esxi_need_extract') }}</p>
         {% endif %}
         {% if version.active_autoconfig_id and active_autoconfig %}
         <p class="small mb-3">
@@ -964,7 +962,7 @@
           <thead><tr>
             <th>{{ t('iso.detail.cfg_th_type') }}</th><th>{{ t('iso.detail.cfg_th_label') }}</th><th>{{ t('iso.detail.cfg_th_file') }}</th>
             {% if (version.os_type.slug == 'ubuntu' and version.ubuntu_variant != 'server') or version.os_type.slug in ('proxmox', 'esxi') %}<th class="text-center">{{ t('iso.active_config_col') }}</th>{% endif %}
-            <th class="text-end">Actions</th>
+            <th class="text-end">{{ t('iso.detail.actions') }}</th>
           </tr></thead>
           <tbody>
             {% for ac in version.autoconfigs %}
@@ -1088,7 +1086,7 @@
   toggleWrap.classList.remove('d-none');
   btn.addEventListener('click', function () {
     var collapsed = wrap.classList.toggle('is-collapsed');
-    btn.textContent = collapsed ? 'More' : 'Less';
+    btn.textContent = collapsed ? '{{ t('iso.detail.more')|e }}' : '{{ t('iso.detail.less')|e }}';
   });
 })();
 
@@ -1098,7 +1096,7 @@
     var cb = document.getElementById('ubuntuNfsSwitch');
     if (cb) {
       var vid = root.dataset.versionId;
-      var saveErrFallback = root.dataset.saveErr || 'Error';
+      var saveErrFallback = root.dataset.saveErr || '{{ t('common.error')|e }}';
       cb.addEventListener('change', async function () {
         var on = cb.checked;
         var res = await fetch('/isos/' + encodeURIComponent(vid) + '/ubuntu-nfs-boot', {
@@ -1134,7 +1132,7 @@
   if (!cb) return;
   var vid = root.dataset.versionId;
   var confirmMsg = root.dataset.confirmMsg || '';
-  var saveErrFallback = root.dataset.saveErr || 'Error';
+  var saveErrFallback = root.dataset.saveErr || '{{ t('common.error')|e }}';
 
   async function persist(on) {
     var res = await fetch('/isos/' + encodeURIComponent(vid) + '/purge-iso-preference', {
@@ -1202,7 +1200,7 @@
   var msgError = form.dataset.msgError || '';
   var msgScriptsPolling = form.dataset.msgScriptsPolling || '';
   var msgInstallPartial = form.dataset.msgInstallPartial || '';
-  var msgXhr = form.dataset.msgXhr || 'Error';
+  var msgXhr = form.dataset.msgXhr || '{{ t('common.error')|e }}';
   var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
 
   var wrap = document.getElementById('winpe-upload-progress-wrap');
@@ -1463,7 +1461,7 @@
   var msgExtract = form.dataset.msgExtract || '…';
   var msgStarted = form.dataset.msgStarted || '';
   var msgError = form.dataset.msgError || '';
-  var msgXhr = form.dataset.msgXhr || 'Error';
+  var msgXhr = form.dataset.msgXhr || '{{ t('common.error')|e }}';
   var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
   var wrap = document.getElementById('winpe-drivers-progress-wrap');
   var bar = document.getElementById('winpe-drivers-progress-bar');
@@ -1621,7 +1619,7 @@
   var fileInput = document.getElementById('winpe-language-packs-files');
   var versionId = form.dataset.versionId || '';
   var msgProgress = form.dataset.msgProgress || '…';
-  var msgXhr = form.dataset.msgXhr || 'Error';
+  var msgXhr = form.dataset.msgXhr || '{{ t('common.error')|e }}';
   var msgXhrStatus = form.dataset.msgXhrStatus || 'Error: {status}';
   var msgSummary = form.dataset.msgSummary || 'OK';
   var msgSkipped = form.dataset.msgSkipped || 'Skipped';
@@ -1764,9 +1762,7 @@
         if (j.ready) {
           showSuccess(j.patched_at_display || '');
           var pageMsg = new URLSearchParams(window.location.search).get('msg');
-          if (pageMsg === 'winpe_install_added') {
-            window.location.replace('/isos/' + versionId + '?msg=winpe_install_ready');
-          } else if (pageMsg === 'winpe_scripts_queued') {
+          if (pageMsg === 'winpe_scripts_queued') {
             window.location.replace('/isos/' + versionId + '?msg=winpe_scripts_done');
           }
           return;
@@ -1781,7 +1777,7 @@
   }
 
   var pageMsg = new URLSearchParams(window.location.search).get('msg');
-  if (pageMsg === 'winpe_scripts_queued' || pageMsg === 'winpe_install_added') {
+  if (pageMsg === 'winpe_scripts_queued') {
     pollWinpeScripts();
   }
 })();
