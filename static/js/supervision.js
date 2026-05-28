@@ -6,6 +6,8 @@
   var NETWORK_HISTORY_LIMIT = 120;
   var lastHeavyChartsRenderTs = 0;
   var HEAVY_CHARTS_MIN_INTERVAL_MS = 45000;
+  var liveMode = "soft";
+  var snapshotPollIntervalMs = 15000;
   var i18n = {
     active: "active",
     openPorts: "open ports",
@@ -622,6 +624,32 @@
     });
   }
 
+  function pollIntervalForMode(mode) {
+    if (mode === "fast") return 5000;
+    if (mode === "pause") return 0;
+    return 15000;
+  }
+
+  function heavyChartsIntervalForMode(mode) {
+    if (mode === "fast") return 20000;
+    if (mode === "pause") return 120000;
+    return 45000;
+  }
+
+  function applyLiveMode(mode) {
+    liveMode = mode === "fast" || mode === "pause" ? mode : "soft";
+    snapshotPollIntervalMs = pollIntervalForMode(liveMode);
+    HEAVY_CHARTS_MIN_INTERVAL_MS = heavyChartsIntervalForMode(liveMode);
+    scheduleSnapshotPoll();
+  }
+
+  var liveModeSelect = el("supervision-live-mode");
+  if (liveModeSelect) {
+    liveModeSelect.addEventListener("change", function () {
+      applyLiveMode(liveModeSelect.value || "soft");
+    });
+  }
+
   function bindSupervisionTabs() {
     var tabList = document.querySelector(".super-tabs");
     if (tabList) {
@@ -657,10 +685,10 @@
       clearInterval(snapshotPollTimer);
       snapshotPollTimer = null;
     }
-    if (document.hidden) return;
+    if (document.hidden || snapshotPollIntervalMs <= 0) return;
     snapshotPollTimer = setInterval(function () {
       if (!document.hidden) refreshSnapshot(false);
-    }, 15000);
+    }, snapshotPollIntervalMs);
   }
 
   bindSupervisionTabs();
@@ -677,7 +705,8 @@
 
   refreshSnapshot(false);
   refreshNetworkHistory();
-  scheduleSnapshotPoll();
+  if (liveModeSelect) liveModeSelect.value = "soft";
+  applyLiveMode("soft");
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
       if (snapshotPollTimer) clearInterval(snapshotPollTimer);

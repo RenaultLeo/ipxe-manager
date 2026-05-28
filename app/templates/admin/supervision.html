@@ -8,6 +8,14 @@
     <p class="page-subtitle text-muted small mb-0">{{ t('super.subtitle') }}</p>
   </div>
   <div class="d-flex flex-wrap gap-2" id="actions">
+    <div class="input-group input-group-sm" style="width: 220px;">
+      <label class="input-group-text" for="supervision-live-mode"><i class="bi bi-broadcast me-1"></i>Mode</label>
+      <select id="supervision-live-mode" class="form-select">
+        <option value="soft">Live doux</option>
+        <option value="fast">Live rapide</option>
+        <option value="pause">Pause</option>
+      </select>
+    </div>
     <button type="button" class="btn btn-outline-primary btn-sm" id="btn-refresh-snapshot">
       <i class="bi bi-arrow-clockwise me-1"></i>{{ t('super.refresh') }}
     </button>
@@ -109,26 +117,26 @@
       </div>
     </div>
     <div class="col-lg-4">
-      <div class="card panel-card h-100">
-        <div class="card-header"><i class="bi bi-hdd-network me-2"></i>{{ t('super.chart_ports') }}</div>
-        <div class="card-body"><canvas id="chart-ports" height="200"></canvas></div>
+      <div class="d-flex flex-column gap-3 h-100">
+        <div class="card panel-card">
+          <div class="card-header"><i class="bi bi-hdd-network me-2"></i>{{ t('super.chart_ports') }}</div>
+          <div class="card-body"><canvas id="chart-ports" height="160"></canvas></div>
+        </div>
+        <div class="card panel-card">
+          <div class="card-header"><i class="bi bi-speedometer2 me-2"></i>{{ t('super.chart_resources') }}</div>
+          <div class="card-body"><canvas id="chart-resources" height="160"></canvas></div>
+        </div>
       </div>
     </div>
     <div class="col-lg-4">
       <div class="card panel-card h-100">
-        <div class="card-header"><i class="bi bi-speedometer2 me-2"></i>{{ t('super.chart_resources') }}</div>
-        <div class="card-body"><canvas id="chart-resources" height="200"></canvas></div>
+        <div class="card-header"><i class="bi bi-bar-chart me-2"></i>{{ t('super.chart_disk') }}</div>
+        <div class="card-body"><canvas id="chart-disk" height="360"></canvas></div>
       </div>
     </div>
   </div>
 
   <div class="row g-3 mb-3">
-    <div class="col-lg-6">
-      <div class="card panel-card h-100">
-        <div class="card-header"><i class="bi bi-bar-chart me-2"></i>{{ t('super.chart_disk') }}</div>
-        <div class="card-body"><canvas id="chart-disk" height="160"></canvas></div>
-      </div>
-    </div>
     <div class="col-lg-6">
       <div class="card panel-card h-100">
         <div class="card-header"><i class="bi bi-pc-display me-2"></i>{{ t('super.host') }}</div>
@@ -146,11 +154,8 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="row g-3">
     <div class="col-lg-6">
-      <div class="card panel-card">
+      <div class="card panel-card h-100">
         <div class="card-header"><i class="bi bi-folder2 me-2"></i>{{ t('super.paths') }}</div>
         <div class="card-body p-0">
           <div class="table-responsive">
@@ -166,7 +171,10 @@
         </div>
       </div>
     </div>
-    <div class="col-lg-6">
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12">
       <div class="card panel-card">
         <div class="card-header"><i class="bi bi-grid me-2"></i>{{ t('super.checks') }}</div>
         <div class="card-body" id="checks-list"></div>
@@ -272,5 +280,5 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="/static/js/supervision.js?v=20260528-network-store"></script>
+<script src="/static/js/supervision.js?v=20260528-layout-live-modes"></script>
 {% endblock %}
