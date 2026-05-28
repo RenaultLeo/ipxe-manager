@@ -66,7 +66,6 @@ step "Regression pattern check (must be empty)"
 NEGATIVE_PATTERNS=(
   "winpe_install_added"
   "_esxi_kernel_basename_from_boot_cfg"
-  "sett\\.tls_renew_confirm"
 )
 for p in "${NEGATIVE_PATTERNS[@]}"; do
   if out="$(rg -n --hidden --glob '!**/.git/**' "$p" app || true)" && [[ -z "$out" ]]; then
@@ -77,6 +76,15 @@ for p in "${NEGATIVE_PATTERNS[@]}"; do
     ALL_OK=0
   fi
 done
+
+# Old i18n key removed on purpose. Must not reappear.
+if out="$(rg -n '"sett\.tls_renew_confirm"\s*:' app/i18n.py || true)" && [[ -z "$out" ]]; then
+  ok "removed key sett.tls_renew_confirm"
+else
+  fail "removed key sett.tls_renew_confirm"
+  [[ -n "${out:-}" ]] && echo "$out"
+  ALL_OK=0
+fi
 
 step "Expected key check (must exist)"
 POSITIVE_PATTERNS=(
