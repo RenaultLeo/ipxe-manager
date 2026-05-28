@@ -2042,11 +2042,20 @@ async def delete_iso(version_id: int, request: Request, db: Session = Depends(ge
             if cfg_path.exists():
                 shutil.rmtree(cfg_path, ignore_errors=True)
 
-        # 4. Supprimer l'entrée en DB (cascade : BootEntry + AutoConfigs)
+        # 4. Détacher les références FK nullable avant suppression (SQLite FK strict).
+        version.active_autoconfig_id = None
+        version.active_winpe_install_id = None
+        version.winpe_startnet_patched_at = None
+        db.query(Upload).filter(Upload.iso_version_id == version.id).update(
+            {Upload.iso_version_id: None},
+            synchronize_session=False,
+        )
+
+        # 5. Supprimer l'entrée en DB (cascade : BootEntry + AutoConfigs/WinPE)
         db.delete(version)
         db.commit()
 
-        # 5. Régénérer les menus
+        # 6. Régénérer les menus
         try:
             from app.services.menu_generator import queue_regenerate_all
 
