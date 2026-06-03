@@ -131,7 +131,7 @@ MAX_UPLOAD_SIZE=53687091200
 # UPLOAD_MIN_FREE_BYTES=268435456
 EXTRACT_TIMEOUT=3600
 # Ubuntu ISO extraite : racine NFS = HTTP_ROOT/boot/ubuntu/<slug-version> (activer après export NFS)
-UBUNTU_NFS_ENABLED=false
+UBUNTU_NFS_ENABLED=true
 UBUNTU_NFS_HOST=
 UBUNTU_NFS_MOUNT_OPTS=vers=4,tcp
 EOF
@@ -144,7 +144,7 @@ else
     grep -q "^ISO_HTTP_ALIAS" "$APP_DIR/.env" || echo "ISO_HTTP_ALIAS=isos-ipxe" >> "$APP_DIR/.env"
     grep -q "UPLOAD_MIN_FREE_BYTES" "$APP_DIR/.env" || printf '\n# Upload ISO — marge disque minimale avant acceptation (défaut app : 268435456 = 256 Mo)\n# UPLOAD_MIN_FREE_BYTES=268435456\n' >> "$APP_DIR/.env"
     grep -q "^UBUNTU_NFS_ENABLED" "$APP_DIR/.env" || {
-        printf '\nUBUNTU_NFS_ENABLED=false\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
+        printf '\nUBUNTU_NFS_ENABLED=true\nUBUNTU_NFS_HOST=\nUBUNTU_NFS_MOUNT_OPTS=vers=4,tcp\n' >> "$APP_DIR/.env"
     }
 fi
 
@@ -382,16 +382,16 @@ systemctl enable --now smbd nmbd
 # NFS : déjà activé ci-dessus si présent ; s'assurer qu'il tourne après permissions
 systemctl reload-or-restart nfs-server 2>/dev/null || systemctl reload-or-restart nfs-kernel-server 2>/dev/null || true
 
-# Ubuntu autoinstall : mode HTTP par défaut (UBUNTU_NFS_ENABLED=false). NFS reste optionnel.
+# Ubuntu : boot NFS activé par défaut (UBUNTU_NFS_ENABLED=true).
 if [ -f "$APP_DIR/.env" ]; then
-    grep -q '^UBUNTU_NFS_ENABLED=' "$APP_DIR/.env" || printf '\nUBUNTU_NFS_ENABLED=false\n' >> "$APP_DIR/.env"
+    grep -q '^UBUNTU_NFS_ENABLED=' "$APP_DIR/.env" || printf '\nUBUNTU_NFS_ENABLED=true\n' >> "$APP_DIR/.env"
     grep -q '^UBUNTU_RAMDISK_SIZE=' "$APP_DIR/.env" || printf 'UBUNTU_RAMDISK_SIZE=1500000\n' >> "$APP_DIR/.env"
     chmod 640 "$APP_DIR/.env" 2>/dev/null || true
 fi
 if systemctl is-active --quiet nfs-server 2>/dev/null || systemctl is-active --quiet nfs-kernel-server 2>/dev/null; then
-    echo "  NFS Ubuntu export disponible ; menus HTTP autoinstall par défaut (UBUNTU_NFS_ENABLED=true seulement si vous le voulez)."
+    echo "  NFS Ubuntu export disponible ; menus Ubuntu en mode NFS (UBUNTU_NFS_ENABLED=true)."
 else
-    echo "  NFS non actif — menus Ubuntu en mode HTTP autoinstall (UBUNTU_NFS_ENABLED=false)."
+    echo "  NFS non actif — vérifiez nfs-server (UBUNTU_NFS_ENABLED=true dans .env)."
 fi
 
 systemctl enable --now ipxe-manager
@@ -432,7 +432,7 @@ echo "  Login          : admin  /  Mot de passe : admin"
 echo "  Menu iPXE      : ${WEB_SCHEME}://$SERVER_IP/menus/menu.ipxe"
 echo "  TFTP server    : $SERVER_IP (undionly.kpxe / snponly.efi / ipxe.efi)"
 echo "  Samba share    : \\\\$SERVER_IP\\boot"
-echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (optionnel — UBUNTU_NFS_ENABLED=true dans .env)"
+echo "  NFS (Ubuntu)   : $SERVER_IP:$DATA_DIR/http/boot/ubuntu (UBUNTU_NFS_ENABLED=true)"
 echo ""
 echo "  IMPORTANT : Changer le mot de passe admin dans Paramètres !"
 echo "  FIRMWARE  : Compilé à l’install (HTTPS + TRUST ca.crt) — recompiler via /firmware si besoin"
