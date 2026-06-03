@@ -25,8 +25,9 @@ def _write_menu(path: Path, content: str) -> None:
 
 TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 
-# Rocky, AlmaLinux, CentOS : inst.repo=  |  Fedora : inst.stage2= + rd.neednet=1 (Live / ISO extraite)
+# Rocky, AlmaLinux, CentOS : inst.repo= + inst.noverifyssl (HTTPS auto-signé)  |  Fedora : inst.stage2=
 _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma", "centos", "fedora"})
+_EL_INST_REPO_SLUGS = frozenset({"rocky", "alma", "centos"})
 # Debian netinst : inst.repo= vers la racine HTTP de l'ISO extraite (dists/ intact via xorriso)
 _DEBIAN_NETINST_SLUGS = frozenset({"debian"})
 
@@ -1066,7 +1067,8 @@ def _build_kernel_args(
 
     **Ubuntu NFS** : ``boot=casper``, ``netboot=nfs``, ``nfsroot=``, ``nfsopts=`` (casper(7)).
 
-    Pour **Rocky** / **AlmaLinux** / **CentOS** : ``inst.repo=`` vers la racine HTTP de l’ISO extraite.
+    Pour **Rocky** / **AlmaLinux** / **CentOS** : ``inst.repo=`` vers la racine de l’ISO extraite
+    et ``inst.noverifyssl`` (dépôt / kickstart en HTTPS avec certificat auto-signé).
     Pour **Fedora** (installateur) : ``inst.stage2=`` ; si **live_os** : ``root=live:…/LiveOS/squashfs.img``,
     ``ro``, ``rd.live.image``. Dans tous les cas : ``rd.neednet=1``, ``ip=dhcp`` et ``initrd=<basename>`` si absents.
     """
@@ -1127,6 +1129,10 @@ def _build_kernel_args(
                 os_slug,
                 os_slug,
             )
+        if os_slug in _EL_INST_REPO_SLUGS and not re.search(
+            r"(?:^|\s)inst\.noverifyssl(?:\s|$)", args
+        ):
+            args = f"{args} inst.noverifyssl".strip()
         if os_slug == "fedora" and not re.search(r"(?:^|\s)rd\.neednet=", args):
             args = f"{args} rd.neednet=1".strip()
         if not _has_ip_kernel_arg(args):
