@@ -110,8 +110,15 @@ def _esxi_module_urls_from_json(
     return urls
 
 
-def _ubuntu_nocloud_boot_arg(seed_dir_url: str) -> str:
-    """Args autoinstall : seed à la racine boot/ubuntu/<release>/ (ds=nocloud;s=…/)."""
+def _ubuntu_autoinstall_boot_arg(*, nfs: bool, seed_dir_url: str = "") -> str:
+    """
+    Args autoinstall Ubuntu.
+
+    **NFS** (défaut) : seed sur l’arborescence montée par casper → ``file:///cdrom/``.
+    **HTTP** : seed via URL HTTP(S) du dossier publié sous boot/ubuntu/<release>/.
+    """
+    if nfs:
+        return "autoinstall ds=nocloud;s=file:///cdrom/ cloud-config-url=/dev/null"
     base = (seed_dir_url or "").rstrip("/") + "/"
     if base == "/":
         return ""
@@ -210,6 +217,7 @@ def _menu_autoconfig_entries(
     v: IsoVersion,
     os_type: OsType,
     h,
+    cfg: Settings,
     *,
     ubuntu_variant: str = "desktop",
 ) -> list[dict]:
@@ -219,16 +227,32 @@ def _menu_autoconfig_entries(
     configs = list(v.autoconfigs or [])
     entries: list[dict] = []
 
+    ubuntu_nfs = slug_l == "ubuntu" and bool(cfg.ubuntu_nfs_enabled)
+
     if slug_l == "ubuntu" and variant == "desktop":
         active_id = getattr(v, "active_autoconfig_id", None)
         if active_id:
             configs = [ac for ac in configs if ac.id == active_id]
         for ac in configs:
             rel = ac.file_path or ""
-            boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
-            if active_id == ac.id and ac.ubuntu_cloud_slug:
+            if ac.config_type == "cloud-init":
+                if ubuntu_nfs:
+                    boot_arg = _ubuntu_autoinstall_boot_arg(nfs=True)
+                elif active_id == ac.id and ac.ubuntu_cloud_slug:
+                    rel = published_seed_dir_rel_path(v)
+                    boot_arg = _ubuntu_autoinstall_boot_arg(
+                        nfs=False, seed_dir_url=h(rel)
+                    )
+                else:
+                    boot_arg = config_boot_arg(
+                        ac.config_type, os_type.slug, h(rel) if rel else ""
+                    )
+            else:
+                boot_arg = config_boot_arg(
+                    ac.config_type, os_type.slug, h(rel) if rel else ""
+                )
+            if active_id == ac.id and ac.ubuntu_cloud_slug and not ubuntu_nfs:
                 rel = published_seed_dir_rel_path(v)
-                boot_arg = _ubuntu_nocloud_boot_arg(h(rel))
             url = h(rel) if rel else ""
             entries.append(
                 {
@@ -246,7 +270,10 @@ def _menu_autoconfig_entries(
             dir_rel = _ubuntu_server_seed_dir_rel(v, ac)
             if not dir_rel:
                 continue
-            boot_arg = _ubuntu_nocloud_boot_arg(h(dir_rel))
+            boot_arg = _ubuntu_autoinstall_boot_arg(
+                nfs=ubuntu_nfs,
+                seed_dir_url=h(dir_rel) if not ubuntu_nfs else "",
+            )
             entries.append(
                 {
                     "id": ac.id,
@@ -321,7 +348,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
     version_slug = _boot_os_version_segment(be, os_type.slug) or slugify(v.version_label)
     use_ubuntu_nfs = (
         os_type.slug.lower() == "ubuntu"
-        and bool(getattr(v, "ubuntu_nfs_boot", False))
+        and bool(cfg.ubuntu_nfs_enabled)
     )
     nfs_pair = (
         cfg.ubuntu_nfsroot_pair(os_type.slug, version_slug) if use_ubuntu_nfs else None
@@ -389,7 +416,7 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         if ubuntu_variant not in ("desktop", "server"):
             ubuntu_variant = "desktop"
     autoconfigs = _menu_autoconfig_entries(
-        v, os_type, h, ubuntu_variant=ubuntu_variant or "desktop"
+        v, os_type, h, cfg, ubuntu_variant=ubuntu_variant or "desktop"
     )
 
     winpe_active_label = ""
@@ -435,13 +462,6 @@ def _build_entry(v: IsoVersion, os_type: OsType, cfg: Settings) -> dict:
         "ubuntu_variant": ubuntu_variant,
         "autoconfigs": autoconfigs,
         "ipxe_item_tag": f"v{v.id}",
-        "ubuntu_nfs_boot": use_ubuntu_nfs,
-        "ubuntu_direct_boot": (
-            slug_l == "ubuntu"
-            and ubuntu_variant == "desktop"
-            and bool(getattr(v, "active_autoconfig_id", None))
-            and not use_ubuntu_nfs
-        ),
         **(
             _proxmox_menu_fields(v, be, cfg)
             if slug_l == "proxmox"
@@ -745,9 +765,7 @@ def regenerate_all(db: Session) -> list[str]:
                             has_menu_theme=has_menu_theme,
                             back_menu_url=f"{base}/menus/ubuntu.ipxe",
                             back_item_label="Retour au menu Ubuntu",
-                            ubuntu_nfs_enabled=any(
-                                e.get("ubuntu_nfs_boot") for e in desktop_entries
-                            ),
+                            ubuntu_nfs_enabled=bool(cfg.ubuntu_nfs_enabled),
                             ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
                             ubuntu_nfs_export_path=(
                                 Path(cfg.http_root) / "boot" / "ubuntu"
@@ -792,8 +810,10 @@ def regenerate_all(db: Session) -> list[str]:
                         has_autres=has_autres,
                         server_url=base,
                         has_menu_theme=has_menu_theme,
-                        ubuntu_nfs_enabled=any(
-                            e.get("ubuntu_nfs_boot") for e in standard_entries
+                        ubuntu_nfs_enabled=(
+                            bool(cfg.ubuntu_nfs_enabled)
+                            if slug_l == "ubuntu"
+                            else False
                         ),
                         ubuntu_nfs_host=cfg.ubuntu_nfs_server_hostname() or "",
                         ubuntu_nfs_export_path=(
@@ -873,6 +893,9 @@ _UBUNTU_HTTP_KERNEL_TOKENS = (
     r"\broot=/dev/ram0\b",
     r"\bramdisk_size=\S+",
     r"\burl=\S+",
+    r"\bds=nocloud-net\S*",
+    r"\bds=nocloud;\S*",
+    r"\bcloud-config-url=\S+",
 )
 
 
@@ -1101,11 +1124,11 @@ def _build_kernel_args(
     """
     Concatène les args DB et ajoute modloop (Alpine).
 
-    **Ubuntu** (défaut, sans ``UBUNTU_NFS_ENABLED``) : ``root=/dev/ram0``,
-    ``ramdisk_size=…``, ``ip=dhcp``, ``url=`` vers l’ISO HTTP si le fichier est encore
-    sur le serveur ; les entrées autoconfig ajoutent ``autoinstall ds=nocloud-net;…``.
+    **Ubuntu NFS** (défaut, ``UBUNTU_NFS_ENABLED``) : ``ip=dhcp``, ``boot=casper``,
+    ``netboot=nfs``, ``nfsroot=<IP>:/srv/ipxe/http/boot/ubuntu/<slug>``, ``nfsopts=`` ;
+    vmlinuz/initrd en HTTPS ; autoinstall ``ds=nocloud;s=file:///cdrom/``.
 
-    **Ubuntu NFS** : ``boot=casper``, ``netboot=nfs``, ``nfsroot=``, ``nfsopts=`` (casper(7)).
+    **Ubuntu HTTP** (si NFS désactivé) : ``root=/dev/ram0``, ``url=`` ISO, ``nocloud-net``.
 
     Pour **Rocky** / **AlmaLinux** / **CentOS** : ``inst.repo=`` vers la racine de l’ISO extraite
     et ``inst.noverifyssl`` (dépôt / kickstart en HTTPS avec certificat auto-signé).
@@ -1207,7 +1230,7 @@ def _build_kernel_args(
                 args = f"{args} initrd={init_bn}".strip()
         return args.strip()
 
-    # Ubuntu : NFS optionnel (UBUNTU_NFS_ENABLED), sinon HTTP autoinstall (défaut).
+    # Ubuntu : NFS par défaut (UBUNTU_NFS_ENABLED) ; kernel/initrd restent en HTTPS via _http().
     if os_slug.lower() == "ubuntu":
         if nfsroot_pair:
             args = _strip_kernel_arg_tokens(args, _UBUNTU_HTTP_KERNEL_TOKENS)

@@ -55,7 +55,7 @@ class IsoVersion(Base):
     notes = Column(Text, default="")
     iso_was_extracted = Column(Boolean, default=False)  # True après au moins une extraction ISO réussie
     delete_iso_after_next_extract = Column(Boolean, default=False)  # purge disque après prochain extract OK
-    ubuntu_nfs_boot = Column(Boolean, default=False)  # menu iPXE : netboot=nfs au lieu de HTTP autoinstall
+    ubuntu_nfs_boot = Column(Boolean, default=False)  # legacy (boot Ubuntu = NFS via UBUNTU_NFS_ENABLED)
     # ubuntu uniquement : desktop (live + config publiée racine) | server (cloud-init par dossier conf-cloudInit-*)
     ubuntu_variant = Column(String(16), default="desktop", nullable=False)
     extract_basename_report_json = Column(Text, default="")  # dernier rapport recherche par nom { "init": ["a/b",…] }

@@ -210,8 +210,8 @@ class Settings(BaseSettings):
     multipart_max_fields: int = 2_048
     extract_timeout: int = 3600
 
-    # Ubuntu : par défaut HTTP (root=/dev/ram0, url= ISO, autoinstall nocloud-net). NFS optionnel.
-    ubuntu_nfs_enabled: bool = False
+    # Ubuntu : NFS casper (kernel/initrd HTTPS ; squashfs + seed via nfsroot=). HTTP si false.
+    ubuntu_nfs_enabled: bool = True
     ubuntu_nfs_host: str = ""  # Vide : hôte dérivé de SERVER_BASE_URL puis IPv4 locale
     ubuntu_nfs_mount_opts: str = "vers=4,tcp"  # Passé en nfsopts= (casper), pas après une virgule dans nfsroot
     ubuntu_ramdisk_size: int = 1_500_000  # Paramètre noyau ramdisk_size= (autoinstall HTTP)

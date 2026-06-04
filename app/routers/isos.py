@@ -30,9 +30,6 @@ class PurgeIsoPreferenceBody(BaseModel):
     enabled: bool
 
 
-class UbuntuNfsBootBody(BaseModel):
-    enabled: bool
-
 # Recontrôle disk_usage pendant les gros uploads (multipart sans taille fiable sinon).
 _UPLOAD_DISK_POLL_EVERY_BYTES = 64 * 1024 * 1024
 
@@ -1187,31 +1184,6 @@ async def iso_fedora_live_save(
 
         queue_regenerate_all()
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
-
-
-@router.post("/{version_id}/ubuntu-nfs-boot")
-async def set_ubuntu_nfs_boot(
-    version_id: int,
-    request: Request,
-    body: UbuntuNfsBootBody,
-    db: Session = Depends(get_db),
-):
-    """Active ou non le boot NFS casper pour cette version Ubuntu (ligne kernel du menu généré)."""
-    lang = getattr(request.state, "locale", "fr")
-    version = _get_version_or_404(db, request, version_id)
-    if getattr(version.os_type, "slug", "") != "ubuntu":
-        raise HTTPException(
-            status_code=400,
-            detail=translate(lang, "iso.ubuntu_nfs_not_ubuntu"),
-        )
-    version.ubuntu_nfs_boot = bool(body.enabled)
-    db.add(version)
-    db.commit()
-    if version.status == "ready":
-        from app.services.menu_generator import queue_regenerate_all
-
-        queue_regenerate_all()
-    return JSONResponse({"ok": True, "enabled": version.ubuntu_nfs_boot})
 
 
 @router.post("/{version_id}/purge-iso-preference")

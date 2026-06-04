@@ -6,9 +6,9 @@
 ########################################
 {% if os_type.slug == "ubuntu" %}
 {% if ubuntu_nfs_enabled %}
-# Ubuntu NFS : vmlinuz/initrd en HTTP ; casper monte le squashfs via nfsroot= (export typique : {{ ubuntu_nfs_export_path }}/).
+# Ubuntu NFS : vmlinuz/initrd en HTTPS ; casper + autoinstall via nfsroot= (export {{ ubuntu_nfs_export_path }}/).
 {% else %}
-# Ubuntu HTTP autoinstall : root=/dev/ram0, url= ISO si présente ; configs [+conf] ajoutent autoinstall ds=nocloud-net + cloud-config-url=/dev/null.
+# Ubuntu HTTP : root=/dev/ram0, url= ISO ; configs [+conf] → autoinstall ds=nocloud-net.
 {% endif %}
 {% endif %}
 
