@@ -139,6 +139,40 @@ def _ubuntu_server_seed_dir_rel(v: IsoVersion, ac) -> str | None:
     return None
 
 
+def _version_supports_standard_menu_boot(
+    entry: dict,
+    v: IsoVersion,
+    entry_os_type: OsType,
+) -> bool:
+    """True si la version peut apparaître dans le menu standard (boot ISO/kernel/wim)."""
+    be = v.boot_entry
+    if not be:
+        return False
+    slug_l = (entry_os_type.slug or "").lower()
+    bt_l = (entry_os_type.boot_type or "linux").lower()
+    if bt_l == "windows" or slug_l == "windows":
+        return bool(
+            (entry.get("boot_wim") or "").strip()
+            or (entry.get("kernel") or "").strip()
+        )
+    if slug_l == "esxi" or bt_l == "esxi":
+        if (getattr(be, "esxi_efi_boot_path", None) or "").strip():
+            return True
+        return bool((entry.get("kernel") or "").strip())
+    if slug_l == "proxmox":
+        if (getattr(be, "kernel_path", None) or "").strip() and (
+            getattr(be, "initrd_path", None) or ""
+        ).strip():
+            return True
+        return bool(
+            (entry.get("kernel") or "").strip()
+            and (entry.get("initrd") or "").strip()
+        )
+    if (getattr(be, "kernel_path", None) or "").strip():
+        return True
+    return bool((entry.get("kernel") or "").strip())
+
+
 def _ubuntu_server_flat_items(entries: list[dict]) -> list[dict]:
     """Menu Server plat : une ligne par config (+ manuel par version)."""
     flat: list[dict] = []
@@ -625,13 +659,15 @@ def regenerate_all(db: Session) -> list[str]:
                 )
                 version_with_os.extend((v, winpe_os_type) for v in legacy_winpe_versions)
 
-            # Séparer : versions standard vs versions avec script iPXE custom
+            # Boot standard + scripts iPXE custom (custom → *_autres.ipxe, sans retirer le boot)
             standard_entries = []
             custom_entries   = []
             for v, entry_os_type in version_with_os:
                 entry = _build_entry(v, entry_os_type, cfg)
                 if entry["custom_ipxe"]:
                     custom_entries.append(entry)
+
+                if not _version_supports_standard_menu_boot(entry, v, entry_os_type):
                     continue
 
                 slug_l = (entry_os_type.slug or "").lower()
@@ -785,7 +821,11 @@ def regenerate_all(db: Session) -> list[str]:
                 out_autres = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
                 _write_menu(out_autres, content_autres)
                 written.append(str(out_autres))
-                logger.info("Menu scripts iPXE généré : %s (%d entrées)", out_autres, len(custom_entries))
+                logger.info(
+                    "Menu scripts iPXE généré : %s (%d entrée(s))",
+                    out_autres,
+                    len(custom_entries),
+                )
             else:
                 # Supprimer l'ancien _autres.ipxe s'il n'y a plus de versions custom
                 old = cfg.menus_dir / f"{os_type.slug}_autres.ipxe"
