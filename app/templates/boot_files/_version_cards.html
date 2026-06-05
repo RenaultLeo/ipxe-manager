@@ -1,0 +1,179 @@
+{% set rows = filtered if filtered is defined else versions %}
+{% for v in rows %}
+<div class="card border-secondary mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <i class="{{ v.os_type.icon }} me-2 text-primary"></i>
+      <strong>{{ v.os_type.label }} {{ v.version_label }}</strong>
+      {% if v.status == 'ready' %}
+        <span class="badge bg-success ms-2">{{ t('status.ready') }}</span>
+      {% elif v.status == 'extracting' %}
+        <span class="badge bg-secondary ms-2">{{ t('iso.status_extracting') }}</span>
+      {% elif v.status == 'error' %}
+        <span class="badge bg-secondary ms-2">{{ t('iso.status_error') }}</span>
+      {% elif v.status == 'uploaded' %}
+        <span class="badge bg-secondary ms-2">{{ t('iso.status_uploaded') }}</span>
+      {% else %}
+        <span class="badge bg-secondary ms-2">{{ v.status }}</span>
+      {% endif %}
+    </span>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse"
+            data-bs-target="#v{{ v.id }}">
+      <i class="bi bi-chevron-down"></i>
+    </button>
+  </div>
+
+  <div class="collapse" id="v{{ v.id }}">
+    <div class="card-body">
+
+      {% if v.boot_entry %}
+      {% set be = v.boot_entry %}
+
+      <div class="row g-2 mb-3">
+        {% if v.os_type.boot_type == 'windows' %}
+          {% for label, path in [
+            ('BCD',         be.bcd_path),
+            ('boot.sdi',    be.boot_sdi_path),
+            ('boot.wim',    be.boot_wim_path),
+            ('bootmgr.efi', be.bootmgr_path),
+          ] %}
+            {% if path %}
+            <div class="col-md-6">
+              <div class="p-2 bg-dark border border-secondary rounded">
+                <div class="d-flex justify-content-between">
+                  <span class="small text-warning fw-semibold">{{ label }}</span>
+                  <a href="{{ server_url }}/{{ path }}" target="_blank" class="small text-muted">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                </div>
+                <code class="small text-break">{{ server_url }}/{{ path }}</code>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+        {% elif v.os_type.slug == 'esxi' or v.os_type.boot_type == 'esxi' %}
+          {% set esxi_manual_cfg = be.esxi_boot_cfg_manual_path or (be.esxi_boot_cfg_path|replace('/ipxe-boot.cfg', '/ipxe-boot-manual.cfg') if be.esxi_boot_cfg_path else '') %}
+          {% for label_key, path_esxi in [
+              ('boot.esxi_loader_mboot',    be.esxi_efi_boot_path),
+              ('boot.esxi_ipxe_boot_cfg',  be.esxi_boot_cfg_path),
+              ('boot.esxi_ipxe_boot_cfg_manual', esxi_manual_cfg),
+          ] %}
+            {% if path_esxi %}
+            <div class="col-md-6">
+              <div class="p-2 bg-dark border border-secondary rounded">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="small text-info fw-semibold">{% if label_key.startswith('boot.') %}{{ t(label_key) }}{% else %}{{ label_key }}{% endif %}</span>
+                  <a href="{{ server_url }}/{{ path_esxi }}" target="_blank" class="small text-muted">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                </div>
+                <code class="small text-break">{{ server_url }}/{{ path_esxi }}</code>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+          {% if be.esxi_modules %}
+          <div class="col-12">
+            <div class="p-2 bg-dark border border-secondary rounded">
+              <div class="small text-muted fw-semibold mb-1">{{ t('boot.esxi_modules_http_title') }}</div>
+              <code class="small text-break text-secondary">{{ be.esxi_modules }}</code>
+            </div>
+          </div>
+          {% endif %}
+          <div class="col-12">
+            <form method="post" action="/boot-files/{{ v.id }}/args" class="row g-2">
+              <div class="col-10">
+                <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
+                       value="{{ be.kernel_args or '' }}"
+                       placeholder="{{ t('iso.upload.kernel_args_ph') }}">
+              </div>
+              <div class="col-2">
+                <button class="btn btn-outline-secondary btn-sm w-100">
+                  <i class="bi bi-floppy me-1"></i>{{ t('boot.args') }}
+                </button>
+              </div>
+            </form>
+          </div>
+        {% else %}
+          {% for label, path in [
+            (be.kernel_path.split('/')[-1] if be.kernel_path else 'vmlinuz', be.kernel_path),
+            (be.initrd_path.split('/')[-1] if be.initrd_path else 'initrd',  be.initrd_path),
+            (be.modloop_path.split('/')[-1] if be.modloop_path else 'modloop', be.modloop_path),
+          ] %}
+            {% if path %}
+            <div class="col-md-6">
+              <div class="p-2 bg-dark border border-secondary rounded">
+                <div class="small text-info fw-semibold mb-1">{{ label }}</div>
+                <code class="small text-break">{{ server_url }}/{{ path }}</code>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+          <div class="col-12">
+            <form method="post" action="/boot-files/{{ v.id }}/args" class="row g-2">
+              <div class="col-10">
+                <input type="text" name="kernel_args" class="form-control form-control-sm font-monospace"
+                       value="{{ be.kernel_args or '' }}"
+                       placeholder="{{ t('iso.upload.kernel_args_ph') }}">
+              </div>
+              <div class="col-2">
+                <button class="btn btn-outline-secondary btn-sm w-100">
+                  <i class="bi bi-floppy me-1"></i>{{ t('boot.args') }}
+                </button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <form method="post" action="/boot-files/{{ v.id }}/upload" enctype="multipart/form-data"
+            class="row g-2 align-items-end border-top border-secondary pt-3">
+
+        <div class="col-md-3">
+          <label class="form-label small">{{ t('boot.role') }}</label>
+          <select name="file_role" class="form-select form-select-sm">
+            {% if v.os_type.boot_type == 'windows' %}
+            <option value="bcd">{{ t('boot.role_bcd') }}</option>
+            <option value="boot_sdi">{{ t('boot.role_boot_sdi') }}</option>
+            <option value="boot_wim">{{ t('boot.role_boot_wim') }}</option>
+            <option value="bootmgr">{{ t('boot.role_bootmgr') }}</option>
+            {% else %}
+            <option value="kernel">{{ t('boot.role_kernel') }}</option>
+            <option value="initrd">{{ t('boot.role_initrd') }}</option>
+            <option value="efi">{{ t('boot.role_efi') }}</option>
+            {% endif %}
+            <option value="modloop">{{ t('boot.role_modloop') }}</option>
+            <option value="custom_ipxe">{{ t('boot.role_custom_ipxe') }}</option>
+            <option value="other">{{ t('boot.role_other') }}</option>
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label small">{{ t('boot.file') }}</label>
+          <input type="file" name="file" class="form-control form-control-sm" required>
+        </div>
+
+        <div class="col-md-3">
+          <button class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-upload me-1"></i>{{ t('boot.upload') }}
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+{% else %}
+{% if filtered is defined %}
+<div class="alert alert-secondary text-muted mb-0">
+  <i class="bi bi-info-circle me-2"></i>{{ t('iso.empty') }}
+</div>
+{% else %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>{{ t('boot.no_versions') }}
+  <a href="/isos/upload">{{ t('boot.add_first') }}</a> {{ t('boot.add_first_suffix') }}
+</div>
+{% endif %}
+{% endfor %}

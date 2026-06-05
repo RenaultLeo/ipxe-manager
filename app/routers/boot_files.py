@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -11,7 +11,8 @@ from urllib.parse import quote
 from app.database import get_db
 from app.auth import auth_redirect_admin, auth_redirect_login, get_session_user
 from app.services.ownership import filter_iso_versions, get_iso_version
-from app.models.models import IsoVersion, BootEntry, Upload
+from app.models.models import OsType, IsoVersion, BootEntry, Upload
+from app.services.os_type_order import sort_os_types_for_ui
 from app.services.disk_info import fmt_size
 from app.templating import templates, template_context
 from app.config import settings, resolve_server_base_url
@@ -32,22 +33,40 @@ def _auth(request: Request):
 
 
 @router.get("", response_class=HTMLResponse)
-async def boot_list(request: Request, db: Session = Depends(get_db),
-                    scan_result: str = ""):
+async def boot_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    scan_result: str = "",
+    os: str | None = Query(None, description="Slug du type d'OS : onglet pré-sélectionné."),
+):
     redir = _auth(request)
     if redir:
         return redir
+    os_types = [
+        ot
+        for ot in sort_os_types_for_ui(db.query(OsType).all())
+        if (ot.slug or "").lower() != "winpe"
+    ]
     versions = (
         db.query(IsoVersion)
-        .options(joinedload(IsoVersion.os_type))
+        .options(
+            joinedload(IsoVersion.os_type),
+            joinedload(IsoVersion.boot_entry),
+        )
         .filter(IsoVersion.status.in_(["uploaded", "ready", "extracting", "error"]))
+        .order_by(IsoVersion.created_at.desc())
         .all()
     )
+    slug_set = {ot.slug for ot in os_types}
+    raw = (os or "").strip().lower()
+    filter_os_slug = raw if raw in slug_set else ""
     return templates.TemplateResponse(
         "boot_files.html",
         template_context(
             request,
+            os_types=os_types,
             versions=versions,
+            filter_os_slug=filter_os_slug,
             fmt_size=fmt_size,
             server_url=resolve_server_base_url(db),
             scan_result=scan_result,
@@ -56,7 +75,11 @@ async def boot_list(request: Request, db: Session = Depends(get_db),
 
 
 @router.post("/scan")
-async def scan_boot_files(request: Request, db: Session = Depends(get_db)):
+async def scan_boot_files(
+    request: Request,
+    db: Session = Depends(get_db),
+    return_os: str = Form(""),
+):
     """Scanne boot/ et enregistre les fichiers existants en DB."""
     redir = auth_redirect_admin(request)
     if redir:
@@ -81,7 +104,11 @@ async def scan_boot_files(request: Request, db: Session = Depends(get_db)):
     )
     if res.get("errors"):
         msg += translate(lang, "boot.scan_errors_suffix", n=len(res["errors"]))
-    return RedirectResponse(f"/boot-files?scan_result={quote(msg)}", status_code=302)
+    dest = f"/boot-files?scan_result={quote(msg)}"
+    ro = (return_os or "").strip().lower()
+    if ro:
+        dest += f"&os={quote(ro)}"
+    return RedirectResponse(dest, status_code=302)
 
 
 @router.post("/{version_id}/upload")
