@@ -36,12 +36,34 @@ ALPINE_REPO_DEFAULT_PUBLIC = "http://dl-cdn.alpinelinux.org/alpine/latest-stable
 
 MENU_LOGO_UPLOAD_NAME = "menu-logo-upload.png"
 
+# Fond menu iPXE : résolution VESA classique (undionly / BIOS). 1280×720 échoue souvent
+# après un install partiel (console --picture / framebuffer indisponible).
+MENU_THEME_WIDTH = 1024
+MENU_THEME_HEIGHT = 768
+MENU_THEME_CONSOLE_LEFT = 24
+MENU_THEME_CONSOLE_RIGHT = 220
+MENU_THEME_CONSOLE_TOP = 40
+MENU_THEME_CONSOLE_BOTTOM = 32
+
 # VMware / OEM : parfois ``prefix-http=`` ou espaces ; sans ça la mise à jour pouvait tout ignorer (bug silencieux).
 _ESXI_IPXE_PREFIX_LINE_RE = re.compile(r"^\s*prefix(?:-http)?\s*=", re.I)
 _ESXI_IPXE_KERNELOPT_LINE_RE = re.compile(r"^\s*kernelopt\s*=", re.I)
 
 # Fichier embarqué (app/resources/default_menu_logo.png) si pas d’upload utilisateur.
 DEFAULT_MENU_LOGO = Path(__file__).resolve().parent.parent / "resources" / "default_menu_logo.png"
+
+
+def _menu_theme_render_kwargs(has_menu_theme: bool) -> dict:
+    """Variables Jinja partagées par _theme.inc.j2 (alignées sur menu-theme.png)."""
+    return {
+        "has_menu_theme": has_menu_theme,
+        "menu_theme_w": MENU_THEME_WIDTH,
+        "menu_theme_h": MENU_THEME_HEIGHT,
+        "menu_theme_left": MENU_THEME_CONSOLE_LEFT,
+        "menu_theme_right": MENU_THEME_CONSOLE_RIGHT,
+        "menu_theme_top": MENU_THEME_CONSOLE_TOP,
+        "menu_theme_bottom": MENU_THEME_CONSOLE_BOTTOM,
+    }
 
 
 def _jinja_env(*, ipxe_debug: bool) -> Environment:
@@ -503,14 +525,14 @@ def _build_menu_theme_png(menus_dir: Path) -> bool:
         logger.warning("Pillow absent : menu-theme.png non généré (pip install pillow).")
         return False
 
-    w, h = 1280, 720
+    w, h = MENU_THEME_WIDTH, MENU_THEME_HEIGHT
     bg_color = (22, 42, 74)
     canvas = Image.new("RGB", (w, h), bg_color)
 
     if logo_src is not None and logo_src.is_file():
         try:
             logo = Image.open(logo_src).convert("RGBA")
-            max_w = min(200, w // 4)
+            max_w = min(160, w // 4)
             if logo.width > max_w:
                 ratio = max_w / logo.width
                 new_h = max(1, int(logo.height * ratio))
@@ -722,7 +744,7 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     has_autres=has_autres,
                     server_url=base,
-                    has_menu_theme=has_menu_theme,
+                    **_menu_theme_render_kwargs(has_menu_theme),
                 )
                 out = cfg.menus_dir / f"{os_type.slug}.ipxe"
                 _write_menu(out, content)
@@ -749,7 +771,10 @@ def regenerate_all(db: Session) -> list[str]:
                     out_hub = cfg.menus_dir / "ubuntu.ipxe"
                     _write_menu(
                         out_hub,
-                        hub.render(server_url=base, has_menu_theme=has_menu_theme),
+                        hub.render(
+                            server_url=base,
+                            **_menu_theme_render_kwargs(has_menu_theme),
+                        ),
                     )
                     written.append(str(out_hub))
 
@@ -762,7 +787,7 @@ def regenerate_all(db: Session) -> list[str]:
                             entries=desktop_entries,
                             has_autres=has_autres,
                             server_url=base,
-                            has_menu_theme=has_menu_theme,
+                            **_menu_theme_render_kwargs(has_menu_theme),
                             back_menu_url=f"{base}/menus/ubuntu.ipxe",
                             back_item_label="Retour au menu Ubuntu",
                             ubuntu_nfs_enabled=bool(cfg.ubuntu_nfs_enabled),
@@ -784,7 +809,7 @@ def regenerate_all(db: Session) -> list[str]:
                             default_id=flat[0]["menu_id"] if flat else "back",
                             has_autres=has_autres,
                             server_url=base,
-                            has_menu_theme=has_menu_theme,
+                            **_menu_theme_render_kwargs(has_menu_theme),
                         ),
                     )
                     written.append(str(out_server))
@@ -809,7 +834,7 @@ def regenerate_all(db: Session) -> list[str]:
                         entries=standard_entries,
                         has_autres=has_autres,
                         server_url=base,
-                        has_menu_theme=has_menu_theme,
+                        **_menu_theme_render_kwargs(has_menu_theme),
                         ubuntu_nfs_enabled=(
                             bool(cfg.ubuntu_nfs_enabled)
                             if slug_l == "ubuntu"
@@ -834,7 +859,7 @@ def regenerate_all(db: Session) -> list[str]:
                     os_type=os_type,
                     entries=custom_entries,
                     server_url=base,
-                    has_menu_theme=has_menu_theme,
+                    **_menu_theme_render_kwargs(has_menu_theme),
                     back_menu_url=autres_back_target,
                     back_item_label=autres_back_item,
                 )
@@ -861,7 +886,7 @@ def regenerate_all(db: Session) -> list[str]:
         os_types=os_types,
         server_url=cfg.server_base_url.rstrip("/"),
         remote_chains=remote_chains,
-        has_menu_theme=has_menu_theme,
+        **_menu_theme_render_kwargs(has_menu_theme),
     )
     out = cfg.menus_dir / "menu.ipxe"
     _write_menu(out, content)
