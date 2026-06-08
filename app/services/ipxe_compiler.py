@@ -235,24 +235,15 @@ def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
         )
     lines.extend(
         [
-            "# Jusqu'à 3 tentatives (réseau pas prêt, console/menu transitoire) puis échec.",
-            "set retry_count 0",
+            "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)",
+            "isset ${ip} || dhcp || dhcp net0 || dhcp net1",
             "",
-            ":retry",
-            "dhcp || dhcp net0 || dhcp net1",
-            "inc retry_count",
-            f"chain --autofree {menu_url} || goto chain_failed",
+            f"chain --autofree {menu_url} || goto load_error",
             "exit",
-            "",
-            ":chain_failed",
-            "iseq ${retry_count} 3 && goto load_error",
-            "echo iPXE : nouvelle tentative (${retry_count}/3)...",
-            "sleep 5",
-            "goto retry",
             "",
             ":load_error",
             "echo ========================================",
-            "echo iPXE : echec chain menu (3 tentatives)",
+            "echo iPXE : echec chain menu",
             f"echo URL : {menu_url}",
         ]
     )
@@ -264,18 +255,14 @@ def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
                 "ifstat",
                 "route",
                 "echo ========================================",
-                "shell",
             ]
         )
-    else:
-        lines.extend(
-            [
-                "echo ========================================",
-                "sleep 10",
-                "reboot",
-            ]
-        )
-    lines.append("")
+    lines.extend(
+        [
+            "shell",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
