@@ -238,7 +238,6 @@ def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
             "# Obtenir une IP si pas encore configurée (EFI peut déjà l'avoir fait)",
             "isset ${ip} || dhcp || dhcp net0 || dhcp net1",
             "",
-            ":retry",
             f"chain --autofree {menu_url} || goto load_error",
             "exit",
             "",
@@ -256,15 +255,11 @@ def build_embed_ipxe(menu_url: str, *, debug: bool | None = None) -> str:
                 "ifstat",
                 "route",
                 "echo ========================================",
-                "sleep 15",
             ]
         )
-    else:
-        lines.append("sleep 5")
     lines.extend(
         [
-            "isset ${ip} || dhcp || dhcp net0 || dhcp net1",
-            "goto retry",
+            "shell",
             "",
         ]
     )
