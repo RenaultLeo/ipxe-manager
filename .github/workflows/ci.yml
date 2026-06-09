@@ -41,17 +41,18 @@ jobs:
 
       - name: Scan (medium+ → échec si CWE critique)
         run: |
-          bandit -r app scripts -c bandit.yaml -f sarif -o bandit-cwe.sarif --exit-zero
+          bandit -r app scripts -c bandit.yaml -f json -o bandit-cwe-full.json --exit-zero
+          python scripts/bandit_json_to_sarif.py bandit-cwe-full.json bandit-cwe.sarif
           bandit -r app scripts -c bandit.yaml -ll -f json -o bandit-cwe.json
           python scripts/print_bandit_cwe_summary.py bandit-cwe.json
 
       - name: Upload SARIF (Code scanning)
         if: >-
-          always() && (
+          always() && hashFiles('bandit-cwe.sarif') != '' && (
             github.event_name != 'pull_request'
             || github.event.pull_request.head.repo.full_name == github.repository
           )
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: bandit-cwe.sarif
           category: bandit
@@ -63,6 +64,7 @@ jobs:
           name: bandit-cwe-report
           path: |
             bandit-cwe.json
+            bandit-cwe-full.json
             bandit-cwe.sarif
 
   verify:
