@@ -22,17 +22,18 @@ def main() -> int:
         r = subprocess.run([node, script], cwd=ROOT)
         if r.returncode != 0:
             return r.returncode
+    pure = ROOT / "tools" / "rebuild_locale_lists_pure.py"
+    r = subprocess.run([sys.executable, str(pure)], cwd=ROOT)
+    if r.returncode != 0:
+        return r.returncode
     print("Locales DE/ES/IT/PT régénérées sous app/locale_values/")
     return 0
 
 
 def sync_without_node() -> int:
-    """Repli sans Node : applique locale_gaps.json puis sync_locale_lists.py."""
-    for script in ("tools/build_locale_gaps.py", "tools/apply_locale_gaps.py"):
-        r = subprocess.run([sys.executable, script], cwd=ROOT)
-        if r.returncode != 0:
-            return r.returncode
-    return 0
+    """Repli sans Node : paires MJS + locale_gaps.json."""
+    pure = ROOT / "tools" / "rebuild_locale_lists_pure.py"
+    return subprocess.run([sys.executable, str(pure)], cwd=ROOT).returncode
 
 
 if __name__ == "__main__":

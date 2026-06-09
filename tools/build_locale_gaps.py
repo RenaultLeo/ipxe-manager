@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -697,12 +698,77 @@ GAPS: dict[str, dict[str, str]] = {
         "it": "Parola d'ordine",
         "pt": "Palavra-passe",
     },
+    "iso.active_config_not_found": {
+        "de": "Konfiguration für diese Version nicht gefunden.",
+        "es": "Configuración no encontrada para esta versión.",
+        "it": "Configurazione non trovata per questa versione.",
+        "pt": "Configuração não encontrada para esta versão.",
+    },
+    "iso.winpe_scripts_stale": {
+        "de": "Master vorhanden, aber Skripte noch nicht synchronisiert — klicken Sie auf « WinPE-Skripte und boot.wim aktualisieren ».",
+        "es": "Hay masters pero los scripts aún no están sincronizados — pulse « Actualizar scripts WinPE y boot.wim ».",
+        "it": "Master presenti ma script non ancora sincronizzati — fare clic su « Aggiorna script WinPE e boot.wim ».",
+        "pt": "Existem masters mas os scripts ainda não estão sincronizados — clique em « Atualizar scripts WinPE e boot.wim ».",
+    },
+    "iso.detail_iso_fs_path": {
+        "de": "Dateipfad (Server)",
+        "es": "Ruta en el servidor",
+        "it": "Percorso file (server)",
+        "pt": "Caminho no servidor",
+    },
+    "super.verify_quick_ok": {
+        "es": "Verificación rápida completada ({n} comprobaciones).",
+        "it": "Verifica rapida completata ({n} controlli).",
+        "pt": "Verificação rápida concluída ({n} verificações).",
+    },
+    "super.verify_quick_fail": {
+        "es": "Verificación rápida: {n} error(es).",
+        "it": "Verifica rapida: {n} errore/i.",
+        "pt": "Verificação rápida: {n} falha(s).",
+    },
+    "super.verify_full_ok": {
+        "es": "Auditoría exhaustiva completada en {sec} s.",
+        "it": "Audit completo completato in {sec} s.",
+        "pt": "Auditoria exaustiva concluída em {sec} s.",
+    },
+    "super.verify_full_fail": {
+        "es": "Auditoría exhaustiva con errores ({sec} s) — ver el registro.",
+        "it": "Audit completo con errori ({sec} s) — vedere il registro.",
+        "pt": "Auditoria exaustiva com erros ({sec} s) — ver o registo.",
+    },
 }
 
 
+def _merged_gaps() -> dict[str, dict[str, str]]:
+    tools_dir = Path(__file__).resolve().parent
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    from auto_gaps_from_pairs import build_auto_gaps  # noqa: WPS433
+
+    merged: dict[str, dict[str, str]] = {}
+    for src in (
+        build_auto_gaps(),
+        GAPS,
+        _load_bulk_gaps(),
+    ):
+        for key, row in src.items():
+            merged.setdefault(key, {}).update(row)
+    return merged
+
+
+def _load_bulk_gaps() -> dict[str, dict[str, str]]:
+    bulk_py = Path(__file__).with_name("locale_gaps_bulk.py")
+    if not bulk_py.is_file():
+        return {}
+    ns: dict = {}
+    exec(bulk_py.read_text(encoding="utf-8"), ns)  # noqa: S102
+    return ns.get("BULK_GAPS", {})
+
+
 def main() -> int:
-    OUT.write_text(json.dumps(GAPS, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Wrote {len(GAPS)} keys to {OUT}")
+    merged = _merged_gaps()
+    OUT.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote {len(merged)} keys to {OUT}")
     return 0
 
 

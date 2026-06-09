@@ -613,7 +613,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "fw.sources_label": "Sources :",
         "fw.cloned": "cloné",
         "fw.not_cloned": "non cloné",
-        "fw.snponly_sub": "UEFI via drivers EFI (virtio, e1000…)",
+        "fw.snponly_sub": "UEFI via pilotes EFI (virtio, e1000…)",
         "fw.ipxe_sub": "UEFI drivers intégrés (physique)",
         "fw.card_bios": "(BIOS)",
         "fw.badge_vms": "VMs",
