@@ -25,12 +25,16 @@ import ssl
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlencode, urljoin, urlparse
 
 USER_AGENT = "ipxe-health-load/1.0"
+_REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
+
+
+def _is_http_url(url: str) -> bool:
+    p = urlparse(url)
+    return p.scheme in ("http", "https") and bool(p.hostname)
 
 
 def _req_raw(
@@ -42,9 +46,9 @@ def _req_raw(
     timeout: float = 30.0,
 ) -> tuple[int, float, str | None]:
     """Requête HTTP sans suivre les redirections (client bas niveau)."""
-    p = urlparse(url)
-    if not p.hostname:
+    if not _is_http_url(url):
         return -1, 0.0, None
+    p = urlparse(url)
     port = p.port or (443 if p.scheme == "https" else 80)
     path = p.path or "/"
     if p.query:
@@ -84,34 +88,37 @@ def _req(
     data: bytes | None = None,
     timeout: float = 30.0,
     no_redirect: bool = False,
+    max_redirects: int = 8,
 ) -> tuple[int, float, str | None]:
     """Retourne (status, durée_s, location si redirect)."""
+    if not _is_http_url(url):
+        return -1, 0.0, None
     if no_redirect:
         return _req_raw(url, method=method, data=data, timeout=timeout)
 
-    r = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={
-            "User-Agent": USER_AGENT,
-            **(
-                {"Content-Type": "application/x-www-form-urlencoded"}
-                if data is not None
-                else {}
-            ),
-        },
-    )
-    t0 = time.perf_counter()
-    try:
-        with urllib.request.urlopen(r, timeout=timeout) as resp:
-            _ = resp.read()
-            return resp.status, time.perf_counter() - t0, None
-    except urllib.error.HTTPError as e:
-        loc = e.headers.get("Location") if e.headers else None
-        return e.code, time.perf_counter() - t0, loc
-    except Exception:
-        return -1, time.perf_counter() - t0, None
+    current_url = url
+    current_method = method
+    current_data = data
+    total_dt = 0.0
+    for _ in range(max_redirects + 1):
+        code, dt, loc = _req_raw(
+            current_url,
+            method=current_method,
+            data=current_data,
+            timeout=timeout,
+        )
+        total_dt += dt
+        if code in _REDIRECT_CODES and loc:
+            next_url = urljoin(current_url, loc)
+            if not _is_http_url(next_url):
+                return code, total_dt, loc
+            current_url = next_url
+            if code in (301, 302, 303):
+                current_method = "GET"
+                current_data = None
+            continue
+        return code, total_dt, loc
+    return -1, total_dt, None
 
 
 def smoke(base: str, timeout: float, skip_menus: bool) -> int:
