@@ -54,6 +54,21 @@ IGNORE_SAME_AS_EN = frozenset(
         "dash.quick_config_sub",
         "iso.detail.winpe_th_index",
         "sett.ot_col_max",
+        # Cognats valides (identiques à l’anglais dans la langue cible).
+        "admin.role_admin",
+        "iso.col_version",
+        "super.col_name",
+        "menu.chain_col_name",
+        "iso.upload.optional",
+        "dash.col_status",
+        "iso.col_status",
+        "cfg.type_dd_unattend",
+        "dash.status_error",
+        "common.error",
+        "iso.status_error",
+        "dash.col_file",
+        "iso.detail.cfg_th_file",
+        "dash.disk_total",
     }
 )
 

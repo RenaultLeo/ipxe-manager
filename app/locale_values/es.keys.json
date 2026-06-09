@@ -46,8 +46,8 @@
   "iso.winpe_drivers_path": "Ruta",
   "boot.esxi_ipxe_boot_cfg": "ipxe-boot.cfg",
   "iso.detail_iso_fs_path": "Ruta fichier (serveur)",
-  "cfg.type_dd_proxmox_answer": "proxmox-answer — Proxmox (answer.toml)",
-  "cfg.type_dd_alpine_answer": "alpine-answer — Alpine (answers / apkovl)",
+  "cfg.type_dd_proxmox_answer": "proxmox-answer — Proxmox (archivo answer.toml)",
+  "cfg.type_dd_alpine_answer": "alpine-answer — Alpine (respuestas / apkovl)",
   "cfg.tpl_item_preseed": "Preseed (Debian)",
   "cfg.tpl_item_kickstart": "Kickstart (RHEL/CentOS/ESXi)",
   "cfg.tpl_item_unattend": "Unattend.xml (Windows)",
@@ -144,5 +144,11 @@
   "iso.extract_error_title": "Última extracción fallida",
   "dash.status_error": "Error",
   "common.error": "Error",
-  "iso.status_error": "Error"
+  "iso.status_error": "Error",
+  "iso.upload.optional": "opcional",
+  "cfg.type_dd_unattend": "unattend — Windows (autounattend.xml)",
+  "dash.disk_total": "Total: {n} GB",
+  "common.bytes_unit": "octetos",
+  "dash.col_file": "Archivo",
+  "auth.password": "Contraseña"
 }

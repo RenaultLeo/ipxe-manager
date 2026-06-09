@@ -34,8 +34,8 @@
   "iso.winpe_drivers_path": "Percorso",
   "boot.esxi_ipxe_boot_cfg": "ipxe-boot.cfg",
   "iso.detail_iso_fs_path": "Percorso fichier (serveur)",
-  "cfg.type_dd_proxmox_answer": "proxmox-answer — Proxmox (answer.toml)",
-  "cfg.type_dd_alpine_answer": "alpine-answer — Alpine (answers / apkovl)",
+  "cfg.type_dd_proxmox_answer": "proxmox-answer — Proxmox (file answer.toml)",
+  "cfg.type_dd_alpine_answer": "alpine-answer — Alpine (risposte / apkovl)",
   "cfg.tpl_item_preseed": "Preseed (Debian)",
   "cfg.tpl_item_kickstart": "Kickstart (RHEL/CentOS/ESXi)",
   "cfg.tpl_item_unattend": "Unattend.xml (Windows)",
@@ -142,7 +142,14 @@
   "iso.delete_version_confirm": "Eliminare {os} {version} e tutti i file associati? Questa azione è irreversibile.",
   "iso.extract_error_no_detail": "Nessun dettaglio registrato — controllare i log Celery sul server (journalctl -u ipxe-celery).",
   "iso.extract_error_title": "Ultima estrazione non riuscita",
-  "auth.password": "Password",
+  "auth.password": "Parola d'ordine",
   "iso.add_version": "Aggiungi versione",
-  "dash.col_file": "File"
+  "dash.col_file": "File",
+  "dash.status_error": "Errore",
+  "common.error": "Errore",
+  "iso.status_error": "Errore",
+  "iso.upload.optional": "facoltativo",
+  "cfg.type_dd_unattend": "unattend — Windows (autounattend.xml)",
+  "dash.disk_total": "Totale: {n} GB",
+  "common.bytes_unit": "byte"
 }

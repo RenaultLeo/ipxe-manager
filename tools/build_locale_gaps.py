@@ -567,19 +567,135 @@ GAPS: dict[str, dict[str, str]] = {
     "iso.status_error": {
         "es": "Error",
     },
-    "auth.password": {
-        "it": "Password",
-        "pt": "Palavra-passe",
-    },
     "iso.add_version": {
         "it": "Aggiungi versione",
         "pt": "Adicionar versão",
     },
-    "dash.col_file": {
-        "it": "File",
-    },
     "iso.detail.cfg_th_file": {
+        "de": "Datei",
+        "es": "Archivo",
         "it": "File",
+        "pt": "Ficheiro",
+    },
+    "dash.col_status": {
+        "de": "Status",
+        "es": "Estado",
+        "it": "Stato",
+        "pt": "Estado",
+    },
+    "super.col_status": {
+        "de": "Zustand",
+        "es": "Estado",
+        "it": "Stato",
+        "pt": "Estado",
+    },
+    "super.col_name": {
+        "de": "Name",
+        "es": "Nombre",
+        "it": "Nome",
+        "pt": "Nome",
+    },
+    "admin.role_admin": {
+        "de": "Administrator",
+        "es": "Administrador",
+        "it": "Amministratore",
+        "pt": "Administrador",
+    },
+    "iso.col_version": {
+        "de": "Version",
+        "es": "Versión",
+        "it": "Versione",
+        "pt": "Versão",
+    },
+    "iso.col_status": {
+        "de": "Status",
+        "es": "Estado",
+        "it": "Stato",
+        "pt": "Estado",
+    },
+    "iso.upload.optional": {
+        "de": "optional",
+        "es": "opcional",
+        "it": "facoltativo",
+        "pt": "opcional",
+    },
+    "cfg.type_dd_unattend": {
+        "de": "unattend — Windows (autounattend.xml)",
+        "es": "unattend — Windows (autounattend.xml)",
+        "it": "unattend — Windows (autounattend.xml)",
+        "pt": "unattend — Windows (autounattend.xml)",
+    },
+    "cfg.type_dd_proxmox_answer": {
+        "de": "proxmox-answer — Proxmox (Datei answer.toml)",
+        "es": "proxmox-answer — Proxmox (archivo answer.toml)",
+        "it": "proxmox-answer — Proxmox (file answer.toml)",
+        "pt": "proxmox-answer — Proxmox (ficheiro answer.toml)",
+    },
+    "cfg.type_dd_alpine_answer": {
+        "de": "alpine-answer — Alpine (Antworten / apkovl)",
+        "es": "alpine-answer — Alpine (respuestas / apkovl)",
+        "it": "alpine-answer — Alpine (risposte / apkovl)",
+        "pt": "alpine-answer — Alpine (respostas / apkovl)",
+    },
+    "sett.tls_renew_fail_detail": {
+        "de": "Details: {detail}",
+        "es": "Detalle: {detail}",
+        "it": "Dettaglio: {detail}",
+        "pt": "Detalhe: {detail}",
+    },
+    "menu.chain_col_name": {
+        "de": "Name",
+        "es": "Nombre",
+        "it": "Nome",
+        "pt": "Nome",
+    },
+    "menu.chain_col_status": {
+        "de": "Zustand",
+        "es": "Estado",
+        "it": "Stato",
+        "pt": "Estado",
+    },
+    "dash.disk_total": {
+        "de": "Gesamt: {n} GB",
+        "es": "Total: {n} GB",
+        "it": "Totale: {n} GB",
+        "pt": "Total: {n} GB",
+    },
+    "dash.status_error": {
+        "de": "Fehler",
+        "es": "Error",
+        "it": "Errore",
+        "pt": "Erro",
+    },
+    "common.bytes_unit": {
+        "de": "Bytes",
+        "es": "octetos",
+        "it": "byte",
+        "pt": "octetos",
+    },
+    "common.error": {
+        "de": "Fehler",
+        "es": "Error",
+        "it": "Errore",
+        "pt": "Erro",
+    },
+    "iso.status_error": {
+        "de": "Fehler",
+        "es": "Error",
+        "it": "Errore",
+        "pt": "Erro",
+    },
+    "dash.col_file": {
+        "de": "Datei",
+        "es": "Archivo",
+        "it": "File",
+        "pt": "Ficheiro",
+    },
+    "auth.password": {
+        "de": "Passwort",
+        "es": "Contraseña",
+        "it": "Parola d'ordine",
+        "pt": "Palavra-passe",
     },
 }
 
