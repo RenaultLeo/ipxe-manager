@@ -208,6 +208,8 @@ class Settings(BaseSettings):
     # Starlette limite à 1000 fichiers par défaut — relever pour uploads massifs (.cab, pilotes).
     multipart_max_files: int = 100_000
     multipart_max_fields: int = 2_048
+    # Starlette ≥ 0.40 : champs texte sans filename (défaut 1 Mo) — relever si gros kernel_args / YAML.
+    multipart_max_part_size: int = 16 * 1024 * 1024
     extract_timeout: int = 3600
 
     # Ubuntu : NFS casper (kernel/initrd HTTPS ; squashfs + seed via nfsroot=). HTTP si false.

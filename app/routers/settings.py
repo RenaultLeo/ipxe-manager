@@ -165,7 +165,10 @@ async def os_type_new_post(request: Request, db: Session = Depends(get_db)):
     redir = _auth(request)
     if redir:
         return redir
-    form = await request.form()
+    from app.http_multipart import read_multipart_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_multipart_form(request, lang=lang)
     slug = str(form.get("slug") or "").strip().lower()
     label = str(form.get("label") or "").strip()
     boot_type = str(form.get("boot_type") or "linux").strip().lower()
@@ -254,7 +257,10 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
     if ot.is_builtin:
         return RedirectResponse("/settings", status_code=302)
 
-    form = await request.form()
+    from app.http_multipart import read_multipart_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_multipart_form(request, lang=lang)
     label = str(form.get("label") or "").strip()
     boot_type = str(form.get("boot_type") or "linux").strip().lower()
     icon = str(form.get("icon") or "bi-hdd").strip() or "bi-hdd"

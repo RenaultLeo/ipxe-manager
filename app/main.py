@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -30,8 +31,48 @@ for _d in [
     except OSError:
         pass  # On a dev machine the paths may be read-only — that's fine
 
+def _cleanup_stale_uploads():
+    """Au démarrage, marque comme 'error' les uploads restés bloqués en pending/processing.
+    Ces zombies apparaissent quand le worker Celery est redémarré pendant une tâche."""
+    try:
+        db = SessionLocal()
+        stale = db.query(Upload).filter(Upload.status.in_(["pending", "processing"])).all()
+        for u in stale:
+            u.status = "error"
+            u.error_msg = "Interrompu (redémarrage du serveur)"
+        # Pareil pour les versions restées en extracting
+        stuck = db.query(IsoVersion).filter(IsoVersion.status == "extracting").all()
+        for v in stuck:
+            v.status = "error"
+        if stale or stuck:
+            db.commit()
+        db.close()
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        if settings.secret_key == "changeme_generate_with_openssl_rand_hex_32":
+            raise RuntimeError(
+                "SECRET_KEY is insecure default. Set SECRET_KEY in .env before starting."
+            )
+        init_db()
+        sync_settings_runtime_from_db()
+        _cleanup_stale_uploads()
+        start_network_traffic_collector(sample_interval_sec=10.0)
+    except Exception:
+        log.exception("Échec au démarrage (init_db / settings / cleanup)")
+        raise
+    yield
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="iPXE Manager", version="1.0.0")
+app = FastAPI(title="iPXE Manager", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     SessionMiddleware,
@@ -63,6 +104,21 @@ for _path, _subdir, _name in [
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 @app.middleware("http")
+async def multipart_limits_middleware(request: Request, call_next):
+    from starlette.formparsers import MultiPartException
+    from starlette.responses import JSONResponse
+
+    from app.http_multipart import preload_multipart_form
+
+    try:
+        await preload_multipart_form(request)
+    except MultiPartException as exc:
+        status = 413 if "maximum size" in str(exc).lower() else 400
+        return JSONResponse({"detail": str(exc)}, status_code=status)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def locale_middleware(request: Request, call_next):
     from app.i18n import LOCALE_COOKIE, resolve_lang
 
@@ -85,40 +141,3 @@ app.include_router(admin.router)
 app.include_router(admin_supervision.router)
 
 
-def _cleanup_stale_uploads():
-    """Au démarrage, marque comme 'error' les uploads restés bloqués en pending/processing.
-    Ces zombies apparaissent quand le worker Celery est redémarré pendant une tâche."""
-    try:
-        db = SessionLocal()
-        stale = db.query(Upload).filter(Upload.status.in_(["pending", "processing"])).all()
-        for u in stale:
-            u.status = "error"
-            u.error_msg = "Interrompu (redémarrage du serveur)"
-        # Pareil pour les versions restées en extracting
-        stuck = db.query(IsoVersion).filter(IsoVersion.status == "extracting").all()
-        for v in stuck:
-            v.status = "error"
-        if stale or stuck:
-            db.commit()
-        db.close()
-    except Exception:
-        pass
-
-
-@app.on_event("startup")
-async def startup():
-    import logging
-
-    log = logging.getLogger(__name__)
-    try:
-        if settings.secret_key == "changeme_generate_with_openssl_rand_hex_32":
-            raise RuntimeError(
-                "SECRET_KEY is insecure default. Set SECRET_KEY in .env before starting."
-            )
-        init_db()
-        sync_settings_runtime_from_db()
-        _cleanup_stale_uploads()
-        start_network_traffic_collector(sample_interval_sec=10.0)
-    except Exception:
-        log.exception("Échec au démarrage (init_db / settings / cleanup)")
-        raise

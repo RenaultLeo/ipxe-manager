@@ -21,6 +21,7 @@ from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
 from app.config import settings
+from app.http_multipart import read_multipart_form
 
 router = APIRouter(prefix="/isos")
 logger = logging.getLogger(__name__)
@@ -59,34 +60,6 @@ def _multipart_upload_blocked(
     if merged_need > 0 and frees <= merged_need + reserve:
         return (507, translate(lang, "iso.upload.disk_low_reserve"))
     return None
-
-
-def _multipart_form_limits() -> dict[str, int]:
-    return {
-        "max_files": settings.multipart_max_files,
-        "max_fields": settings.multipart_max_fields,
-    }
-
-
-async def _read_multipart_form(request: Request, *, lang: str):
-    """Parse multipart avec limites configurables (évite le plafond Starlette à 1000 fichiers)."""
-    from starlette.formparsers import MultiPartException
-
-    try:
-        return await request.form(**_multipart_form_limits())
-    except MultiPartException as exc:
-        msg = str(exc).lower()
-        if "too many files" in msg:
-            raise HTTPException(
-                413,
-                detail=translate(lang, "iso.upload.too_many_files"),
-            ) from exc
-        if "too many fields" in msg:
-            raise HTTPException(
-                413,
-                detail=translate(lang, "iso.upload.too_many_fields"),
-            ) from exc
-        raise HTTPException(400, detail=str(exc)) from exc
 
 
 def _upload_files_from_form(form, field_name: str) -> list[UploadFile]:
@@ -445,7 +418,7 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
     if blocked0:
         raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
 
-    form = await request.form()
+    form = await read_multipart_form(request, lang=lang)
     try:
         os_type_id = int(form.get("os_type_id"))
     except (TypeError, ValueError):
@@ -1556,7 +1529,7 @@ async def upload_winpe_language_packs(
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_master_mode_required(version, lang)
 
-    form = await _read_multipart_form(request, lang=lang)
+    form = await read_multipart_form(request, lang=lang)
     files = _upload_files_from_form(form, "pack_files")
     if not files:
         raise HTTPException(
