@@ -44,4 +44,6 @@ jobs:
         run: python -m compileall -q app scripts
 
       - name: Pytest
-        run: pytest -q --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest -q --tb=short
