@@ -1,0 +1,6 @@
+# Bandit — analyse statique Python (règles OWASP → identifiants CWE).
+# CI : severity medium+ (-ll). Rapport JSON : bandit-cwe.json
+exclude_dirs:
+  - tests
+  - /venv
+  - /.venv

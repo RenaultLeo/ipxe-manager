@@ -67,9 +67,11 @@ def _menu_theme_render_kwargs(has_menu_theme: bool) -> dict:
 
 
 def _jinja_env(*, ipxe_debug: bool) -> Environment:
-    env = Environment(
+    # Templates iPXE (.ipxe.j2), pas HTML — autoescape=True casserait les scripts PXE.
+    env = Environment(  # nosec B701
         loader=FileSystemLoader(str(TMPL_DIR)),
         keep_trailing_newline=True,
+        autoescape=False,
     )
     env.globals["ipxe_debug"] = ipxe_debug
     return env

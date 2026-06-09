@@ -1,7 +1,7 @@
 import logging
 import time
 
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import bindparam, create_engine, event, inspect, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -200,16 +200,16 @@ def _backfill_builtin_extract_full_iso() -> None:
         return
     try:
         with engine.connect() as conn:
-            placeholders = ", ".join(f"'{s}'" for s in slugs)
             conn.execute(
                 text(
-                    f"""
+                    """
                     UPDATE os_types
                     SET extract_full_iso = 1
-                    WHERE slug IN ({placeholders})
+                    WHERE slug IN :slugs
                       AND (extract_full_iso = 0 OR extract_full_iso IS NULL)
                     """
-                )
+                ).bindparams(bindparam("slugs", expanding=True)),
+                {"slugs": list(slugs)},
             )
             conn.commit()
     except Exception:
