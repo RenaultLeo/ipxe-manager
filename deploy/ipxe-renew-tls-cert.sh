@@ -18,6 +18,16 @@ if [ -z "$HOST" ]; then
   exit 1
 fi
 
+# Aligné sur app/server_url_validation.py — refuse injection shell / OpenSSL.
+if [[ "$HOST" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+  :
+elif [[ "$HOST" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,252}[a-zA-Z0-9])?$ ]]; then
+  :
+else
+  echo "Hôte invalide (IPv4 ou FQDN ASCII attendu)." >&2
+  exit 1
+fi
+
 if [ ! -f "$SSL_DIR/ca.crt" ] || [ ! -f "$SSL_DIR/ca.key" ]; then
   echo "CA absente dans $SSL_DIR — lancez deploy/generate-tls-cert.sh" >&2
   exit 1

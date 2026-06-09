@@ -147,8 +147,9 @@ def _write_env_ipxe_debug(enabled: bool) -> None:
 def persist_server_base_url(db: Session, url: str) -> str:
     """Enregistre l’URL (BDD + ``.env`` + singleton) — source unique pour menus et Celery."""
     from app.models.models import AppSetting
+    from app.server_url_validation import normalize_server_base_url
 
-    normalized = url.strip().rstrip("/")
+    normalized = normalize_server_base_url(url)
     row = db.query(AppSetting).filter(AppSetting.key == "server_base_url").first()
     if row:
         row.value = normalized

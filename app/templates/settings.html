@@ -34,6 +34,10 @@
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-shield-lock me-2"></i>{{ t('sett.tls_renew_sudo') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'tls_renew_script' %}
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_script') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'server_url_invalid' %}
+<div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.server_url_invalid') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+{% elif request.query_params.get('msg') == 'tls_renew_invalid_host' %}
+<div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ t('sett.tls_renew_invalid_host') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'ipxe_debug_on' %}
 <div class="alert alert-success alert-dismissible fade show"><i class="bi bi-bug me-2"></i>{{ t('sett.ipxe_debug_on') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% elif request.query_params.get('msg') == 'ipxe_debug_off' %}

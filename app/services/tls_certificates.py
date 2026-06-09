@@ -143,13 +143,20 @@ def _load_tls_cert_status() -> TlsCertStatus:
 
 def host_for_tls_renewal(server_base_url: str) -> str:
     """Hôte SAN pour le certificat (IP ou FQDN depuis SERVER_BASE_URL)."""
-    parsed = urlparse(server_base_url.strip())
-    host = (parsed.hostname or parsed.netloc or "").strip()
-    if host:
-        return host
     from app.config import detect_primary_ipv4
+    from app.server_url_validation import InvalidServerBaseUrlError, validate_tls_san_host
 
-    return detect_primary_ipv4()
+    parsed = urlparse(server_base_url.strip())
+    host = (parsed.hostname or "").strip()
+    if host:
+        try:
+            return validate_tls_san_host(host)
+        except InvalidServerBaseUrlError:
+            logger.warning(
+                "SERVER_BASE_URL invalide pour TLS (%r), repli sur l’IPv4 locale",
+                server_base_url,
+            )
+    return validate_tls_san_host(detect_primary_ipv4())
 
 
 def renew_tls_certificate(server_base_url: str) -> tuple[bool, str]:
@@ -157,14 +164,21 @@ def renew_tls_certificate(server_base_url: str) -> tuple[bool, str]:
     Renouvelle server.crt (même CA — pas de recompile iPXE).
     Nécessite sudoers : ipxe NOPASSWD /usr/local/sbin/ipxe-renew-tls-cert
     """
-    host = host_for_tls_renewal(server_base_url)
+    from app.server_url_validation import InvalidServerBaseUrlError, validate_tls_san_host
+
+    try:
+        safe_host = validate_tls_san_host(host_for_tls_renewal(server_base_url))
+    except InvalidServerBaseUrlError:
+        logger.error("renew_tls_certificate: hôte TLS refusé (%r)", server_base_url)
+        return False, "invalid_host"
+
     script = _RENEW_SCRIPT
     if not script.is_file():
         logger.error("renew_tls_certificate: %s absent", script)
         return False, "script_missing"
 
     # Sudoers autorise ce binaire exact (install-service-sudo.sh), pas bash + chemin deploy.
-    cmd = ["sudo", "-n", str(script), host]
+    cmd = ["sudo", "-n", str(script), safe_host]
     logger.info("renew_tls_certificate: %s", " ".join(cmd))
     try:
         proc = subprocess.run(

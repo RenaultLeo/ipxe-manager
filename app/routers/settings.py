@@ -23,6 +23,7 @@ from app.config import (
     resolve_ipxe_debug,
     resolve_server_base_url,
 )
+from app.server_url_validation import InvalidServerBaseUrlError
 from app.services.tls_certificates import get_tls_cert_status, renew_tls_certificate
 from app.templating import templates, template_context
 from app.services.autoconfig_types import all_config_types_for_ui, config_type_labels as _config_type_labels
@@ -302,7 +303,10 @@ async def update_server_url(
     redir = _auth(request)
     if redir:
         return redir
-    persist_server_base_url(db, server_base_url)
+    try:
+        persist_server_base_url(db, server_base_url)
+    except InvalidServerBaseUrlError:
+        return RedirectResponse("/settings?msg=server_url_invalid", status_code=302)
     from app.tasks.jobs import regenerate_menus_task
 
     regenerate_menus_task.delay()
@@ -340,6 +344,8 @@ async def renew_tls_cert(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/settings?msg=tls_renew_sudo", status_code=302)
     if detail == "script_missing":
         return RedirectResponse("/settings?msg=tls_renew_script", status_code=302)
+    if detail == "invalid_host":
+        return RedirectResponse("/settings?msg=tls_renew_invalid_host", status_code=302)
     err = quote(detail[:400], safe="")
     return RedirectResponse(f"/settings?msg=tls_renew_fail&detail={err}", status_code=302)
 
