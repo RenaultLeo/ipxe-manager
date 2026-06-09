@@ -719,7 +719,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "iso.detail.no_autoconfig_version": "Aucune configuration automatique pour cette version.",
         "iso.detail.delete_this_version": "Supprimer cette version",
         "iso.detail.cfg_th_type": "Type",
-        "iso.detail.cfg_th_label": "Label",
+        "iso.detail.cfg_th_label": "Libellé",
         "iso.detail.cfg_th_file": "Fichier",
         "fw.https_banner_active": "HTTPS actif — SERVER_BASE_URL en https://.",
         "fw.https_banner_rebuild": "Recompilez le firmware pour embarquer CERT/TRUST={ca_path} et activer DOWNLOAD_PROTO_HTTPS dans iPXE.",

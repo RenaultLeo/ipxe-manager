@@ -1,0 +1,45 @@
+﻿ClÚs EN/FR : 698
+_en.list.json : 698 / 698 [OK]
+  de.list.json : 698 [OK]
+  es.list.json : 698 [OK]
+  it.list.json : 698 [OK]
+  pt.list.json : 698 [OK]
+
+FR identique Ó EN : 89 (souvent termes techniques)
+
+DE identique Ó EN : 52 total, 13 Ó traiter
+  dash.col_status: 'Status'
+  super.col_status: 'Status'
+  super.col_name: 'Name'
+  admin.role_admin: 'Administrator'
+  iso.col_version: 'Version'
+  iso.col_status: 'Status'
+  iso.upload.optional: 'optional'
+  cfg.type_dd_unattend: 'unattend ù Windows (autounattend.xml)'
+  cfg.type_dd_proxmox_answer: 'proxmox-answer ù Proxmox (answer.toml)'
+  cfg.type_dd_alpine_answer: 'alpine-answer ù Alpine (answers / apkovl)'
+  sett.tls_renew_fail_detail: 'Detail: {detail}'
+  menu.chain_col_name: 'Name'
+  menu.chain_col_status: 'Status'
+
+ES identique Ó EN : 27 total, 7 Ó traiter
+  dash.disk_total: 'Total: {n} GB'
+  dash.status_error: 'Error'
+  common.bytes_unit: 'bytes'
+  common.error: 'Error'
+  iso.status_error: 'Error'
+  cfg.type_dd_proxmox_answer: 'proxmox-answer ù Proxmox (answer.toml)'
+  cfg.type_dd_alpine_answer: 'alpine-answer ù Alpine (answers / apkovl)'
+
+IT identique Ó EN : 26 total, 5 Ó traiter
+  dash.col_file: 'File'
+  auth.password: 'Password'
+  cfg.type_dd_proxmox_answer: 'proxmox-answer ù Proxmox (answer.toml)'
+  cfg.type_dd_alpine_answer: 'alpine-answer ù Alpine (answers / apkovl)'
+  iso.detail.cfg_th_file: 'File'
+
+PT identique Ó EN : 24 total, 4 Ó traiter
+  dash.disk_total: 'Total: {n} GB'
+  common.bytes_unit: 'bytes'
+  cfg.type_dd_proxmox_answer: 'proxmox-answer ù Proxmox (answer.toml)'
+  cfg.type_dd_alpine_answer: 'alpine-answer ù Alpine (answers / apkovl)'
