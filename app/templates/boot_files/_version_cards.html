@@ -128,7 +128,7 @@
       {% endif %}
 
       <form method="post" action="/boot-files/{{ v.id }}/upload" enctype="multipart/form-data"
-            class="row g-2 align-items-end border-top border-secondary pt-3">
+            class="boot-upload-form row g-2 align-items-end border-top border-secondary pt-3">
         {% if filter_os_slug %}
         <input type="hidden" name="redirect_to" value="/boot-files?os={{ filter_os_slug }}">
         {% endif %}
@@ -159,7 +159,13 @@
 
         <div class="col-md-3">
           <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-upload me-1"></i>{{ t('boot.upload') }}
+            <span class="boot-upload-label">
+              <i class="bi bi-upload me-1"></i>{{ t('boot.upload') }}
+            </span>
+            <span class="boot-upload-spinner d-none">
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              {{ t('boot.upload_in_progress') }}
+            </span>
           </button>
         </div>
 

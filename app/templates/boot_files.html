@@ -13,6 +13,13 @@
   </form>
 </div>
 
+{% if upload_ok %}
+<div class="alert alert-success alert-dismissible fade show mb-4" id="boot-upload-ok-alert" role="alert">
+  <i class="bi bi-check-circle-fill me-2"></i>{{ upload_ok }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
 {% if scan_result %}
 <div class="alert alert-info alert-dismissible fade show mb-4">
   <i class="bi bi-info-circle me-2"></i>{{ scan_result }}
@@ -50,6 +57,50 @@
 
 {% block scripts %}
 <script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var uploadVid = params.get('upload_vid');
+  if (uploadVid) {
+    var activePane = document.querySelector('.tab-pane.show.active');
+    var target = activePane
+      ? activePane.querySelector('[id="v' + uploadVid + '"]')
+      : document.getElementById('v' + uploadVid);
+    if (target && typeof bootstrap !== 'undefined') {
+      bootstrap.Collapse.getOrCreateInstance(target, { toggle: false }).show();
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+  var okAlert = document.getElementById('boot-upload-ok-alert');
+  if (okAlert && typeof bootstrap !== 'undefined') {
+    window.setTimeout(function () {
+      bootstrap.Alert.getOrCreateInstance(okAlert).close();
+    }, 7000);
+  }
+  if (params.has('upload_ok') || params.has('upload_vid')) {
+    params.delete('upload_ok');
+    params.delete('upload_vid');
+    var cleanPath = window.location.pathname;
+    var rest = params.toString();
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', rest ? cleanPath + '?' + rest : cleanPath);
+    }
+  }
+})();
+
+(function () {
+  document.querySelectorAll('form.boot-upload-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      var btn = form.querySelector('button[type="submit"]');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      var label = form.querySelector('.boot-upload-label');
+      var spin = form.querySelector('.boot-upload-spinner');
+      if (label) label.classList.add('d-none');
+      if (spin) spin.classList.remove('d-none');
+    });
+  });
+})();
+
 (function () {
   var tabBar = document.getElementById('bootOsTab');
   var returnOs = document.getElementById('boot-scan-return-os');

@@ -29,6 +29,52 @@ def _safe_redirect_path(raw: str, default: str) -> str:
     return p
 
 
+_FILE_ROLE_LABEL_KEYS: dict[str, str] = {
+    "kernel": "boot.role_kernel",
+    "initrd": "boot.role_initrd",
+    "boot_wim": "boot.role_boot_wim",
+    "bcd": "boot.role_bcd",
+    "boot_sdi": "boot.role_boot_sdi",
+    "bootmgr": "boot.role_bootmgr",
+    "efi": "boot.role_efi",
+    "modloop": "boot.role_modloop",
+    "custom_ipxe": "boot.role_custom_ipxe",
+    "other": "boot.role_other",
+}
+
+
+def _redirect_after_boot_upload(
+    request: Request,
+    dest: str,
+    *,
+    version_id: int,
+    filename: str,
+    file_role: str,
+    size: int,
+    version: IsoVersion,
+) -> RedirectResponse:
+    lang = getattr(request.state, "locale", "fr")
+    role_label = translate(
+        lang,
+        _FILE_ROLE_LABEL_KEYS.get(file_role, "boot.role_other"),
+    )
+    ver_label = f"{version.os_type.label} {version.version_label}"
+    msg = translate(
+        lang,
+        "boot.upload_done",
+        file=filename,
+        version=ver_label,
+        role=role_label,
+        size=fmt_size(size),
+    )
+    base = _safe_redirect_path(dest, "/boot-files")
+    joiner = "&" if "?" in base else "?"
+    return RedirectResponse(
+        f"{base}{joiner}upload_ok={quote(msg)}&upload_vid={version_id}",
+        status_code=302,
+    )
+
+
 def _auth(request: Request):
     return auth_redirect_login(request)
 
@@ -38,6 +84,8 @@ async def boot_list(
     request: Request,
     db: Session = Depends(get_db),
     scan_result: str = "",
+    upload_ok: str = "",
+    upload_vid: int | None = Query(None, ge=1),
     os: str | None = Query(None, description="Slug du type d'OS : onglet pré-sélectionné."),
 ):
     redir = _auth(request)
@@ -71,6 +119,8 @@ async def boot_list(
             fmt_size=fmt_size,
             server_url=resolve_server_base_url(db),
             scan_result=scan_result,
+            upload_ok=upload_ok,
+            upload_vid=upload_vid,
         ),
     )
 
@@ -214,8 +264,15 @@ async def upload_boot_file(
     from app.tasks.jobs import regenerate_menus_task
     regenerate_menus_task.delay()
 
-    dest = _safe_redirect_path(redirect_to, "/boot-files")
-    return RedirectResponse(dest, status_code=302)
+    return _redirect_after_boot_upload(
+        request,
+        redirect_to,
+        version_id=version_id,
+        filename=safe_name,
+        file_role=file_role,
+        size=size,
+        version=version,
+    )
 
 
 @router.post("/{version_id}/replace-wim")
