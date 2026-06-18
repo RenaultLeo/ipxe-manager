@@ -305,15 +305,5 @@ class Settings(BaseSettings):
         path = self.ubuntu_boot_version_dir(version_slug).resolve().as_posix()
         return f"{host}:{path}"
 
-    def preseed_http_url(self, relative_path: str | None) -> str:
-        """URL HTTP pour preseed Debian (installateur d-i ; pas de TLS sur :80/configs/)."""
-        if not relative_path:
-            return ""
-        host = self.ubuntu_nfs_server_hostname()
-        if not host:
-            host = "127.0.0.1"
-        clean = str(relative_path).replace("\\", "/").lstrip("/")
-        return f"http://{host}/{clean}"
-
 
 settings = Settings()

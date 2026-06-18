@@ -350,11 +350,8 @@ def _menu_autoconfig_entries(
 
     for ac in configs:
         rel = ac.file_path or ""
-        if ac.config_type == "preseed" and slug_l == "debian":
-            url = cfg.preseed_http_url(rel)
-        else:
-            url = h(rel) if rel else ""
-        boot_arg = config_boot_arg(ac.config_type, os_type.slug, url)
+        boot_arg = config_boot_arg(ac.config_type, os_type.slug, h(rel) if rel else "")
+        url = h(rel) if rel else ""
         entries.append(
             {
                 "id": ac.id,
