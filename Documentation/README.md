@@ -23,7 +23,7 @@ Pour l’**installation**, le déploiement serveur et l’architecture technique
 | [03-tableau-de-bord.md](03-tableau-de-bord.md) | Jobs, disque, cartes OS |
 | [04-isos-liste-et-ajout.md](04-isos-liste-et-ajout.md) | Liste ISOs, formulaire d’ajout |
 | [05-isos-fiche-version.md](05-isos-fiche-version.md) | Extraction, boot, WinPE, Ubuntu, etc. |
-| [06-fichiers-boot.md](06-fichiers-boot.md) | Page Fichiers Boot |
+| [06-fichiers-boot.md](06-fichiers-boot.md) | Page Fichiers Boot, remplacement vmlinuz/initrd, pilotes |
 | [07-configurations-automatiques.md](07-configurations-automatiques.md) | Preseed, cloud-init, kickstart… |
 | [08-menus-ipxe.md](08-menus-ipxe.md) | Menus générés, scripts perso, chainload |
 | [09-firmware-ipxe.md](09-firmware-ipxe.md) | Compilation undionly / EFI |
@@ -33,7 +33,7 @@ Pour l’**installation**, le déploiement serveur et l’architecture technique
 | [13-dialogues-et-confirmations.md](13-dialogues-et-confirmations.md) | Modales de confirmation |
 | [14-taches-arriere-plan.md](14-taches-arriere-plan.md) | Celery : extraction, menus, firmware |
 | [15-parcours-boot-pxe.md](15-parcours-boot-pxe.md) | Du client PXE au menu (vue utilisateur) |
-| [16-depannage-interface.md](16-depannage-interface.md) | Problèmes fréquents côté UI |
+| [16-depannage-interface.md](16-depannage-interface.md) | Problèmes fréquents (UI, installateur, pilotes) |
 | [images/README.md](images/README.md) | Convention de nommage des captures |
 
 ---

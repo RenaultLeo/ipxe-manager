@@ -77,6 +77,40 @@ Enregistrement → régénération des menus recommandée (**Menus iPXE → Rég
 
 ---
 
+## Pilotes et firmware (attention aux ISO minimales)
+
+> **Important :** tous les ISO d’installation ne contiennent **pas** les pilotes nécessaires à votre matériel (carte réseau, contrôleur disque RAID/NVMe, etc.). iPXE Manager extrait les fichiers de boot **tels qu’ils sont dans l’ISO** : si l’ISO est « netinst » ou minimale sans firmware, le `vmlinuz` / `initrd` déployés n’auront pas non plus ces pilotes.
+
+### Symptômes typiques côté installateur
+
+| Symptôme | Cause probable |
+|----------|----------------|
+| L’installateur **ne voit aucun disque** | Pilote contrôleur stockage absent (NVMe exotique, RAID, HBA…) |
+| Seule l’interface **`lo` (local)** apparaît | Pilote carte réseau absent — pas de DHCP possible pour la suite |
+| Écran d’erreur ou blocage **juste après le boot** iPXE | Noyau/initrd incompatibles ou trop minimal pour le hardware |
+| Installation OK en **ISO USB** mais pas en PXE | L’ISO USB utilisée inclut peut‑être plus de firmware que celle extraite ici |
+
+Ces signes pointent **très probablement** vers un **manque de pilotes** dans les fichiers de boot, pas vers un dysfonctionnement du menu iPXE en lui‑même.
+
+### Que faire
+
+1. **Choisir une ISO plus complète** dès l’ajout de version, quand elle existe :
+   - **Debian** : préférer `debian-*-amd64-netinst-**firmware**.iso` plutôt que la netinst standard.
+   - **Ubuntu / Fedora / autres** : variantes « full », live, ou images explicitement « with firmware » selon le éditeur.
+2. **Ré-extraire** depuis la fiche version après avoir remplacé l’ISO, **ou** remplacer manuellement les fichiers concernés.
+3. **Remplacer les fichiers de boot** dans **Fichiers Boot** (cette page) :
+   - rôle **vmlinuz / kernel** → nouveau noyau contenant les modules requis ;
+   - rôle **initrd** → initrd reconstruit ou issu d’une ISO/firmware pack adapté.
+4. **Sauvegarder** puis **régénérer les menus** si besoin (**Menus iPXE → Régénérer tous**).
+
+Vous devrez en général **trouver vous‑même** les bons fichiers (autre ISO, paquet `firmware-*`, initrd custom, documentation du fabricant). iPXE Manager ne télécharge pas de pilotes tiers : il sert et enregistre les fichiers que vous fournissez.
+
+### Windows / WinPE
+
+Pour **Windows en mode WinPE**, l’injection de pilotes se fait plutôt via la fiche version (ZIP pilotes, `boot.wim`). Voir [05-isos-fiche-version.md](05-isos-fiche-version.md). La page **Fichiers Boot** reste utilisable pour remplacer `boot.wim` directement.
+
+---
+
 ## Permissions
 
 Même règles que les ISOs : modification uniquement sur **vos** versions (utilisateur) ou toutes (admin).

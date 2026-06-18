@@ -51,6 +51,7 @@ Liste des fichiers détectés : `vmlinuz`, `initrd`, `boot.wim`, chemins ESXi, r
 
 ![Liste des chemins de boot (dl/dt) avec vmlinuz, initrd ou boot.wim.](images/05-iso-detail-boot-files-list.png)
 
+> **Manque de pilotes ?** Si l’installateur ne détecte pas le disque ou n’a que l’interface réseau `lo`, les fichiers extraits (`vmlinuz`, `initrd`) sont probablement trop minimalistes pour votre hardware. Ré-extraire depuis une ISO **with firmware**, ou remplacer ces fichiers via **Fichiers Boot** ([06-fichiers-boot.md](06-fichiers-boot.md#pilotes-et-firmware-attention-aux-iso-minimales)). Lien direct depuis la fiche : **Fichiers Boot** dans le menu ou le texte d’aide « upload manuel ».
 
 ---
 

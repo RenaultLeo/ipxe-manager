@@ -36,6 +36,23 @@ Détail page : [08-menus-ipxe.md](08-menus-ipxe.md).
 
 ---
 
+## Installateur — pas de disque ou réseau absent (`lo` seulement)
+
+Ces symptômes apparaissent **après** un boot PXE/iPXE réussi, dans l’installateur Linux (Debian, Ubuntu, etc.) :
+
+| Symptôme | Cause probable | Action |
+|----------|----------------|--------|
+| **Aucun disque** détecté | Pilote stockage absent dans le noyau/initrd | Utiliser une ISO **with firmware** ; remplacer `vmlinuz` / `initrd` via **Fichiers Boot** |
+| Seule l’interface **`lo` (local)** | Pilote réseau absent | Idem — sans carte réseau, pas de DHCP ni téléchargement des paquets |
+| Même matériel OK en **USB** mais pas en PXE | ISO ou initrd PXE plus minimal | Comparer les fichiers boot USB vs ceux servis par le serveur ; ajuster dans **Fichiers Boot** |
+| Erreur juste après sélection du menu | Fichiers boot inadaptés au hardware | Vérifier les chemins sur la fiche version ; remplacer les fichiers concernés |
+
+> **Attention :** certaines ISO **ne contiennent pas** les pilotes nécessaires. L’extraction ne fait que copier ce qui est dans l’ISO : en cas d’échec au boot ou dans l’installateur, il vous revient de **trouver des fichiers de boot** (noyau, initrd) incluant les bons pilotes, puis de les **téléverser** dans le gestionnaire **Fichiers Boot** (`/boot-files`).
+
+Exemple Debian : image `*-netinst-firmware.iso` plutôt que netinst seule. Détail : [06-fichiers-boot.md](06-fichiers-boot.md#pilotes-et-firmware-attention-aux-iso-minimales).
+
+---
+
 ## Firmware
 
 | Symptôme | Cause probable | Action |

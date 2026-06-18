@@ -71,6 +71,8 @@ Selon le type d’OS, des sections apparaissent :
 - **Linux** : vmlinuz, initrd, modloop (Alpine), dépôt APK personnalisé (Alpine).
 - **Windows** : upload de l'iso obligatoire.
 
+> **Pilotes et firmware :** les ISO « netinst » ou minimales (Debian sans `-firmware`, certaines images server allégées, etc.) n’embarquent pas toujours les pilotes réseau ou disque requis par votre matériel. Si l’installateur ne voit **aucun disque** ou n’affiche que **`lo`** en réseau, la cause est **très probablement** un manque de pilotes dans le `vmlinuz` / `initrd` extraits. Privilégiez une ISO **with firmware** à l’ajout ; sinon vous pourrez **remplacer** ces fichiers plus tard dans **Fichiers Boot**. Voir [06-fichiers-boot.md](06-fichiers-boot.md#pilotes-et-firmware-attention-aux-iso-minimales).
+
 **Ubuntu** : choix variante **Server** vs **Desktop** ; message indiquant extraction complète type casper.
 
 
