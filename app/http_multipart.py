@@ -7,8 +7,20 @@ from starlette.formparsers import MultiPartException
 
 from app.config import settings
 
-# Parse manuel après garde-fous disque (ne pas consommer le corps avant).
+# Parse manuel dans le handler (garde-fous disque ou éviter preload + Form/File FastAPI).
 MULTIPART_MANUAL_PARSE_PATHS = frozenset({"/isos/upload"})
+
+
+def uses_manual_multipart_parse(path: str) -> bool:
+    """True si la route parse ``request.form()`` elle-même (pas le middleware)."""
+    if path in MULTIPART_MANUAL_PARSE_PATHS:
+        return True
+    # Uploads boot : conflit connu preload middleware ↔ dépendances FastAPI Form/File.
+    if path.startswith("/boot-files/") and (
+        path.endswith("/upload") or path.endswith("/replace-wim")
+    ):
+        return True
+    return False
 
 
 def multipart_parser_kwargs() -> dict[str, int]:
@@ -58,7 +70,7 @@ async def preload_multipart_form(request: Request) -> None:
     """
     if not _is_multipart_request(request):
         return
-    if request.url.path in MULTIPART_MANUAL_PARSE_PATHS:
+    if uses_manual_multipart_parse(request.url.path):
         return
     await request.form(**multipart_parser_kwargs())
 

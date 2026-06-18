@@ -2,7 +2,8 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, Form, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
+from starlette.datastructures import UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -111,19 +112,36 @@ async def scan_boot_files(
     return RedirectResponse(dest, status_code=302)
 
 
+def _pick_upload_file(form, key: str) -> UploadFile | None:
+    item = form.get(key)
+    if item is None or not isinstance(item, UploadFile):
+        return None
+    fn = (getattr(item, "filename", None) or "").strip()
+    return item if fn else None
+
+
 @router.post("/{version_id}/upload")
 async def upload_boot_file(
     version_id: int,
     request: Request,
-    file_role: str = Form(...),  # kernel|initrd|boot_wim|efi|other
-    kernel_args: str = Form(""),
-    redirect_to: str = Form(""),
-    file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
     if redir:
         return redir
+
+    from app.http_multipart import read_multipart_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_multipart_form(request, lang=lang)
+    file_role = str(form.get("file_role") or "").strip()
+    kernel_args = str(form.get("kernel_args") or "").strip()
+    redirect_to = str(form.get("redirect_to") or "").strip()
+    file = _pick_upload_file(form, "file")
+    if not file_role:
+        raise HTTPException(400, "file_role requis")
+    if not file:
+        raise HTTPException(400, "fichier requis")
 
     user = get_session_user(request)
     version = get_iso_version(db, user, version_id)
@@ -204,13 +222,20 @@ async def upload_boot_file(
 async def replace_boot_wim(
     version_id: int,
     request: Request,
-    file_boot_wim: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     """Remplace uniquement le fichier boot.wim d'une version Windows."""
     redir = _auth(request)
     if redir:
         return redir
+
+    from app.http_multipart import read_multipart_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_multipart_form(request, lang=lang)
+    file_boot_wim = _pick_upload_file(form, "file_boot_wim")
+    if not file_boot_wim:
+        raise HTTPException(400, "boot.wim requis")
 
     user = get_session_user(request)
     version = get_iso_version(db, user, version_id)
