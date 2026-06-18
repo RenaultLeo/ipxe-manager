@@ -158,8 +158,11 @@ def config_boot_arg(config_type: str, os_slug: str, url: str) -> str:
     Retourne "" pour unattend (Windows) — géré via wimboot initrd dans le template.
     """
     if config_type == "preseed":
-        # Debian preseed
-        return f"auto=true priority=critical preseed/url={url}"
+        # Debian preseed — allow_unauthenticated_ssl : cert auto-signé (initrd d-i sans CA embarquée)
+        return (
+            f"auto=true priority=critical debian-installer/allow_unauthenticated_ssl=true "
+            f"preseed/url={url}"
+        )
     elif config_type == "kickstart":
         if os_slug in ("fedora", "rocky", "alma", "centos"):
             return f"inst.ks={url}"
