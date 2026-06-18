@@ -39,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Scan (medium+ → échec si CWE critique)
+      - name: Scan (medium+ → échec ; LOW seulement dans le rapport complet)
         run: |
           bandit -r app scripts -c bandit.yaml -f json -o bandit-cwe-full.json --exit-zero
           python scripts/bandit_json_to_sarif.py bandit-cwe-full.json bandit-cwe.sarif

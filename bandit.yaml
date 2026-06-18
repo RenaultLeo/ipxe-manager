@@ -1,5 +1,5 @@
 # Bandit — analyse statique Python (règles OWASP → identifiants CWE).
-# CI : severity medium+ (-ll) bloque la merge ; SARIF (JSON→scripts/bandit_json_to_sarif.py) → Code scanning.
+# CI : `-ll` = échec uniquement si sévérité MEDIUM ou HIGH (LOW → rapport complet seulement).
 exclude_dirs:
   - tests
   - /venv

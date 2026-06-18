@@ -1,25 +1,24 @@
 from __future__ import annotations
 
 from io import BytesIO
+from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 
-def test_boot_file_upload_multipart() -> None:
-    from app.auth import hash_password
+@pytest.fixture
+def boot_upload_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, int]:
     from app.database import SessionLocal
     from app.main import app
-    from app.models.models import BootEntry, IsoVersion, OsType, User
+    from app.models.models import BootEntry, IsoVersion, OsType
 
-    client = TestClient(app)
+    monkeypatch.setattr(
+        "app.routers.boot_files.regenerate_menus_task.delay",
+        MagicMock(),
+    )
 
     db = SessionLocal()
-    user = db.query(User).first()
-    if not user:
-        user = User(username="test", password_hash=hash_password("test"), role="admin")
-        db.add(user)
-        db.commit()
-        db.refresh(user)
     ot = db.query(OsType).filter(OsType.slug == "debian").first()
     if not ot:
         ot = OsType(
@@ -36,7 +35,6 @@ def test_boot_file_upload_multipart() -> None:
         os_type_id=ot.id,
         version_label="test-upload",
         status="ready",
-        owner_user_id=user.id,
     )
     db.add(v)
     db.commit()
@@ -52,10 +50,21 @@ def test_boot_file_upload_multipart() -> None:
     vid = v.id
     db.close()
 
-    client.post("/login", data={"username": "test", "password": "test"})
+    with TestClient(app) as client:
+        login = client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        assert login.status_code == 302, login.text
+        yield client, vid
+
+
+def test_boot_file_upload_multipart(boot_upload_client: tuple[TestClient, int]) -> None:
+    client, vid = boot_upload_client
 
     empty = client.post(f"/boot-files/{vid}/upload")
-    assert empty.status_code == 422
+    assert empty.status_code == 400
 
     files = {"file": ("vmlinuz", BytesIO(b"fake kernel"), "application/octet-stream")}
     data = {"file_role": "kernel"}
@@ -66,4 +75,7 @@ def test_boot_file_upload_multipart() -> None:
         follow_redirects=False,
     )
     assert ok.status_code == 302, ok.text
-    assert ok.headers.get("location") == "/boot-files"
+    loc = ok.headers.get("location") or ""
+    assert loc.startswith("/boot-files")
+    assert "upload_ok=" in loc
+    assert f"upload_vid={vid}" in loc
