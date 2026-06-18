@@ -28,8 +28,6 @@ TMPL_DIR = Path(__file__).parent.parent / "ipxe_templates"
 # Rocky, AlmaLinux, CentOS : inst.repo= + inst.noverifyssl (HTTPS auto-signé)  |  Fedora : inst.stage2=
 _EL_ANACONDA_FULL_ISO_SLUGS = frozenset({"rocky", "alma", "centos", "fedora"})
 _EL_INST_REPO_SLUGS = frozenset({"rocky", "alma", "centos"})
-# Debian netinst : inst.repo= vers la racine HTTP de l'ISO extraite (dists/ intact via xorriso)
-_DEBIAN_NETINST_SLUGS = frozenset({"debian"})
 
 # Dépôt APK public par défaut (installateur netboot Alpine)
 ALPINE_REPO_DEFAULT_PUBLIC = "http://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
@@ -1177,13 +1175,8 @@ def _build_kernel_args(
             if "modloop=" not in args:
                 args = f"{args} modloop={modloop_url}".strip()
 
-    # Debian : inst.repo= (miroir HTTP extrait, liens dists/ préservés)
-    if os_slug in _DEBIAN_NETINST_SLUGS and be:
-        seg = _boot_os_version_segment(be, os_slug)
-        if seg:
-            root_url = _http(f"boot/{os_slug}/{seg}/", cfg)
-            if root_url and not re.search(r"(?:^|\s)inst\.repo=", args):
-                args = f"{args} inst.repo={root_url}".strip()
+    # Debian netinst : ip + initrd (pas inst.repo= — réservé à Rocky / Alma / CentOS)
+    if os_slug == "debian" and be:
         if not _has_ip_kernel_arg(args):
             args = f"ip=dhcp {args}".strip()
         if be.initrd_path and not re.search(r"(?:^|\s)initrd=", args):

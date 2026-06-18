@@ -47,7 +47,7 @@ DISTRO_RULES: dict[str, dict] = {
         "initrd": [],
         "extra":  {},
     },
-    # Debian — extraction complète (dists/ + liens symboliques) ; inst.repo= en menu
+    # Debian — extraction complète (dists/ + liens symboliques via xorriso)
     "debian": {
         "type":    "debian",
         "kernel":  ["vmlinuz"],
@@ -325,7 +325,7 @@ def extract_iso(
         # Extraction COMPLÈTE de l'ISO directement dans dest
         # Windows / WinPE : BCD, boot.sdi, boot.wim (wimboot)
         # Ubuntu  : cloud-init autoinstall via HTTP
-        # Debian : dists/ + inst.repo= (xorriso pour les liens symboliques)
+        # Debian : dists/ (xorriso pour les liens symboliques)
         # Rocky / Alma / CentOS / Fedora : Anaconda (inst.repo / inst.stage2)
         # Proxmox : installateur + proxmox-netboot.iso sous netboot/
         logger.info("Extraction complète %s → %s", os_slug, dest)
@@ -1188,7 +1188,7 @@ def _find_debian_in_dest(dest: Path, os_slug: str, version_slug: str, rule: dict
     """
     Après extraction complète d'une ISO Debian dans ``dest`` :
     localise vmlinuz / initrd (souvent ``install.amd/`` ou ``isolinux/``).
-    L'arborescence complète (``dists/``, pools, …) reste servie en HTTP pour ``inst.repo=``.
+    L'arborescence complète (``dists/``, pools, …) reste servie en HTTP pour preseed / miroir netinst.
     """
     result: dict = {}
     base = f"boot/{os_slug}/{version_slug}"
