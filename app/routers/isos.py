@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form, UploadFile, File
+from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
@@ -1336,10 +1336,6 @@ async def upload_winpe_drivers(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    machine_kind: str = Form(...),
-    machine_key: str = Form(""),
-    new_machine_name: str = Form(""),
-    driver_zip: UploadFile = File(...),
 ):
     """Reçoit un ZIP pilotes, puis extraction Celery vers boot/drivers/<type>/."""
     redir = _auth(request)
@@ -1349,13 +1345,6 @@ async def upload_winpe_drivers(
     user = get_session_user(request)
     if not user:
         raise HTTPException(401)
-
-    version = _get_version_modify_with_os(db, request, version_id)
-    _winpe_master_mode_required(version, lang)
-
-    fname = Path(driver_zip.filename or "").name
-    if not fname.lower().endswith(".zip"):
-        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_zip_only"))
 
     mf0 = _minimum_free_near_upload_roots()
     posted_ul: int | None = None
@@ -1375,6 +1364,23 @@ async def upload_winpe_drivers(
     )
     if blocked0:
         raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
+
+    form = await read_multipart_form(request, lang=lang)
+    machine_kind = str(form.get("machine_kind") or "").strip()
+    machine_key = str(form.get("machine_key") or "").strip()
+    new_machine_name = str(form.get("new_machine_name") or "").strip()
+    driver_zip = _pick_upload_file(form, "driver_zip")
+    if not machine_kind:
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_zip_only"))
+    if not driver_zip:
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_zip_only"))
+
+    version = _get_version_modify_with_os(db, request, version_id)
+    _winpe_master_mode_required(version, lang)
+
+    fname = Path(driver_zip.filename or "").name
+    if not fname.lower().endswith(".zip"):
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_drivers_zip_only"))
 
     from app.services.winpe_drivers import (
         resolve_machine_upload,
@@ -1640,10 +1646,6 @@ async def upload_winpe_install(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    install_slug: str = Form(...),
-    install_label: str = Form(""),
-    wim_index: int = Form(1),
-    file_install_wim: UploadFile = File(...),
 ):
     """
     Reçoit install.wim (flux HTTP + barre de progression côté client),
@@ -1675,6 +1677,19 @@ async def upload_winpe_install(
     )
     if blocked0:
         raise HTTPException(status_code=blocked0[0], detail=blocked0[1])
+
+    form = await read_multipart_form(request, lang=lang)
+    install_slug = str(form.get("install_slug") or "").strip()
+    install_label = str(form.get("install_label") or "").strip()
+    try:
+        wim_index = max(1, int(str(form.get("wim_index") or "1").strip() or "1"))
+    except ValueError:
+        wim_index = 1
+    file_install_wim = _pick_upload_file(form, "file_install_wim")
+    if not install_slug:
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
+    if not file_install_wim:
+        raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
 
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_master_mode_required(version, lang)

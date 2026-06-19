@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, Request
-from starlette.datastructures import FormData
+from starlette.datastructures import FormData, UploadFile
 from starlette.formparsers import MultiPartException
 
 from app.config import settings
@@ -20,7 +20,24 @@ def uses_manual_multipart_parse(path: str) -> bool:
         path.endswith("/upload") or path.endswith("/replace-wim")
     ):
         return True
+    if path == "/settings/menu-logo":
+        return True
+    if "/winpe-drivers/upload" in path:
+        return True
+    if "/winpe-language-packs/upload" in path:
+        return True
+    if path.endswith("/winpe-installs"):
+        return True
     return False
+
+
+def pick_upload_file(form: FormData, key: str) -> UploadFile | None:
+    """Récupère un ``UploadFile`` non vide depuis un formulaire multipart."""
+    item = form.get(key)
+    if item is None or not isinstance(item, UploadFile):
+        return None
+    fn = (getattr(item, "filename", None) or "").strip()
+    return item if fn else None
 
 
 def multipart_parser_kwargs() -> dict[str, int]:

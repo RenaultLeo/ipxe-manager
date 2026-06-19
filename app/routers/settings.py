@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -374,17 +374,23 @@ MENU_LOGO_MAX_BYTES = 3 * 1024 * 1024
 
 
 @router.post("/menu-logo")
-async def menu_logo_post(
-    request: Request,
-    file: UploadFile = File(...),
-):
+async def menu_logo_post(request: Request):
     redir = _auth(request)
     if redir:
         return redir
 
+    from app.http_multipart import pick_upload_file, read_multipart_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_multipart_form(request, lang=lang)
+    file = pick_upload_file(form, "file")
+
     menus_dir = Path(app_settings.http_root) / "menus"
     menus_dir.mkdir(parents=True, exist_ok=True)
     dest = menus_dir / MENU_LOGO_UPLOAD_NAME
+
+    if not file:
+        return RedirectResponse("/settings?msg=menu_logo_bad", status_code=302)
 
     try:
         raw = await file.read()

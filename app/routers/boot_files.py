@@ -3,7 +3,8 @@ from pathlib import Path
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
-from starlette.datastructures import UploadFile
+
+from app.http_multipart import pick_upload_file
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -162,14 +163,6 @@ async def scan_boot_files(
     return RedirectResponse(dest, status_code=302)
 
 
-def _pick_upload_file(form, key: str) -> UploadFile | None:
-    item = form.get(key)
-    if item is None or not isinstance(item, UploadFile):
-        return None
-    fn = (getattr(item, "filename", None) or "").strip()
-    return item if fn else None
-
-
 @router.post("/{version_id}/upload")
 async def upload_boot_file(
     version_id: int,
@@ -187,7 +180,7 @@ async def upload_boot_file(
     file_role = str(form.get("file_role") or "").strip()
     kernel_args = str(form.get("kernel_args") or "").strip()
     redirect_to = str(form.get("redirect_to") or "").strip()
-    file = _pick_upload_file(form, "file")
+    file = pick_upload_file(form, "file")
     if not file_role:
         raise HTTPException(400, "file_role requis")
     if not file:
@@ -290,7 +283,7 @@ async def replace_boot_wim(
 
     lang = getattr(request.state, "locale", "fr")
     form = await read_multipart_form(request, lang=lang)
-    file_boot_wim = _pick_upload_file(form, "file_boot_wim")
+    file_boot_wim = pick_upload_file(form, "file_boot_wim")
     if not file_boot_wim:
         raise HTTPException(400, "boot.wim requis")
 
