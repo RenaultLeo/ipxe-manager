@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Query, Form, UploadFile
+from fastapi import APIRouter, Request, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
@@ -21,7 +21,7 @@ from app.services.menu_generator import ALPINE_REPO_DEFAULT_PUBLIC
 from app.services.os_type_order import sort_os_types_for_ui
 from app.templating import templates, template_context
 from app.config import settings
-from app.http_multipart import read_multipart_form
+from app.http_multipart import form_int, form_str, read_form, read_multipart_form
 
 router = APIRouter(prefix="/isos")
 logger = logging.getLogger(__name__)
@@ -960,13 +960,16 @@ async def iso_activate_config(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    config_id: int = Form(...),
 ):
     """Ubuntu Desktop : publie cloud-init. Proxmox : crée proxmox-netboot-autoinstall.iso."""
     redir = _auth(request)
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    config_id = form_int(form, "config_id")
+    if config_id <= 0:
+        raise HTTPException(400, detail=translate(lang, "iso.active_config_not_found"))
     version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404)
@@ -1088,14 +1091,15 @@ async def iso_alpine_repo_save(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    alpine_repo_custom: str | None = Form(None),
-    alpine_repo_url: str = Form(""),
 ):
     """Met à jour l’URL du dépôt APK Alpine (menus : paramètre ``alpine_repo=`` sur la ligne kernel)."""
     redir = _auth(request)
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    alpine_repo_custom = form_str(form, "alpine_repo_custom")
+    alpine_repo_url = form_str(form, "alpine_repo_url")
     version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404, "Version introuvable")
@@ -1134,13 +1138,14 @@ async def iso_fedora_live_save(
     version_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    fedora_live_os: str | None = Form(None),
 ):
     """Active ou non le boot Fedora Live (``root=live:…/LiveOS/squashfs.img`` au lieu de ``inst.stage2``)."""
     redir = _auth(request)
     if redir:
         return redir
     lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    fedora_live_os = form_str(form, "fedora_live_os")
     version = _get_version_or_404(db, request, version_id)
     if not version:
         raise HTTPException(404, "Version introuvable")
@@ -1155,7 +1160,7 @@ async def iso_fedora_live_save(
             status_code=400,
             detail=translate(lang, "iso.fedora_live_no_boot"),
         )
-    be.live_os = str(fedora_live_os or "").strip().lower() in (
+    be.live_os = fedora_live_os.lower() in (
         "1",
         "on",
         "true",
@@ -1934,15 +1939,19 @@ async def winpe_scripts_status_route(
 @router.post("/winpe-masters/delete")
 async def delete_global_winpe_master(
     request: Request,
-    family: str = Form("w11"),
-    slug: str = Form(...),
-    redirect_version_id: int = Form(0),
     db: Session = Depends(get_db),
 ):
     """Supprime un master global ``boot/masters/<famille>/<slug>/``."""
     redir = _auth(request)
     if redir:
         return redir
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    family = form_str(form, "family", "w11")
+    slug = form_str(form, "slug")
+    redirect_version_id = form_int(form, "redirect_version_id")
+    if not slug:
+        raise HTTPException(400, detail="slug required")
     user = get_session_user(request)
     if not user:
         raise HTTPException(401)

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, Request, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -183,12 +183,19 @@ async def regenerate(request: Request, db: Session = Depends(get_db)):
 async def custom_script_save(
     entry_id: int,
     request: Request,
-    content: str = Form(...),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
     if redir:
         return redir
+
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    content = form_str(form, "content")
+    if not content:
+        raise HTTPException(400, detail="content required")
 
     user = get_session_user(request)
     entry = get_boot_entry(db, user, entry_id)
@@ -270,15 +277,23 @@ async def chains_status(request: Request, db: Session = Depends(get_db)):
 @router.post("/chains/add")
 async def chain_add(
     request: Request,
-    name: str = Form(...),
-    url:  str = Form(...),
     db: Session = Depends(get_db),
 ):
     redir = auth_redirect_admin(request)
     unauth = _json_or_redirect_unauth(request, redir)
     if unauth is not None:
         return unauth
-    chain = RemoteChain(name=name.strip(), url=_normalize_chain_url(url))
+
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    name = form_str(form, "name")
+    url = form_str(form, "url")
+    if not name or not url:
+        raise HTTPException(400, detail="name and url required")
+
+    chain = RemoteChain(name=name, url=_normalize_chain_url(url))
     db.add(chain)
     db.commit()
     db.refresh(chain)
@@ -396,11 +411,19 @@ async def raw_menu(filename: str, request: Request):
 async def save_menu_override(
     filename: str,
     request: Request,
-    content: str = Form(...),
 ):
     redir = auth_redirect_admin(request)
     if redir:
         return redir
+
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    content = form_str(form, "content")
+    if not content:
+        raise HTTPException(400, detail="content required")
+
     f = settings.menus_dir / filename
     if not f.suffix == ".ipxe":
         raise HTTPException(400)

@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, Request, Depends, HTTPException, Query
 
 from app.http_multipart import pick_upload_file
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -130,12 +130,16 @@ async def boot_list(
 async def scan_boot_files(
     request: Request,
     db: Session = Depends(get_db),
-    return_os: str = Form(""),
 ):
     """Scanne boot/ et enregistre les fichiers existants en DB."""
     redir = auth_redirect_admin(request)
     if redir:
         return redir
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    return_os = form_str(form, "return_os")
     from app.services.boot_scanner import scan_and_register
     res = scan_and_register(db)
 
@@ -347,12 +351,17 @@ async def replace_boot_wim(
 async def update_kernel_args(
     version_id: int,
     request: Request,
-    kernel_args: str = Form(""),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
     if redir:
         return redir
+
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    kernel_args = form_str(form, "kernel_args")
 
     user = get_session_user(request)
     version = get_iso_version(db, user, version_id)

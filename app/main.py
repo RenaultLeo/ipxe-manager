@@ -105,17 +105,18 @@ for _path, _subdir, _name in [
 # ── Routers ───────────────────────────────────────────────────────────────────
 @app.middleware("http")
 async def multipart_limits_middleware(request: Request, call_next):
-    from starlette.formparsers import MultiPartException
+    """Erreurs multipart remontées par les handlers (pas de preload : conflit Form/File FastAPI)."""
     from starlette.responses import JSONResponse
 
-    from app.http_multipart import preload_multipart_form
+    from app.http_multipart import _multipart_http_error
+    from starlette.formparsers import MultiPartException
 
     try:
-        await preload_multipart_form(request)
+        return await call_next(request)
     except MultiPartException as exc:
-        status = 413 if "maximum size" in str(exc).lower() else 400
-        return JSONResponse({"detail": str(exc)}, status_code=status)
-    return await call_next(request)
+        lang = getattr(request.state, "locale", "fr")
+        http_exc = _multipart_http_error(exc, lang=lang)
+        return JSONResponse({"detail": http_exc.detail}, status_code=http_exc.status_code)
 
 
 @app.middleware("http")

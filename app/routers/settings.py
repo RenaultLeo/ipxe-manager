@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -297,12 +297,18 @@ async def os_type_edit_post(os_id: int, request: Request, db: Session = Depends(
 @router.post("/server-url")
 async def update_server_url(
     request: Request,
-    server_base_url: str = Form(...),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
     if redir:
         return redir
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    server_base_url = form_str(form, "server_base_url")
+    if not server_base_url:
+        return RedirectResponse("/settings?msg=server_url_invalid", status_code=302)
     try:
         persist_server_base_url(db, server_base_url)
     except InvalidServerBaseUrlError:
@@ -316,13 +322,17 @@ async def update_server_url(
 @router.post("/ipxe-debug")
 async def update_ipxe_debug(
     request: Request,
-    ipxe_debug: str = Form("0"),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
     if redir:
         return redir
-    enabled = str(ipxe_debug).strip().lower() in ("1", "on", "true", "yes")
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    ipxe_debug = form_str(form, "ipxe_debug", "0")
+    enabled = ipxe_debug.lower() in ("1", "on", "true", "yes")
     persist_ipxe_debug(db, enabled)
     from app.tasks.jobs import regenerate_menus_task
 
@@ -353,12 +363,18 @@ async def renew_tls_cert(request: Request, db: Session = Depends(get_db)):
 @router.post("/password")
 async def update_password(
     request: Request,
-    new_password: str = Form(...),
     db: Session = Depends(get_db),
 ):
     redir = _auth(request)
     if redir:
         return redir
+    from app.http_multipart import form_str, read_form
+
+    lang = getattr(request.state, "locale", "fr")
+    form = await read_form(request, lang=lang)
+    new_password = form_str(form, "new_password")
+    if len(new_password) < 8:
+        return RedirectResponse("/settings", status_code=302)
     hashed = hash_password(new_password)
     _set_setting(db, "admin_password_hash", hashed)
     from app.models.models import User

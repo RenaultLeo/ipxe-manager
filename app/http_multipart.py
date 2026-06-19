@@ -7,28 +7,23 @@ from starlette.formparsers import MultiPartException
 
 from app.config import settings
 
-# Parse manuel dans le handler (garde-fous disque ou éviter preload + Form/File FastAPI).
-MULTIPART_MANUAL_PARSE_PATHS = frozenset({"/isos/upload"})
+
+def form_str(form: FormData, key: str, default: str = "") -> str:
+    """Champ texte depuis un formulaire parsé."""
+    val = form.get(key)
+    if val is None:
+        return default
+    return str(val).strip()
 
 
-def uses_manual_multipart_parse(path: str) -> bool:
-    """True si la route parse ``request.form()`` elle-même (pas le middleware)."""
-    if path in MULTIPART_MANUAL_PARSE_PATHS:
-        return True
-    # Uploads boot : conflit connu preload middleware ↔ dépendances FastAPI Form/File.
-    if path.startswith("/boot-files/") and (
-        path.endswith("/upload") or path.endswith("/replace-wim")
-    ):
-        return True
-    if path == "/settings/menu-logo":
-        return True
-    if "/winpe-drivers/upload" in path:
-        return True
-    if "/winpe-language-packs/upload" in path:
-        return True
-    if path.endswith("/winpe-installs"):
-        return True
-    return False
+def form_int(form: FormData, key: str, default: int = 0) -> int:
+    raw = form_str(form, key)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 def pick_upload_file(form: FormData, key: str) -> UploadFile | None:
@@ -72,6 +67,13 @@ def _multipart_http_error(exc: MultiPartException, *, lang: str | None) -> HTTPE
     return HTTPException(400, detail=str(exc))
 
 
+def is_multipart_request(request: Request) -> bool:
+    if request.method not in ("POST", "PUT", "PATCH"):
+        return False
+    content_type = request.headers.get("content-type", "")
+    return content_type.startswith("multipart/form-data")
+
+
 async def read_multipart_form(request: Request, *, lang: str | None = None) -> FormData:
     """Parse multipart avec limites configurables (fichiers, champs, taille par partie)."""
     try:
@@ -80,20 +82,8 @@ async def read_multipart_form(request: Request, *, lang: str | None = None) -> F
         raise _multipart_http_error(exc, lang=lang) from exc
 
 
-async def preload_multipart_form(request: Request) -> None:
-    """
-    Met en cache le formulaire multipart avant les dépendances FastAPI ``Form`` / ``File``.
-    Starlette ne parse qu'une fois ; les appels suivants réutilisent le cache.
-    """
-    if not _is_multipart_request(request):
-        return
-    if uses_manual_multipart_parse(request.url.path):
-        return
-    await request.form(**multipart_parser_kwargs())
-
-
-def _is_multipart_request(request: Request) -> bool:
-    if request.method not in ("POST", "PUT", "PATCH"):
-        return False
-    content_type = request.headers.get("content-type", "")
-    return content_type.startswith("multipart/form-data")
+async def read_form(request: Request, *, lang: str | None = None) -> FormData:
+    """Parse urlencoded ou multipart (limites projet sur multipart uniquement)."""
+    if is_multipart_request(request):
+        return await read_multipart_form(request, lang=lang)
+    return await request.form()
