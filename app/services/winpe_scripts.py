@@ -12,8 +12,6 @@ from app.config import settings
 from app.models.models import IsoVersion, WinpeInstall
 from app.services.winpe_installs import (
     INSTALL_WIM_FILENAME,
-    install_wim_path,
-    installs_root,
     smb_connect_host_for_winpe,
     smb_host_from_settings,
     smb_share_name,
@@ -62,65 +60,31 @@ def z_language_packs_root() -> str:
 
 
 def build_masters_catalog(
-    version: IsoVersion, installs: list[WinpeInstall]
+    version: IsoVersion | None = None, installs: list[WinpeInstall] | None = None
 ) -> list[dict]:
-    prefix = z_boot_prefix(version)
+    """Catalogue deploy.ps1 : uniquement ``boot/masters/<famille>/<slug>/install.wim``."""
+    del version, installs
     rows: list[dict] = []
-    by_slug: dict[str, WinpeInstall] = {}
-    for wi in installs:
-        slug = (wi.slug or "").strip()
-        if not slug:
-            continue
-        by_slug[slug] = wi
-
-    # Source de vérité: les dossiers réels sur disque.
-    # Si 2 dossiers existent sous installs/, on génère 2 lignes dans masters.json.
-    root = installs_root(version)
-    if root.is_dir():
-        slugs = sorted(
-            [
-                p.name
-                for p in root.iterdir()
-                if p.is_dir() and (p / INSTALL_WIM_FILENAME).is_file()
-            ],
-            key=str.casefold,
-        )
-    else:
-        slugs = sorted(by_slug.keys(), key=str.casefold)
-
-    for slug in slugs:
-        wi = by_slug.get(slug)
-        raw_label = (wi.label if wi else "") or slug
-        label = " ".join(str(raw_label).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()) or slug
-        wim_index = max(1, int((wi.wim_index if wi else 1) or 1))
-        rows.append(
-            {
-                "slug": slug,
-                "label": label,
-                "wimPath": f"Z:\\{prefix}\\installs\\{slug}\\{INSTALL_WIM_FILENAME}",
-                "dismIndex": wim_index,
-            }
-        )
-
-    # Masters globaux persistants : Z:\masters\<family>\<slug>\install.wim
     try:
         from app.services.winpe_master_store import list_global_masters
 
-        existing = {r["slug"] for r in rows}
         for gm in list_global_masters():
-            slug = str(gm.get("key") or gm.get("slug") or "").strip()
-            if not slug or slug in existing:
-                continue
-            wim_rel = slug.replace("/", "\\")
+            key = str(gm.get("key") or "").strip()
+            if not key:
+                family = str(gm.get("family") or "w11").strip()
+                slug = str(gm.get("slug") or "").strip()
+                if not slug:
+                    continue
+                key = f"{family}/{slug}"
+            wim_rel = key.replace("/", "\\")
             rows.append(
                 {
-                    "slug": slug,
-                    "label": str(gm.get("label") or slug).strip() or slug,
+                    "slug": key,
+                    "label": str(gm.get("label") or key).strip() or key,
                     "wimPath": f"Z:\\masters\\{wim_rel}\\{INSTALL_WIM_FILENAME}",
                     "dismIndex": max(1, int(gm.get("wim_index") or 1)),
                 }
             )
-            existing.add(slug)
     except Exception:
         logger.debug("Masters globaux indisponibles pour le catalogue WinPE", exc_info=True)
     return rows
@@ -267,7 +231,7 @@ def write_all_scripts(version: IsoVersion, installs: list[WinpeInstall]) -> Path
     (sdir / INJECT_DRIVERS_PS1).write_text(
         generate_inject_drivers_ps1(version), encoding="utf-8-sig"
     )
-    logger.info("Scripts WinPE écrits dans %s (%d master(s))", sdir, len(installs))
+    logger.info("Scripts WinPE écrits dans %s (%d master(s))", sdir, len(build_masters_catalog(version, installs)))
     return sdir
 
 

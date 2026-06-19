@@ -1,24 +1,30 @@
 """
-Images install.wim WinPE : une entrée = un dossier ``installs/<slug>/install.wim``.
-Le slug du dossier porte le nom de l'édition (toutes les WIM s'appellent install.wim).
+Chemins SMB / helpers pour les masters Windows (fichiers sous ``boot/masters/``).
 """
 from __future__ import annotations
 
 import re
-import shutil
 import socket
 from pathlib import Path
 
 from app.config import settings
-from app.models.models import IsoVersion, WinpeInstall
+from app.models.models import IsoVersion
 from app.services.slugify import slugify
+from app.services.winpe_master_store import (
+    INSTALL_WIM_FILENAME,
+    compose_master_key,
+    delete_master,
+    master_wim_path,
+    normalize_master_family,
+    normalize_master_slug,
+)
 
-INSTALLS_DIRNAME = "installs"
-INSTALL_WIM_FILENAME = "install.wim"
+INSTALLS_DIRNAME = "installs"  # legacy — ne plus écrire ici
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,120}$")
 
 
 def normalize_install_slug(raw: str) -> str:
+    """Normalise le nom de master (stockage ``boot/masters/<famille>/<slug>/``)."""
     s = slugify(raw or "").strip().lower()
     if not s:
         raise ValueError("Identifiant du dossier invalide (lettres/chiffres uniquement).")
@@ -26,7 +32,7 @@ def normalize_install_slug(raw: str) -> str:
         raise ValueError(
             "Identifiant du dossier invalide — utilisez des lettres minuscules, chiffres, « . », « - », « _ »."
         )
-    return s
+    return normalize_master_slug(s)
 
 
 def version_segment(version: IsoVersion) -> str:
@@ -39,22 +45,29 @@ def version_segment(version: IsoVersion) -> str:
 
 
 def installs_root(version: IsoVersion) -> Path:
+    """Legacy — préférer ``winpe_master_store.masters_root()``."""
     os_slug = version.os_type.slug
     return settings.boot_dir / os_slug / version_segment(version) / INSTALLS_DIRNAME
 
 
-def install_folder(version: IsoVersion, install_slug: str) -> Path:
-    return installs_root(version) / install_slug
+def install_folder(version: IsoVersion, install_slug: str, *, family: str = "w11") -> Path:
+    fam = normalize_master_family(family)
+    slug = normalize_install_slug(install_slug)
+    return master_wim_path(slug, fam).parent
 
 
-def install_wim_path(version: IsoVersion, install_slug: str) -> Path:
-    return install_folder(version, install_slug) / INSTALL_WIM_FILENAME
+def install_wim_path(version: IsoVersion, install_slug: str, *, family: str = "w11") -> Path:
+    fam = normalize_master_family(family)
+    slug = normalize_install_slug(install_slug)
+    return master_wim_path(slug, fam)
 
 
-def install_wim_rel_path(version: IsoVersion, install_slug: str) -> str:
-    os_slug = version.os_type.slug
-    seg = version_segment(version)
-    return f"boot/{os_slug}/{seg}/{INSTALLS_DIRNAME}/{install_slug}/{INSTALL_WIM_FILENAME}"
+def install_wim_rel_path(
+    version: IsoVersion, install_slug: str, *, family: str = "w11"
+) -> str:
+    fam = normalize_master_family(family)
+    slug = normalize_install_slug(install_slug)
+    return f"boot/masters/{compose_master_key(fam, slug)}/{INSTALL_WIM_FILENAME}"
 
 
 def smb_host_from_settings() -> str:
@@ -73,10 +86,6 @@ def smb_host_from_settings() -> str:
 
 
 def smb_connect_host_for_winpe() -> str:
-    """
-    Hôte à mettre dans startnet.cmd : de préférence une IPv4.
-    WinPE n'a souvent pas de DNS ; un nom dans SERVER_BASE_URL échoue alors qu'une IP manuelle fonctionne.
-    """
     from app.config import detect_primary_ipv4
 
     host = smb_host_from_settings().strip()
@@ -99,20 +108,22 @@ def smb_share_name() -> str:
     return (getattr(settings, "winpe_smb_share", None) or "boot").strip() or "boot"
 
 
-def smb_unc_dir_for_install(version: IsoVersion, install_slug: str) -> str:
-    """Répertoire SMB de l'image : ``\\\\host\\boot\\winpe\\ver\\installs\\slug``."""
+def smb_unc_dir_for_master(family: str, slug: str) -> str:
     host = smb_host_from_settings()
     share = smb_share_name()
-    os_slug = version.os_type.slug
-    seg = version_segment(version)
-    return f"\\\\{host}\\{share}\\{os_slug}\\{seg}\\{INSTALLS_DIRNAME}\\{install_slug}"
+    fam = normalize_master_family(family)
+    s = normalize_master_slug(slug)
+    return f"\\\\{host}\\{share}\\masters\\{fam}\\{s}"
 
 
-def smb_unc_install_wim(version: IsoVersion, install: WinpeInstall) -> str:
-    return f"{smb_unc_dir_for_install(version, install.slug)}\\{INSTALL_WIM_FILENAME}"
+def smb_unc_install_wim(family: str, slug: str) -> str:
+    return f"{smb_unc_dir_for_master(family, slug)}\\{INSTALL_WIM_FILENAME}"
 
 
-def delete_install_folder(version: IsoVersion, install_slug: str) -> None:
-    folder = install_folder(version, install_slug)
-    if folder.is_dir():
-        shutil.rmtree(folder)
+def delete_install_folder(
+    version: IsoVersion, install_slug: str, *, family: str = "w11"
+) -> None:
+    del version  # masters globaux — pas de dossier par version
+    fam = normalize_master_family(family)
+    slug = normalize_install_slug(install_slug)
+    delete_master(slug, family=fam)

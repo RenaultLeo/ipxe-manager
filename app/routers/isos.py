@@ -515,7 +515,12 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
                 size += len(chunk)
         if size <= 0:
             raise HTTPException(400, detail=translate(lang, "iso.winpe_wim_only"))
-        upsert_master_meta(slug, family=family, label=slug, wim_index=master_wim_index)
+        upsert_master_meta(
+            slug,
+            family=family,
+            label=(master_name or slug).strip() or slug,
+            wim_index=master_wim_index,
+        )
         db.add(
             Upload(
                 filename=f"masters/{family}/{slug}/install.wim",
@@ -526,6 +531,12 @@ async def upload_iso(request: Request, db: Session = Depends(get_db)):
             )
         )
         db.commit()
+        try:
+            from app.tasks.jobs import regenerate_all_winpe_master_scripts_task
+
+            regenerate_all_winpe_master_scripts_task.delay()
+        except Exception:
+            pass
         return RedirectResponse(f"/isos/upload?os={os_type.slug}", status_code=302)
 
     version = IsoVersion(
@@ -851,18 +862,18 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
 
     winpe_smb_host = ""
     winpe_smb_share = ""
-    winpe_installs_root = ""
+    winpe_masters_root = ""
     if version.os_type.boot_type == "windows":
         try:
             from app.services.winpe_installs import (
-                installs_root,
                 smb_host_from_settings,
                 smb_share_name,
             )
+            from app.services.winpe_master_store import masters_root
 
             winpe_smb_host = smb_host_from_settings()
             winpe_smb_share = smb_share_name()
-            winpe_installs_root = str(installs_root(version))
+            winpe_masters_root = str(masters_root())
         except Exception:
             pass
 
@@ -917,7 +928,7 @@ async def iso_detail(version_id: int, request: Request, db: Session = Depends(ge
             active_autoconfig=active_autoconfig,
             winpe_smb_host=winpe_smb_host,
             winpe_smb_share=winpe_smb_share,
-            winpe_installs_root=winpe_installs_root,
+            winpe_masters_root=winpe_masters_root,
             winpe_drivers_catalog=winpe_drivers_catalog,
             winpe_drivers_root=winpe_drivers_root,
             winpe_language_packs_catalog=winpe_language_packs_catalog,
@@ -1681,6 +1692,7 @@ async def upload_winpe_install(
     form = await read_multipart_form(request, lang=lang)
     install_slug = str(form.get("install_slug") or "").strip()
     install_label = str(form.get("install_label") or "").strip()
+    master_family = str(form.get("master_family") or "w11").strip()
     try:
         wim_index = max(1, int(str(form.get("wim_index") or "1").strip() or "1"))
     except ValueError:
@@ -1694,14 +1706,16 @@ async def upload_winpe_install(
     version = _get_version_modify_with_os(db, request, version_id)
     _winpe_master_mode_required(version, lang)
 
-    from app.services.winpe_installs import (
+    from app.services.winpe_master_store import (
         INSTALL_WIM_FILENAME,
-        install_folder,
-        normalize_install_slug,
+        master_staging_part_path,
+        normalize_master_family,
+        normalize_master_slug,
     )
 
     try:
-        slug = normalize_install_slug(install_slug)
+        family = normalize_master_family(master_family or "w11")
+        slug = normalize_master_slug(install_slug.replace(" ", "-"))
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -1717,14 +1731,14 @@ async def upload_winpe_install(
     if blocked1:
         raise HTTPException(status_code=blocked1[0], detail=blocked1[1])
 
-    folder = install_folder(version, slug)
+    folder = master_staging_part_path(slug, family).parent
     folder.mkdir(parents=True, exist_ok=True)
-    part_path = folder / f"{INSTALL_WIM_FILENAME}.part"
+    part_path = master_staging_part_path(slug, family)
     label = (install_label or slug).strip() or slug
     wim_idx = max(1, wim_index)
 
     upload_log = Upload(
-        filename=f"{slug}/{INSTALL_WIM_FILENAME}",
+        filename=f"masters/{family}/{slug}/{INSTALL_WIM_FILENAME}",
         file_type="install_wim",
         size=0,
         status="pending",
@@ -1767,6 +1781,7 @@ async def upload_winpe_install(
             label,
             wim_idx,
             str(part_path.resolve()),
+            family,
         )
     except HTTPException:
         db.rollback()
@@ -1916,6 +1931,63 @@ async def winpe_scripts_status_route(
     )
 
 
+@router.post("/winpe-masters/delete")
+async def delete_global_winpe_master(
+    request: Request,
+    family: str = Form("w11"),
+    slug: str = Form(...),
+    redirect_version_id: int = Form(0),
+    db: Session = Depends(get_db),
+):
+    """Supprime un master global ``boot/masters/<famille>/<slug>/``."""
+    redir = _auth(request)
+    if redir:
+        return redir
+    user = get_session_user(request)
+    if not user:
+        raise HTTPException(401)
+    if redirect_version_id:
+        version = _get_version_or_404(db, request, redirect_version_id)
+        if not version or not can_modify_iso_version(user, version):
+            raise HTTPException(403)
+    elif user.role != "admin":
+        raise HTTPException(403)
+
+    from app.services.winpe_master_store import delete_master, normalize_master_family, normalize_master_slug
+
+    try:
+        fam = normalize_master_family(family or "w11")
+        slug_s = normalize_master_slug(slug)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    delete_master(slug_s, family=fam)
+
+    # Nettoyer les références WinpeInstall obsolètes (legacy).
+    legacy_key = f"{fam}/{slug_s}"
+    for row in db.query(WinpeInstall).filter(WinpeInstall.slug.in_([slug_s, legacy_key])).all():
+        ver = (
+            db.query(IsoVersion)
+            .filter(IsoVersion.active_winpe_install_id == row.id)
+            .first()
+        )
+        if ver:
+            ver.active_winpe_install_id = None
+            ver.winpe_startnet_patched_at = None
+        db.delete(row)
+    db.commit()
+
+    try:
+        from app.tasks.jobs import regenerate_all_winpe_master_scripts_task
+
+        regenerate_all_winpe_master_scripts_task.delay()
+    except Exception:
+        pass
+
+    dest = f"/isos/{redirect_version_id}" if redirect_version_id else "/isos"
+    return RedirectResponse(dest, status_code=302)
+
+
 @router.post("/{version_id}/winpe-installs/{install_id}/delete")
 async def delete_winpe_install_route(
     version_id: int,
@@ -1923,6 +1995,7 @@ async def delete_winpe_install_route(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    """Legacy : redirige vers suppression globale si possible."""
     redir = _auth(request)
     if redir:
         return redir
@@ -1944,25 +2017,32 @@ async def delete_winpe_install_route(
     if not install:
         raise HTTPException(404)
 
-    from app.services.winpe_installs import delete_install_folder
+    raw_slug = (install.slug or "").strip()
+    family = "w11"
+    slug = raw_slug
+    if "/" in raw_slug:
+        family, _, slug = raw_slug.partition("/")
 
-    slug = install.slug
+    from app.services.winpe_master_store import delete_master, normalize_master_family, normalize_master_slug
+
+    try:
+        fam = normalize_master_family(family)
+        slug_s = normalize_master_slug(slug)
+        delete_master(slug_s, family=fam)
+    except ValueError:
+        pass
+
     if version.active_winpe_install_id == install.id:
         version.active_winpe_install_id = None
         version.winpe_startnet_patched_at = None
     db.delete(install)
     db.commit()
-    delete_install_folder(version, slug)
-    remaining = (
-        db.query(WinpeInstall).filter(WinpeInstall.iso_version_id == version.id).count()
-    )
-    if remaining > 0 and version.boot_entry and version.boot_entry.boot_wim_path:
-        try:
-            from app.tasks.jobs import regenerate_winpe_scripts_task
+    try:
+        from app.tasks.jobs import regenerate_all_winpe_master_scripts_task
 
-            regenerate_winpe_scripts_task.delay(version.id)
-        except Exception:
-            pass
+        regenerate_all_winpe_master_scripts_task.delay()
+    except Exception:
+        pass
     return RedirectResponse(f"/isos/{version_id}", status_code=302)
 
 

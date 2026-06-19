@@ -116,7 +116,7 @@ Pour les versions **Windows** avec WinPE :
 
 ### Images d’installation (`install.wim`)
 
-- **Masters** : dossiers `installs/<nom>/install.wim`
+- **Masters** : dossiers globaux `boot/masters/<famille>/<nom>/install.wim` (upload depuis la fiche WinPE ou le menu Windows « master store »)
 - Ajout : identifiant dossier, libellé, index DISM, fichier `.wim`
 - **Image active** + **Patcher boot.wim (startnet.cmd)**
 

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
-from app.services.winpe_installs import INSTALL_WIM_FILENAME
 
+INSTALL_WIM_FILENAME = "install.wim"
 _SLUG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 CATALOG_FILENAME = "masters.json"
 
@@ -49,6 +49,35 @@ def master_folder(slug: str, family: str = "w11") -> Path:
 
 def master_wim_path(slug: str, family: str = "w11") -> Path:
     return master_folder(slug, family) / INSTALL_WIM_FILENAME
+
+
+def master_staging_part_path(slug: str, family: str = "w11") -> Path:
+    """Fichier temporaire pendant réception HTTP (renommé en install.wim par Celery)."""
+    return master_folder(slug, family) / f"{INSTALL_WIM_FILENAME}.part"
+
+
+def master_wim_http_rel(family: str, slug: str) -> str:
+    return f"boot/masters/{compose_master_key(family, slug)}/{INSTALL_WIM_FILENAME}"
+
+
+def delete_master(slug: str, *, family: str = "w11") -> None:
+    """Supprime le dossier master et son entrée dans masters.json."""
+    import shutil
+
+    fam = normalize_master_family(family)
+    s = normalize_master_slug(slug)
+    key = compose_master_key(fam, s)
+    folder = masters_root() / key
+    if folder.is_dir():
+        shutil.rmtree(folder)
+    # Compat ancien schéma boot/masters/<slug>/ sans famille
+    legacy = masters_root() / s
+    if legacy.is_dir() and fam == "w11":
+        shutil.rmtree(legacy, ignore_errors=True)
+    cat = _load_catalog()
+    cat.pop(key, None)
+    cat.pop(s, None)
+    _save_catalog(cat)
 
 
 def _load_catalog() -> dict[str, dict[str, Any]]:

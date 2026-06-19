@@ -324,7 +324,7 @@
           <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
           <span id="winpe-scripts-poll-text">{{ t('iso.winpe_scripts_polling') }}</span>
         </div>
-        {% if (version.winpe_installs or global_winpe_masters) and not version.winpe_startnet_patched_at %}
+        {% if global_winpe_masters and not version.winpe_startnet_patched_at %}
         <div class="alert alert-warning py-2 small mb-3">
           <i class="bi bi-exclamation-triangle me-1"></i>{{ t('iso.winpe_scripts_stale') }}
         </div>
@@ -334,8 +334,8 @@
         <p class="small mb-3">
           <strong>{{ t('iso.winpe_install_smb') }}</strong>
           <code class="ms-1">\\{{ winpe_smb_host }}\{{ winpe_smb_share }}\masters\&lt;famille&gt;\&lt;nom&gt;\install.wim</code>
-          {% if winpe_installs_root %}
-          <span class="d-block text-muted mt-1 font-monospace">{{ winpe_installs_root }}</span>
+          {% if winpe_masters_root %}
+          <span class="d-block text-muted mt-1 font-monospace">{{ winpe_masters_root }}</span>
           {% endif %}
         </p>
         {% endif %}
@@ -357,11 +357,16 @@
                   data-msg-install-partial="{{ t('iso.winpe_install_partial') }}"
                   data-msg-xhr="{{ t('iso.upload.xhr_error') }}"
                   data-msg-xhr-status="{{ t('iso.upload.xhr_error_status') }}">
-              <div class="col-12">
+              <div class="col-md-4">
+                <label class="form-label small mb-1">{{ t('iso.winpe_family') }}</label>
+                <input type="text" name="master_family" class="form-control form-control-sm font-monospace"
+                       value="w11" placeholder="w11" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*">
+              </div>
+              <div class="col-md-8">
                 <label class="form-label small mb-1">{{ t('iso.winpe_install_slug') }}</label>
                 <input type="text" name="install_slug" class="form-control form-control-sm font-monospace"
                        placeholder="win11-pro" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*">
-                <div class="form-text text-muted">Stockage local version: <code>boot/{{ version.os_type.slug }}/…/installs/&lt;slug&gt;/install.wim</code></div>
+                <div class="form-text text-muted">Stockage : <code>boot/masters/&lt;famille&gt;/&lt;nom&gt;/install.wim</code></div>
               </div>
               <div class="col-12">
                 <label class="form-label small mb-1">{{ t('iso.winpe_install_label') }}</label>
@@ -395,7 +400,7 @@
           </div>
           <div class="col-lg-7">
             <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_scripts_title') }}</h6>
-            {% if version.boot_entry and version.boot_entry.boot_wim_path and (version.winpe_installs or global_winpe_masters) %}
+            {% if version.boot_entry and version.boot_entry.boot_wim_path and global_winpe_masters %}
             <p class="small text-muted mb-2">{{ t('iso.winpe_scripts_help') }}</p>
             <form method="post" action="/isos/{{ version.id }}/regenerate-winpe-scripts" class="mb-2"
                   id="winpe-scripts-regenerate-form">
@@ -411,7 +416,7 @@
             {% if winpe_scripts_dir %}
             <p class="small text-muted font-monospace mb-0">{{ winpe_scripts_dir }}</p>
             {% endif %}
-            {% elif not (version.winpe_installs or global_winpe_masters) %}
+            {% elif not global_winpe_masters %}
             <p class="small text-muted mb-0">{{ t('iso.winpe_scripts_no_masters') }}</p>
             {% else %}
             <p class="small text-warning mb-0">{{ t('iso.winpe_need_boot_wim') }}</p>
@@ -419,59 +424,38 @@
           </div>
         </div>
 
-        {% if version.winpe_installs %}
-        <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_list') }}</h6>
-        <div class="table-responsive">
-          <table class="table table-sm table-dark table-borderless mb-0">
-            <thead>
-              <tr class="text-muted small">
-                <th>{{ t('iso.detail.winpe_th_folder') }}</th>
-                <th>{{ t('iso.detail.winpe_th_label') }}</th>
-                <th>{{ t('iso.detail.winpe_th_index') }}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for wi in version.winpe_installs %}
-              <tr>
-                <td class="font-monospace">boot/{{ version.os_type.slug }}/…/installs/{{ wi.slug }}/</td>
-                <td>{{ wi.label or wi.slug }}</td>
-                <td>{{ wi.wim_index }}</td>
-                <td class="text-end">
-                  {% if can_modify %}
-                  <form method="post" action="/isos/{{ version.id }}/winpe-installs/{{ wi.id }}/delete"
-                        class="d-inline"
-                        data-confirm="{{ t('iso.winpe_install_delete_confirm', slug=wi.slug)|e }}"
-                        data-confirm-variant="danger">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">{{ t('iso.winpe_install_delete') }}</button>
-                  </form>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% endif %}
         {% if global_winpe_masters %}
-        <h6 class="text-muted small text-uppercase mt-3 mb-2">{{ t('iso.winpe_global_masters_detected') }}</h6>
+        <h6 class="text-muted small text-uppercase mb-2">{{ t('iso.winpe_install_list') }}</h6>
         <div class="table-responsive">
           <table class="table table-sm table-dark table-borderless mb-0">
             <thead>
               <tr class="text-muted small">
                 <th>{{ t('iso.winpe_family') }}</th>
                 <th>{{ t('iso.winpe_folder') }}</th>
-                <th>Libellé</th>
-                <th>Index</th>
+                <th>{{ t('iso.detail.winpe_th_label') }}</th>
+                <th>{{ t('iso.detail.winpe_th_index') }}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {% for gm in global_winpe_masters %}
               <tr>
                 <td class="font-monospace">{{ gm.family }}</td>
-                <td class="font-monospace">masters/{{ gm.family }}/{{ gm.slug }}/</td>
+                <td class="font-monospace">boot/masters/{{ gm.family }}/{{ gm.slug }}/</td>
                 <td>{{ gm.label }}</td>
                 <td>{{ gm.wim_index }}</td>
+                <td class="text-end">
+                  {% if can_modify %}
+                  <form method="post" action="/isos/winpe-masters/delete" class="d-inline"
+                        data-confirm="{{ t('iso.winpe_install_delete_confirm', slug=gm.slug)|e }}"
+                        data-confirm-variant="danger">
+                    <input type="hidden" name="family" value="{{ gm.family }}">
+                    <input type="hidden" name="slug" value="{{ gm.slug }}">
+                    <input type="hidden" name="redirect_version_id" value="{{ version.id }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">{{ t('iso.winpe_install_delete') }}</button>
+                  </form>
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             </tbody>

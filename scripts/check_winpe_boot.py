@@ -145,70 +145,99 @@ def main() -> int:
                     errors.append(f"v{v.id}: {exc}")
 
                 root = installs_root(v)
-                installs = list(v.winpe_installs or [])
-                if not installs and root.is_dir():
+                if root.is_dir() and any(
+                    (p / "install.wim").is_file() for p in root.iterdir() if p.is_dir()
+                ):
                     warnings.append(
-                        f"v{v.id}: dossiers installs/ sur disque mais aucune entrée WinpeInstall en BDD"
+                        f"v{v.id}: anciens masters sous installs/ — déplacer ou re-téléverser vers boot/masters/"
                     )
 
-                for wi in installs:
-                    disk = install_wim_path(v, wi.slug)
-                    rel = install_wim_rel_path(v, wi.slug)
-                    z = _z_path_from_rel(rel)
-                    unc = smb_unc_install_wim(v, wi)
+                from app.services.winpe_master_store import list_global_masters
+
+                for gm in list_global_masters():
+                    family = str(gm.get("family") or "w11")
+                    slug = str(gm.get("slug") or "")
+                    disk = Path(str(gm.get("wim_path") or ""))
+                    rel = f"boot/masters/{family}/{slug}/install.wim"
+                    z = f"Z:\\masters\\{family}\\{slug}\\install.wim"
+                    unc = smb_unc_install_wim(family, slug)
 
                     if not disk.is_file():
                         errors.append(
-                            f"v{v.id} install « {wi.slug} » : install.wim absent ({disk})"
+                            f"master « {family}/{slug} » : install.wim absent ({disk})"
                         )
                         continue
 
                     under_share = boot_share / Path(rel.replace("\\", "/")).relative_to("boot")
                     if not under_share.is_file():
                         errors.append(
-                            f"v{v.id} install « {wi.slug} » : chemin SMB incohérent "
+                            f"master « {family}/{slug} » : chemin SMB incohérent "
                             f"(attendu sous {boot_share}: {under_share})"
                         )
 
-                    sdir = scripts_dir(v)
-                    if not (sdir / "deploy.ps1").is_file():
-                        warnings.append(f"v{v.id}: deploy.ps1 absent ({sdir})")
-                    deploy_ps1 = sdir / "deploy.ps1"
-                    if deploy_ps1.is_file():
-                        dtxt = deploy_ps1.read_text(encoding="utf-8-sig", errors="replace")
-                        for needle in (
-                            "Show-WinpeDeployWizard",
-                            "Invoke-WinpeDeployment",
-                            "Update-OfflineUnattend",
-                            "Install-WinpeDrivers",
-                        ):
-                            if needle not in dtxt:
-                                errors.append(
-                                    f"v{v.id}: deploy.ps1 sans « {needle} »"
-                                )
-                    script = generate_startnet_cmd(v)
-                    for needle in (
-                        "wpeinit",
-                        "powercfg",
-                        "advfirewall",
-                        "diskpart",
-                        "net use Z:",
-                        "powershell",
-                        "deploy.ps1",
-                    ):
-                        if needle not in script:
-                            errors.append(
-                                f"v{v.id}: startnet.cmd sans « {needle} »"
-                            )
-
                     print(
-                        f"  v{v.id} [{wi.slug}] OK — disque={disk.stat().st_size // (1024**2)} MiB"
+                        f"  master [{family}/{slug}] OK — disque={disk.stat().st_size // (1024**2)} MiB"
                     )
                     print(f"    UNC   {unc}")
                     print(f"    WinPE {z}")
                     print(f"    injecté dans boot.wim → Windows/System32/startnet.cmd (via wimupdate)")
 
-                if v.winpe_installs and not v.winpe_startnet_patched_at:
+                sdir = scripts_dir(v)
+                if not (sdir / "deploy.ps1").is_file():
+                    warnings.append(f"v{v.id}: deploy.ps1 absent ({sdir})")
+                deploy_ps1 = sdir / "deploy.ps1"
+                if deploy_ps1.is_file():
+                    dtxt = deploy_ps1.read_text(encoding="utf-8-sig", errors="replace")
+                    for needle in (
+                        "Show-WinpeDeployWizard",
+                        "Invoke-WinpeDeployment",
+                        "Update-OfflineUnattend",
+                        "Install-WinpeDrivers",
+                    ):
+                        if needle not in dtxt:
+                            errors.append(
+                                f"v{v.id}: deploy.ps1 sans « {needle} »"
+                            )
+                masters_json = sdir / "masters.json"
+                if masters_json.is_file():
+                    try:
+                        import json
+
+                        catalog = json.loads(masters_json.read_text(encoding="utf-8"))
+                        if not isinstance(catalog, list):
+                            errors.append(f"v{v.id}: masters.json invalide (tableau attendu)")
+                        else:
+                            for entry in catalog:
+                                if not isinstance(entry, dict):
+                                    continue
+                                wim_path = str(entry.get("wimPath") or "").replace("/", "\\")
+                                if not wim_path.lower().startswith("z:\\masters\\"):
+                                    errors.append(
+                                        f"v{v.id}: masters.json wimPath hors boot/masters "
+                                        f"({wim_path!r}) — régénérer les scripts WinPE"
+                                    )
+                                elif "\\installs\\" in wim_path.lower():
+                                    errors.append(
+                                        f"v{v.id}: masters.json référence installs/ ({wim_path!r})"
+                                    )
+                    except (json.JSONDecodeError, OSError) as exc:
+                        errors.append(f"v{v.id}: masters.json illisible ({exc})")
+                script = generate_startnet_cmd(v)
+                for needle in (
+                    "wpeinit",
+                    "powercfg",
+                    "advfirewall",
+                    "diskpart",
+                    "net use Z:",
+                    "powershell",
+                    "deploy.ps1",
+                ):
+                    if needle not in script:
+                        errors.append(
+                            f"v{v.id}: startnet.cmd sans « {needle} »"
+                        )
+
+                if list_global_masters() and not v.winpe_startnet_patched_at:
                     warnings.append(
                         f"v{v.id}: masters présents mais scripts WinPE non générés "
                         "(regenerate-winpe-scripts)"

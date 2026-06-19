@@ -675,10 +675,10 @@ BULK_GAPS: dict[str, dict[str, str]] = {
         "pt": "Ficheiro install.wim",
     },
     "iso.winpe_install_intro": {
-        "de": "Masters können lokal zu dieser Version (boot/<os>/<version>/installs/<name>/install.wim) oder persistent global (boot/masters/<family>/<name>/install.wim) sein. Auswahl im WinPE-Assistenten deploy.ps1.",
-        "es": "Los masters pueden ser locales a esta versión (boot/<os>/<version>/installs/<name>/install.wim) o globales persistentes (boot/masters/<family>/<name>/install.wim). La selección ocurre en deploy.ps1.",
-        "it": "I master possono essere locali a questa versione (boot/<os>/<version>/installs/<name>/install.wim) o globali persistenti (boot/masters/<family>/<name>/install.wim). La scelta avviene in deploy.ps1.",
-        "pt": "Os masters podem ser locais a esta versão (boot/<os>/<version>/installs/<name>/install.wim) ou globais persistentes (boot/masters/<family>/<name>/install.wim). A seleção ocorre em deploy.ps1.",
+        "de": "Alle Windows-Masters liegen unter boot/masters/<family>/<name>/install.wim (WinPE- oder Windows-Upload). deploy.ps1 mountet Z: und liest Z:\\masters\\…\\install.wim.",
+        "es": "Todos los masters Windows se almacenan en boot/masters/<familia>/<nombre>/install.wim (subida WinPE o Windows). deploy.ps1 monta Z: y lee Z:\\masters\\…\\install.wim.",
+        "it": "Tutti i master Windows sono in boot/masters/<famiglia>/<nome>/install.wim (upload WinPE o Windows). deploy.ps1 monta Z: e legge Z:\\masters\\…\\install.wim.",
+        "pt": "Todos os masters Windows ficam em boot/masters/<familia>/<nome>/install.wim (upload WinPE ou Windows). deploy.ps1 monta Z: e lê Z:\\masters\\…\\install.wim.",
     },
     "iso.winpe_install_label": {
         "de": "Anzeigename",

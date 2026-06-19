@@ -317,19 +317,26 @@ def upload_winpe_install_task(
     label: str,
     wim_index: int,
     part_path: str,
+    master_family: str = "w11",
 ):
     """
-    Finalise un install.wim reçu en HTTP (fichier .part) : déplacement atomique,
-    enregistrement WinpeInstall, mise à jour du journal Upload.
+    Finalise un install.wim reçu en HTTP : ``boot/masters/<famille>/<slug>/install.wim``.
     """
     import os
     from sqlalchemy.orm import joinedload
 
-    from app.models.models import WinpeInstall
-    from app.services.winpe_installs import INSTALL_WIM_FILENAME, install_wim_path
+    from app.services.winpe_master_store import (
+        INSTALL_WIM_FILENAME,
+        master_wim_path,
+        normalize_master_family,
+        normalize_master_slug,
+        upsert_master_meta,
+    )
 
     db = SessionLocal()
     part = Path(part_path)
+    fam = normalize_master_family(master_family or "w11")
+    slug_s = normalize_master_slug(slug)
     try:
         upload: Upload | None = db.query(Upload).get(upload_id)
         if not upload:
@@ -351,52 +358,34 @@ def upload_winpe_install_task(
         if not part.is_file():
             raise FileNotFoundError(f"Fichier temporaire absent : {part}")
 
-        dest = install_wim_path(version, slug)
+        dest = master_wim_path(slug_s, fam)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.is_file():
             dest.unlink()
         os.replace(part, dest)
 
-        label_s = " ".join((label or slug).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()) or slug
-        row = (
-            db.query(WinpeInstall)
-            .filter(
-                WinpeInstall.iso_version_id == version.id,
-                WinpeInstall.slug == slug,
-            )
-            .first()
-        )
-        if not row:
-            row = WinpeInstall(
-                iso_version_id=version.id,
-                slug=slug,
-                label=label_s,
-                wim_index=max(1, int(wim_index or 1)),
-            )
-            db.add(row)
-        else:
-            row.label = label_s
-            row.wim_index = max(1, int(wim_index or 1))
+        label_s = " ".join((label or slug_s).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()) or slug_s
+        upsert_master_meta(slug_s, family=fam, label=label_s, wim_index=max(1, int(wim_index or 1)))
 
         version.winpe_startnet_patched_at = None
         upload.status = "done"
         upload.size = dest.stat().st_size
-        upload.filename = f"{slug}/{INSTALL_WIM_FILENAME}"
+        upload.filename = f"masters/{fam}/{slug_s}/{INSTALL_WIM_FILENAME}"
         db.commit()
         try:
-            regenerate_winpe_scripts_task.delay(iso_version_id)
+            regenerate_all_winpe_master_scripts_task.delay()
         except Exception:
             logger.warning(
-                "Impossible de lancer regenerate_winpe_scripts après upload install.wim",
+                "Impossible de lancer regenerate_all_winpe_master_scripts après upload install.wim",
                 exc_info=True,
             )
         logger.info(
-            "install.wim WinPE OK — version %s slug %s (%s octets)",
-            iso_version_id,
-            slug,
+            "install.wim master OK — %s/%s (%s octets)",
+            fam,
+            slug_s,
             upload.size,
         )
-        return {"status": "ok", "slug": slug, "path": str(dest)}
+        return {"status": "ok", "slug": slug_s, "family": fam, "path": str(dest)}
     except Exception as exc:
         logger.exception("upload_winpe_install_task failed")
         db.rollback()
@@ -422,7 +411,7 @@ def _regenerate_winpe_scripts_impl(iso_version_id: int) -> dict:
     """Génère deploy.ps1 / inject-drivers.ps1 / masters.json et injecte startnet.cmd minimal."""
     db = SessionLocal()
     try:
-        from app.models.models import IsoVersion, WinpeInstall
+        from app.models.models import IsoVersion
         from app.services.winpe_scripts import regenerate_winpe_deployment
         from sqlalchemy.orm import joinedload
 
@@ -451,12 +440,6 @@ def _regenerate_winpe_scripts_impl(iso_version_id: int) -> dict:
             db.flush()
 
         installs = list(version.winpe_installs or [])
-        if not installs:
-            installs = (
-                db.query(WinpeInstall)
-                .filter(WinpeInstall.iso_version_id == version.id)
-                .all()
-            )
         result = regenerate_winpe_deployment(version, installs, patch_wim=True)
         version.winpe_startnet_patched_at = datetime.utcnow()
         db.commit()
@@ -558,6 +541,47 @@ def patch_winpe_startnet_task(
 ):
     """Alias historique (winpe_install_id ignoré)."""
     return _regenerate_winpe_scripts_impl(iso_version_id)
+
+
+@celery.task(name="regenerate_all_winpe_master_scripts")
+def regenerate_all_winpe_master_scripts_task():
+    """Régénère deploy.ps1 / masters.json pour toutes les versions WinPE mode master."""
+    db = SessionLocal()
+    try:
+        from sqlalchemy.orm import joinedload
+
+        from app.models.models import IsoVersion, OsType
+
+        versions = (
+            db.query(IsoVersion)
+            .join(OsType, IsoVersion.os_type_id == OsType.id)
+            .options(
+                joinedload(IsoVersion.os_type),
+                joinedload(IsoVersion.boot_entry),
+            )
+            .filter(
+                OsType.boot_type == "windows",
+                IsoVersion.windows_mode == "winpe",
+                IsoVersion.winpe_mode == "master",
+            )
+            .all()
+        )
+        ok = 0
+        for v in versions:
+            if not v.boot_entry or not v.boot_entry.boot_wim_path:
+                continue
+            try:
+                _regenerate_winpe_scripts_impl(v.id)
+                ok += 1
+            except Exception:
+                logger.warning(
+                    "regenerate WinPE scripts ignoré pour version %s",
+                    v.id,
+                    exc_info=True,
+                )
+        return {"versions": len(versions), "regenerated": ok}
+    finally:
+        db.close()
 
 
 @celery.task(name="regenerate_menus")
